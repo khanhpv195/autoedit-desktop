@@ -1,7 +1,7 @@
 import io, time
 import pytest
 from claude_agent_sdk import AssistantMessage, RateLimitEvent, RateLimitInfo, ResultMessage, TextBlock, ToolUseBlock
-from autoedit.agent.options import edit_options, EDIT_TOOLS, SKILLS
+from autoedit.agent.options import edit_options, EDIT_TOOLS
 from autoedit.agent.runner import run_agent
 from claude_agent_sdk import ProcessError, ResultError, CLINotFoundError
 from autoedit.errors import RateLimited, NoAuth, SetupRequired
@@ -78,7 +78,7 @@ def test_edit_options_lock_down_tools(tmp_path, monkeypatch):
     import autoedit.agent.options as opt
     monkeypatch.setattr(opt, "find_cli", lambda: tmp_path / "claude")
     o = edit_options(tmp_path, {"type": "sdk", "name": "autoedit"}, "claude-opus-5-5")
-    assert o.tools == ["Skill"] and o.skills == SKILLS and o.setting_sources == ["project"]
+    assert o.tools == [] and not o.skills and o.setting_sources == ["project"]
     assert o.allowed_tools == EDIT_TOOLS and o.max_turns == 15 and o.cwd == str(tmp_path)
     assert o.cli_path == tmp_path / "claude" and o.env == {"DISABLE_AUTOUPDATER": "1"}
     assert o.strict_mcp_config is True and o.max_buffer_size >= 16 * 1024 * 1024
@@ -193,3 +193,14 @@ async def test_aborted_session_ends_run_and_closes_stream():
             closed.append(1)
     out = await run_agent(s, "p", None, query_fn=q)
     assert not out.finished and out.error == "aborted" and closed
+
+
+async def test_dict_prompt_is_streamed_as_one_message():
+    seen = []
+    async def q(prompt, options):
+        async for m in prompt:
+            seen.append(m)
+        yield result()
+    msg = {"type": "user", "message": {"role": "user", "content": []}, "parent_tool_use_id": None, "session_id": "default"}
+    await run_agent(S(), msg, None, query_fn=q)
+    assert seen == [msg]

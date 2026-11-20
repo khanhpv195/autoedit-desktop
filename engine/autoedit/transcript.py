@@ -33,6 +33,11 @@ def format_phrases(phrases: list[Phrase]) -> str:
     return "\n".join(f"[{p.start:.2f}-{p.end:.2f}] {p.text}" for p in phrases)
 
 
+def format_words(words: list[Word]) -> str:
+    """Compact word list with source start times: `[12.34] giá [12.60] 189K`."""
+    return " ".join(f"[{w.start:.2f}] {w.text}" for w in words)
+
+
 def speech_duration(words: list[Word]) -> float:
     return sum(p.end - p.start for p in pack_phrases(words))
 

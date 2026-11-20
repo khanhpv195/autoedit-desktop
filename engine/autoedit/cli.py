@@ -10,7 +10,7 @@ from autoedit import __version__
 from autoedit.agent.analyze import run_analyze
 from autoedit.agent.auth import auth_check
 from autoedit.agent.options import edit_options, model
-from autoedit.agent.prompt import build_edit_prompt
+from autoedit.agent.prompt import build_edit_message
 from autoedit.agent.runner import run_agent
 from autoedit.agent.session import EditSession
 from autoedit.agent.tools import build_server
@@ -58,7 +58,8 @@ async def _edit(args, events: Emitter) -> int:
         usage = {"turns": 0, "fallback": False}
         ev.step("AI đang dựng…", 0.3)
         try:
-            outcome = await run_agent(session, build_edit_prompt(project, prepared, user_prompt, args.feedback, previous),
+            outcome = await run_agent(session, build_edit_message(project, prepared, user_prompt, args.feedback, previous,
+                                                                agent_dir()),
                                       edit_options(agent_dir(), build_server(session), model()))
             usage["turns"] = outcome.turns
             ok = outcome.finished

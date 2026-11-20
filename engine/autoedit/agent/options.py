@@ -9,7 +9,6 @@ from autoedit.claude_cli import find_cli
 DEFAULT_MODEL = "claude-opus-5-5"
 BASE_ENV = {"DISABLE_AUTOUPDATER": "1"}   # our pinned CLI must never update itself
 MAX_BUFFER = 32 * 1024 * 1024    # SDK default 1 MB overflows on a tool result with 6 base64 frames
-SKILLS = ["video-use", "edit-video", "niche-hooks"]
 EDIT_TOOLS = [f"mcp__autoedit__{n}" for n in TOOL_NAMES]
 
 
@@ -20,9 +19,8 @@ def model() -> str:
 def edit_options(agent_dir: Path, server, model: str) -> ClaudeAgentOptions:
     return ClaudeAgentOptions(
         cwd=str(agent_dir),
-        tools=["Skill"],                 # no Bash/Read/Write/Edit: only Skill + our MCP tools
-        skills=SKILLS,
-        setting_sources=["project"],     # agent/CLAUDE.md + agent/.claude/skills only, never ~/.claude
+        tools=[],                        # no built-in tools at all: only our MCP tools (skills ride in the first message)
+        setting_sources=["project"],     # agent/CLAUDE.md only, never ~/.claude
         mcp_servers={"autoedit": server},
         allowed_tools=EDIT_TOOLS,
         max_turns=15,
