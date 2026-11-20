@@ -18,3 +18,8 @@ test("NO_AUTH goes to settings, SETUP_REQUIRED to setup, BAD_INPUT none", () => 
 test("unknown code retries", () => {
   expect(describeError({ code: "WAT", message: "x", retry_at: null }).action).toBe("retry");
 });
+test("SOCIAL_* codes", () => {
+  expect(describeError({ code: "SOCIAL_AUTH", message: "", retry_at: null })).toMatchObject({ title: "Key bundle.social không dùng được", action: "settings" });
+  expect(describeError({ code: "SOCIAL_LIMIT", message: "", retry_at: null })).toMatchObject({ title: "Hết lượt đăng của gói bundle.social", action: "none" });
+  expect(describeError({ code: "SOCIAL_FAILED", message: "boom", retry_at: null })).toMatchObject({ title: "Đăng bài lỗi", detail: "boom", action: "retry" });
+});
