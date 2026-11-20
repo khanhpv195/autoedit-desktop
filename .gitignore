@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+engine/build/
+engine/dist/
+engine/bench/clips/
+engine/bench/out/
+spikes/sdk/build/
+spikes/sdk/dist/
+.playwright-mcp/
+.superpowers/
+.DS_Store
