@@ -37,3 +37,19 @@ async def test_auth_check_nothing_configured(tmp_path, monkeypatch):
     monkeypatch.setattr(a, "detect_auth", lambda *x, **k: None)
     with pytest.raises(NoAuth):
         await auth_check(tmp_path)
+
+
+async def test_auth_check_rate_limited_is_not_no_auth(tmp_path, monkeypatch):
+    from claude_agent_sdk import ResultError
+    from autoedit.errors import RateLimited
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "x")
+    async def q(prompt, options):
+        yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=True, num_turns=1,
+                            session_id="s", result="usage limit reached", api_error_status=429)
+    with pytest.raises(RateLimited):
+        await auth_check(tmp_path, query_fn=q)
+    async def q2(prompt, options):
+        yield AssistantMessage(content=[], model="m")
+        raise ResultError("e", {"result": "Not logged in · Please run /login"})
+    with pytest.raises(NoAuth):
+        await auth_check(tmp_path, query_fn=q2)

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from claude_agent_sdk import AssistantMessage, RateLimitEvent, ResultMessage, TextBlock, ToolUseBlock, query
 
+from autoedit.agent.sdk_errors import NO_AUTH_MSG, RATE_MSG, classify_result, classify_sdk_error
 from autoedit.errors import NoAuth, RateLimited
 
 TOOL_LABELS = {"get_transcript": "Đọc lời thoại", "view_frames": "Xem khung hình", "set_edl": "Chọn đoạn cắt",
@@ -31,21 +32,33 @@ def _clip(text: str, limit: int = 280) -> str:
     return cut.rstrip() + "…"
 
 
-async def run_agent(session, prompt: str, options, *, query_fn=query, timeout: float = 600) -> AgentOutcome:
+async def run_agent(session, prompt, options, *, query_fn=query, timeout: float = 600, on_message=None) -> AgentOutcome:
+    """prompt: a string or a streamed user-message dict. Stops reading as soon as `finish` succeeded."""
     turns, reset_at = 0, None
+
+    async def stream():
+        yield prompt
+
+    def done() -> bool:
+        return bool(session.finished and session.edl is not None)
+
+    it = None
     try:
         async with asyncio.timeout(timeout):
-            async for msg in query_fn(prompt=prompt, options=options):
+            it = query_fn(prompt=stream() if isinstance(prompt, dict) else prompt, options=options)
+            async for msg in it:
+                if on_message:
+                    on_message(msg)
                 if isinstance(msg, RateLimitEvent):
                     info = msg.rate_limit_info
                     reset_at = _iso(info.resets_at) or reset_at
-                    if info.status == "rejected":
-                        raise RateLimited("Đã hết lượt Claude của gói", reset_at)
+                    if info.status == "rejected" and not done():
+                        raise RateLimited(RATE_MSG, reset_at)
                 elif isinstance(msg, AssistantMessage):
-                    if msg.error == "rate_limit":
-                        raise RateLimited("Đã hết lượt Claude của gói", reset_at)
-                    if msg.error in ("authentication_failed", "billing_error"):
-                        raise NoAuth("Tài khoản Claude chưa đăng nhập hoặc không dùng được")
+                    if msg.error == "rate_limit" and not done():
+                        raise RateLimited(RATE_MSG, reset_at)
+                    if msg.error in ("authentication_failed", "billing_error") and not done():
+                        raise NoAuth(NO_AUTH_MSG)
                     for b in msg.content:
                         if isinstance(b, ToolUseBlock):
                             name = b.name.removeprefix("mcp__autoedit__")
@@ -56,6 +69,26 @@ async def run_agent(session, prompt: str, options, *, query_fn=query, timeout: f
                     turns = msg.num_turns
                     if msg.is_error:
                         print(f"agent result error: {msg.subtype} {msg.result}", file=sys.stderr)
+                        err = classify_result(msg, reset_at)
+                        if err and not done():
+                            raise err
+                if done():
+                    break
     except TimeoutError:
-        return AgentOutcome(False, turns, "timeout")
-    return AgentOutcome(bool(session.finished and session.edl is not None), turns, None)
+        return AgentOutcome(done(), turns, None if done() else "timeout")
+    except Exception as e:
+        if done():          # the edit is complete: whatever the CLI did afterwards (max_turns, crash) is moot
+            print(f"ignored SDK error after finish: {type(e).__name__}: {e}", file=sys.stderr)
+            return AgentOutcome(True, turns, None)
+        err = classify_sdk_error(e, reset_at)
+        if err is not None:
+            raise err from e
+        raise
+    finally:
+        aclose = getattr(it, "aclose", None)
+        if aclose is not None:
+            try:
+                await aclose()
+            except Exception:
+                pass
+    return AgentOutcome(done(), turns, None)

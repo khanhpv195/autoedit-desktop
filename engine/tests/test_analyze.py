@@ -54,3 +54,29 @@ async def test_rate_limit(tmp_path):
         yield AssistantMessage(content=[], model="m", error="rate_limit")
     with pytest.raises(RateLimited):
         await run_analyze(prep(tmp_path), "chung", agent_dir(), query_fn=q)
+
+
+async def test_not_logged_in_maps_to_no_auth(tmp_path):
+    from claude_agent_sdk import ResultError
+    from autoedit.errors import NoAuth
+    async def q(prompt, options):
+        yield AssistantMessage(content=[], model="m")
+        raise ResultError("e", {"result": "Not logged in · Please run /login"})
+    with pytest.raises(NoAuth):
+        await run_analyze(prep(tmp_path), "chung", agent_dir(), query_fn=q)
+
+
+async def test_rate_limit_variants(tmp_path):
+    import time
+    from claude_agent_sdk import RateLimitEvent, RateLimitInfo, ResultError
+    async def rejected(prompt, options):
+        yield RateLimitEvent(rate_limit_info=RateLimitInfo(status="rejected", resets_at=int(time.time()) + 60),
+                             uuid="u", session_id="s")
+    with pytest.raises(RateLimited) as e:
+        await run_analyze(prep(tmp_path), "chung", agent_dir(), query_fn=rejected)
+    assert e.value.retry_at
+    async def raised(prompt, options):
+        yield AssistantMessage(content=[], model="m")
+        raise ResultError("e", {"api_error_status": 429})
+    with pytest.raises(RateLimited):
+        await run_analyze(prep(tmp_path), "chung", agent_dir(), query_fn=raised)

@@ -1,10 +1,12 @@
 import base64
 from pathlib import Path
 
-from claude_agent_sdk import AssistantMessage, ResultMessage, query
+from claude_agent_sdk import AssistantMessage, RateLimitEvent, ResultMessage, query
 
 from autoedit.agent.library import NICHE_NAMES, niche_section
 from autoedit.agent.options import model, plain_options
+from autoedit.agent.runner import _iso
+from autoedit.agent.sdk_errors import NO_AUTH_MSG, RATE_MSG, classify_result, classify_sdk_error
 from autoedit.errors import AgentFailed, NoAuth, RateLimited
 from autoedit.prep import Prepared
 from autoedit.transcript import format_phrases, pack_phrases
@@ -51,15 +53,29 @@ async def run_analyze(prepared: Prepared, niche: str, agent_dir: Path, exclude: 
 
     opts = plain_options(agent_dir, model(), max_turns=3,
                          output_format={"type": "json_schema", "schema": CARDS_SCHEMA})
-    structured = None
-    async for msg in query_fn(prompt=stream(), options=opts):
-        if isinstance(msg, AssistantMessage):
-            if msg.error == "rate_limit":
-                raise RateLimited("Đã hết lượt Claude của gói")
-            if msg.error in ("authentication_failed", "billing_error"):
-                raise NoAuth("Tài khoản Claude không dùng được")
-        elif isinstance(msg, ResultMessage):
-            structured = msg.structured_output
+    structured, reset_at = None, None
+    try:
+        async for msg in query_fn(prompt=stream(), options=opts):
+            if isinstance(msg, RateLimitEvent):
+                info = msg.rate_limit_info
+                reset_at = _iso(info.resets_at) or reset_at
+                if info.status == "rejected":
+                    raise RateLimited(RATE_MSG, reset_at)
+            elif isinstance(msg, AssistantMessage):
+                if msg.error == "rate_limit":
+                    raise RateLimited(RATE_MSG, reset_at)
+                if msg.error in ("authentication_failed", "billing_error"):
+                    raise NoAuth(NO_AUTH_MSG)
+            elif isinstance(msg, ResultMessage):
+                err = classify_result(msg, reset_at)
+                if err:
+                    raise err
+                structured = msg.structured_output
+    except Exception as e:
+        err = classify_sdk_error(e, reset_at)
+        if err is not None:
+            raise err from e
+        raise
     cards = (structured or {}).get("cards") if isinstance(structured, dict) else None
     if not cards or len(cards) != 3 or not all({"title", "hook", "outline", "prompt"} <= set(c) for c in cards):
         raise AgentFailed("AI không gợi ý được kịch bản, thử lại")

@@ -8,7 +8,8 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, query
 
 from autoedit.agent.options import model, plain_options
 from autoedit.claude_cli import find_cli
-from autoedit.errors import NoAuth
+from autoedit.agent.sdk_errors import RATE_MSG, classify_result, classify_sdk_error
+from autoedit.errors import NoAuth, RateLimited
 
 
 def _mac_keychain_has_claude() -> bool:
@@ -38,9 +39,17 @@ async def auth_check(agent_dir: Path, *, query_fn=query) -> str:
     source = detect_auth()
     if source is None:
         raise NoAuth("Chưa đăng nhập Claude")
-    async for msg in query_fn(prompt="Reply with exactly: OK", options=plain_options(agent_dir, model(), 1)):
-        if isinstance(msg, AssistantMessage) and msg.error in ("authentication_failed", "billing_error"):
-            raise NoAuth("Tài khoản Claude không dùng được")
-        if isinstance(msg, ResultMessage) and msg.is_error:
-            raise NoAuth(f"Không gọi được Claude: {msg.result or msg.subtype}")
+    try:
+        async for msg in query_fn(prompt="Reply with exactly: OK", options=plain_options(agent_dir, model(), 1)):
+            if isinstance(msg, AssistantMessage) and msg.error in ("authentication_failed", "billing_error"):
+                raise NoAuth("Tài khoản Claude không dùng được")
+            if isinstance(msg, AssistantMessage) and msg.error == "rate_limit":
+                raise RateLimited(RATE_MSG)
+            if isinstance(msg, ResultMessage) and msg.is_error:
+                raise classify_result(msg) or NoAuth(f"Không gọi được Claude: {msg.result or msg.subtype}")
+    except Exception as e:
+        err = classify_sdk_error(e)
+        if err is not None:
+            raise err from e
+        raise NoAuth(f"Không gọi được Claude: {e}") from e
     return source

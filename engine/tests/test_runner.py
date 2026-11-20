@@ -3,7 +3,8 @@ import pytest
 from claude_agent_sdk import AssistantMessage, RateLimitEvent, RateLimitInfo, ResultMessage, TextBlock, ToolUseBlock
 from autoedit.agent.options import edit_options, EDIT_TOOLS, SKILLS
 from autoedit.agent.runner import run_agent
-from autoedit.errors import RateLimited, NoAuth
+from claude_agent_sdk import ProcessError, ResultError, CLINotFoundError
+from autoedit.errors import RateLimited, NoAuth, SetupRequired
 from autoedit.events import Emitter
 
 
@@ -28,11 +29,12 @@ def fake(*msgs, on_start=None):
 
 async def test_emits_tool_labels_and_finishes():
     s = S()
-    def mark():
+    async def q(prompt, options):
+        yield AssistantMessage(content=[TextBlock("Mình đọc lời thoại trước"),
+                                        ToolUseBlock("1", "mcp__autoedit__get_transcript", {})], model="m")
+        yield result(5)
         s.finished, s.edl = True, object()
-    q = fake(AssistantMessage(content=[TextBlock("Mình đọc lời thoại trước"),
-                                       ToolUseBlock("1", "mcp__autoedit__get_transcript", {})], model="m"),
-             result(5), on_start=mark)
+        yield result(5)
     out = await run_agent(s, "p", None, query_fn=q)
     assert out.finished and out.turns == 5
     log = s.events.stream.getvalue()
@@ -97,3 +99,82 @@ def test_clip_cuts_on_word_boundary():
     out = _clip(text)
     assert out.endswith("…") and len(out) <= 281
     assert out[:-1].split()[-1] == "abcd"
+
+
+def finish_then(*after, err=None):
+    """Fake CLI: finish tool runs (session.finished), then the stream ends with errors."""
+    s = S()
+    async def q(prompt, options):
+        yield AssistantMessage(content=[ToolUseBlock("1", "mcp__autoedit__finish", {})], model="m")
+        s.finished, s.edl = True, object()
+        for m in after:
+            yield m
+        if err:
+            raise err
+    return s, q
+
+
+async def test_result_error_after_finish_is_success():
+    r = ResultMessage(subtype="error_max_turns", duration_ms=1, duration_api_ms=1, is_error=True, num_turns=15,
+                      session_id="s")
+    s, q = finish_then(r, err=ResultError("x", {"subtype": "error_max_turns"}))
+    out = await run_agent(s, "p", None, query_fn=q)
+    assert out.finished and out.turns == 15
+
+
+async def test_stops_consuming_stream_after_finish():
+    consumed = []
+    s = S()
+    async def q(prompt, options):
+        yield AssistantMessage(content=[ToolUseBlock("1", "mcp__autoedit__finish", {})], model="m")
+        s.finished, s.edl = True, object()
+        consumed.append("a")
+        yield result(3)
+        consumed.append("b")
+        raise ProcessError("never reached")
+    out = await run_agent(s, "p", None, query_fn=q)
+    assert out.finished and consumed == ["a"]
+
+
+async def test_crash_after_finish_is_success():
+    s, q = finish_then(err=ProcessError("boom", exit_code=1))
+    assert (await run_agent(s, "p", None, query_fn=q)).finished
+
+
+NOT_LOGGED = {"subtype": "success", "result": "Not logged in · Please run /login", "is_error": True}
+
+
+@pytest.mark.parametrize("exc,expected", [
+    (ResultError("e", {"result": "Not logged in · Please run /login"}), NoAuth),
+    (ResultError("e", {"api_error_status": 401, "result": "x"}), NoAuth),
+    (ProcessError("fail", exit_code=1, stderr="Invalid API key · Please run /login"), NoAuth),
+    (ResultError("e", {"api_error_status": 429, "result": "API Error"}), RateLimited),
+    (ResultError("e", {"result": "5-hour usage limit reached"}), RateLimited),
+    (ProcessError("x", stderr="rate limit exceeded"), RateLimited),
+    (CLINotFoundError("nope"), SetupRequired),
+])
+async def test_sdk_exceptions_are_classified(exc, expected):
+    async def q(prompt, options):
+        yield result()
+        raise exc
+    with pytest.raises(expected):
+        await run_agent(S(), "p", None, query_fn=q)
+
+
+async def test_error_result_message_without_raise_is_classified():
+    r = ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=True, num_turns=1,
+                      session_id="s", result="Not logged in · Please run /login")
+    with pytest.raises(NoAuth):
+        await run_agent(S(), "p", None, query_fn=fake(r))
+    r2 = ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=True, num_turns=1,
+                       session_id="s", result="API Error", api_error_status=429)
+    with pytest.raises(RateLimited):
+        await run_agent(S(), "p", None, query_fn=fake(r2))
+
+
+async def test_unclassified_error_before_finish_still_raises():
+    async def q(prompt, options):
+        yield result()
+        raise ProcessError("weird", exit_code=1)
+    with pytest.raises(ProcessError):
+        await run_agent(S(), "p", None, query_fn=q)

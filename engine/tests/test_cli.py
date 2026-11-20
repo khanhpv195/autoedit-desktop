@@ -3,7 +3,7 @@ import pytest
 from autoedit import cli
 from autoedit.agent.runner import AgentOutcome
 from autoedit.edl import validate_edl
-from autoedit.errors import RateLimited
+from autoedit.errors import NoAuth, RateLimited
 from autoedit.fallback import FALLBACK_SUMMARY
 from autoedit.transcript import Word
 
@@ -64,6 +64,15 @@ def test_edit_rate_limit_no_fallback(project, monkeypatch, capsys):
     assert cli.main(["edit", "--project", str(project)]) == 2
     last = events(capsys)[-1]
     assert last == {"type": "error", "code": "RATE_LIMIT", "message": "hết lượt", "retry_at": "2026-11-20T14:30:00+07:00"}
+    assert not (project / "runs" / "1").exists()
+
+
+def test_edit_no_auth_no_fallback(project, monkeypatch, capsys):
+    async def nologin(*a, **k):
+        raise NoAuth("Chưa đăng nhập")
+    monkeypatch.setattr(cli, "run_agent", nologin)
+    assert cli.main(["edit", "--project", str(project)]) == 1
+    assert events(capsys)[-1]["code"] == "NO_AUTH"
     assert not (project / "runs" / "1").exists()
 
 
