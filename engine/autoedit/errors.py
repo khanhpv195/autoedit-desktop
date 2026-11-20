@@ -32,3 +32,15 @@ class RateLimited(AutoeditError):
     def __init__(self, message: str, retry_at: str | None = None):
         super().__init__(message)
         self.retry_at = retry_at
+
+
+class SocialAuth(AutoeditError):
+    code = "SOCIAL_AUTH"
+
+
+class SocialLimit(AutoeditError):
+    code = "SOCIAL_LIMIT"
+
+
+class SocialFailed(AutoeditError):
+    code = "SOCIAL_FAILED"
