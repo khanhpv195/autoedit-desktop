@@ -109,7 +109,7 @@ pub fn engine_run(app: AppHandle, state: State<'_, AppState>, args: Vec<String>)
     let st = settings::load(&state.data_dir);
     let has_cc = has_claude_code_here();
     let mcp_json = mcp::engine_json(&state.data_dir, state.secrets.as_ref());
-    let env = sidecar::engine_env(state.secrets.as_ref(), &st.model, has_cc, &st, &mcp_json);
+    let env = sidecar::engine_env(state.secrets.as_ref(), &st.model, has_cc, &st, &mcp_json, &args);
     let log_file = state.data_dir.join("logs").join("engine.log");
     let handle = app.clone();
     sidecar::spawn_job(&cmd, &args, &env, &log_file, state.jobs.clone(), move |msg| match msg {
