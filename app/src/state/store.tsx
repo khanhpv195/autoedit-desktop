@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useReducer, useRef, type Dispatch, type ReactNode } from "react";
 import * as api from "../lib/api";
-import { runEngine, type EngineJob } from "../lib/engine";
+import { routineSync, runEngine, type EngineJob } from "../lib/engine";
 import { toEngineError, type AnyEngineError } from "../lib/errors";
-import type { EngineEvent, ProjectSummary, Settings } from "../lib/types";
+import type { EngineEvent, ProjectSummary, Settings, SocialAccount } from "../lib/types";
 import type { BuildState } from "../screens/Building";
 
 export type Route =
@@ -10,7 +10,8 @@ export type Route =
   | { name: "niche" }
   | { name: "new"; niche: string; dir?: string }
   | { name: "project"; dir: string }
-  | { name: "settings" };
+  | { name: "settings"; tab?: "gen" | "conn" | "agent" }
+  | { name: "schedule" };
 
 export type PendingEdit = { dir: string; prompt: string; feedback?: string };
 
@@ -23,6 +24,10 @@ export type State = {
   settings: Settings | null;
   projects: ProjectSummary[];
   auth: string | null;
+  /** A bundle.social key is stored (never the key itself). */
+  hasSocialKey: boolean;
+  /** Last bundle.social account read, cached for the post card and settings. */
+  social: SocialAccount | null;
   cliPath: string | null;
   pendingEdit: PendingEdit | null;
   /** Running edit jobs, keyed by project dir. Survives navigating between screens. */
@@ -38,6 +43,8 @@ export type Action =
   | { type: "settings"; settings: Settings }
   | { type: "projects"; projects: ProjectSummary[] }
   | { type: "auth"; auth: string | null }
+  | { type: "socialKey"; has: boolean }
+  | { type: "social"; social: SocialAccount | null }
   | { type: "cliPath"; cliPath: string | null }
   | { type: "pendingEdit"; pendingEdit: PendingEdit | null }
   | { type: "buildStart"; dir: string; last: LastEdit }
@@ -51,6 +58,8 @@ const initial: State = {
   settings: null,
   projects: [],
   auth: null,
+  hasSocialKey: false,
+  social: null,
   cliPath: null,
   pendingEdit: null,
   builds: {},
@@ -66,6 +75,8 @@ function reducer(s: State, a: Action): State {
     case "settings": return { ...s, settings: a.settings };
     case "projects": return { ...s, projects: a.projects };
     case "auth": return { ...s, auth: a.auth };
+    case "socialKey": return { ...s, hasSocialKey: a.has, social: a.has ? s.social : null };
+    case "social": return { ...s, social: a.social };
     case "cliPath": return { ...s, cliPath: a.cliPath };
     case "pendingEdit": return { ...s, pendingEdit: a.pendingEdit };
     case "buildStart": {
@@ -151,6 +162,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (!alive) return;
           dispatch({ type: "projects", projects });
           dispatch({ type: "route", route: { name: "niche" } });
+          let hasKey = false;
+          try { hasKey = !!(await api.socialKeyStatus())?.hasKey; } catch { /* no key info: treat as none */ }
+          if (!alive) return;
+          dispatch({ type: "socialKey", has: hasKey });
+          const team = settings.socialTeamId;
+          if (hasKey && team && (settings.routines ?? []).some((r) => r.enabled)) {
+            // Once per launch: create the next 7 days of routine posts. Failure is only a soft toast.
+            routineSync(team)
+              .then((r) => { if (alive && r.created.length) notify(`Routine đã tạo ${r.created.length} bài`); })
+              .catch(() => { if (alive) notify("Chưa chạy được routine, thử lại ở tab Lịch đăng"); });
+          }
         }
       } catch {
         // keep defaults; the screens surface their own errors
@@ -159,7 +181,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     if (!state.toast) return;

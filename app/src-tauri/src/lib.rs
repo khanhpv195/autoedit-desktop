@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod login;
+mod mcp;
 mod paths;
 mod projects;
 mod secrets;
@@ -40,6 +41,12 @@ pub fn run() {
             commands::save_settings,
             commands::set_api_key,
             commands::clear_api_key,
+            commands::social_key_status,
+            commands::set_social_key,
+            commands::clear_social_key,
+            commands::mcp_list,
+            commands::mcp_save,
+            commands::mcp_delete,
             commands::engine_run,
             commands::engine_cancel,
             commands::kill_all_jobs,

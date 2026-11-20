@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import AgentFeed from "../components/AgentFeed";
+import PostCard from "../components/PostCard";
 import VideoPlayer from "../components/VideoPlayer";
 import * as api from "../lib/api";
 import type { FeedItem, ProjectDetail } from "../lib/types";
 
-export default function Result({ detail, onRedo }: { detail: ProjectDetail; onRedo: (feedback: string) => void }) {
+export default function Result({ detail, onRedo, onPosted }: { detail: ProjectDetail; onRedo: (feedback: string) => void; onPosted?: () => void }) {
   const runs = detail.runs;
   const [sel, setSel] = useState(runs[runs.length - 1].n);
   const run = runs.find((r) => r.n === sel) ?? runs[runs.length - 1];
@@ -45,6 +46,7 @@ export default function Result({ detail, onRedo }: { detail: ProjectDetail; onRe
           <div className="actions">
             <button className="btn dark" onClick={() => api.revealInFolder(run.final)}>Mở thư mục</button>
           </div>
+          <PostCard key={run.n} detail={detail} run={run} onPosted={onPosted} />
           <div className="card">
             <div className="label">Muốn sửa gì?</div>
             <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)}

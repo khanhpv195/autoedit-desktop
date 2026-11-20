@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
-  AuthSource, FeedItem, LoginDone, LoginOutput, ProjectDetail, ProjectPatch, ProjectSummary, Settings,
+  AuthSource, FeedItem, McpServer, LoginDone, LoginOutput, ProjectDetail, ProjectPatch, ProjectSummary, Settings,
 } from "./types";
 
 export const getSettings = () => invoke<Settings>("get_settings");
@@ -16,6 +16,12 @@ export const killAllJobs = () => invoke<null>("kill_all_jobs");
 export const logout = () => invoke<null>("logout");
 export const setApiKey = (key: string) => invoke<null>("set_api_key", { key });
 export const clearApiKey = () => invoke<null>("clear_api_key");
+export const socialKeyStatus = () => invoke<{ hasKey: boolean }>("social_key_status");
+export const setSocialKey = (key: string) => invoke<null>("set_social_key", { key });
+export const clearSocialKey = () => invoke<null>("clear_social_key");
+export const mcpList = () => invoke<McpServer[]>("mcp_list");
+export const mcpSave = (server: McpServer, secrets: Record<string, string>) => invoke<null>("mcp_save", { server, secrets });
+export const mcpDelete = (name: string) => invoke<null>("mcp_delete", { name });
 export const createProject = (niche: string, clip: string, logo: string | null, music: string | null) =>
   invoke<ProjectSummary>("create_project", { niche, clip, logo, music });
 export const listProjects = () => invoke<ProjectSummary[]>("list_projects");

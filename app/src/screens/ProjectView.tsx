@@ -60,7 +60,7 @@ export default function ProjectView({ dir }: { dir: string }) {
         </div>
       )}
       {detail && hasRuns && (
-        <Result detail={detail} onRedo={(fb) => startBuild(dir, detail.prompt, fb)} />
+        <Result detail={detail} onRedo={(fb) => startBuild(dir, detail.prompt, fb)} onPosted={() => void load()} />
       )}
       {detail && !hasRuns && !error && !reloading && (
         <div className="lock">

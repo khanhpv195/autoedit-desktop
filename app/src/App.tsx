@@ -4,6 +4,7 @@ import Onboarding from "./screens/Onboarding";
 import NichePicker from "./screens/NichePicker";
 import NewVideo from "./screens/NewVideo";
 import ProjectView from "./screens/ProjectView";
+import Schedule from "./screens/Schedule";
 import Settings from "./screens/Settings";
 import UpdateBanner from "./components/UpdateBanner";
 
@@ -15,7 +16,8 @@ function Screen() {
     case "niche": return <NichePicker />;
     case "new": return <NewVideo key={r.dir ?? r.niche} niche={r.niche} dir={r.dir} />;
     case "project": return <ProjectView key={r.dir} dir={r.dir} />;
-    case "settings": return <Settings />;
+    case "settings": return <Settings key={r.tab ?? "gen"} />;
+    case "schedule": return <Schedule />;
   }
 }
 

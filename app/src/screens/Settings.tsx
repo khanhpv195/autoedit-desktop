@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import ClaudeLogin from "../components/ClaudeLogin";
+import McpSettings from "../components/McpSettings";
+import SocialSettings from "../components/SocialSettings";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
 import { describeError, toEngineError } from "../lib/errors";
@@ -20,7 +22,7 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export default function Settings() {
   const { state, dispatch, notify, refreshProjects } = useStore();
-  const [tab, setTab] = useState<Tab>("gen");
+  const [tab, setTab] = useState<Tab>(state.route.name === "settings" && state.route.tab ? state.route.tab : "gen");
   const [source, setSource] = useState<AuthSource | undefined>(undefined);
   const [changing, setChanging] = useState(false);
   const [key, setKey] = useState("");
@@ -105,8 +107,8 @@ export default function Settings() {
 
         {tab === "conn" && (
           <div className="tabp stack">
-            <div className="card dim"><h3>Đăng bài bundle.social</h3><div className="hint">Đăng bài bundle.social — có ở bản sau</div></div>
-            <div className="card dim"><h3>MCP server</h3><div className="hint">MCP server — có ở bản sau</div></div>
+            <SocialSettings />
+            <McpSettings />
           </div>
         )}
 
