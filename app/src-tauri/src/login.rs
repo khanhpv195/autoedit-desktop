@@ -176,7 +176,11 @@ impl LoginSession {
                 None if timed_out.load(Ordering::SeqCst) => Err("Hết thời gian chờ đăng nhập".to_string()),
                 None => Err("Không lấy được mã đăng nhập".to_string()),
             };
-            let _ = child.wait();
+            // Never block on a child that ignores the kill: the login slot must be released.
+            let until = std::time::Instant::now() + Duration::from_secs(3);
+            while std::time::Instant::now() < until && !matches!(child.try_wait(), Ok(Some(_))) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
             on_done(result);
         });
 
@@ -240,6 +244,7 @@ mod tests {
     fn login_session_with_fake_cli_stores_token_and_never_leaks_it() {
         let store = Arc::new(MemoryStore::default());
         let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let mut lines_seen: Vec<String> = Vec::new();
         let (dtx, drx) = std::sync::mpsc::channel();
         let cli = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-claude.sh"));
         let s = LoginSession::start(
@@ -253,11 +258,17 @@ mod tests {
             },
         )
         .unwrap();
+        // Input typed before the shell reaches `read` can be flushed away: wait for the URL line first.
+        loop {
+            let l = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            if l.contains("oauth/authorize") { lines_seen.push(l); break; }
+            lines_seen.push(l);
+        }
         std::thread::sleep(Duration::from_millis(500));
         s.write_input("CODE123").unwrap();
         assert!(drx.recv_timeout(Duration::from_secs(10)).unwrap().is_ok());
         assert!(store.get(OAUTH_ACCOUNT).unwrap().starts_with("sk-ant-oat01-AbCd"));
-        let lines: Vec<String> = rx.try_iter().collect();
+        let lines: Vec<String> = lines_seen.into_iter().chain(rx.try_iter()).collect();
         assert!(lines.iter().any(|l| l.contains("https://claude.ai/oauth/authorize")));
         assert!(lines.iter().all(|l| !l.contains("sk-ant-oat01")));
     }
@@ -278,10 +289,12 @@ mod tests {
     fn failed_keychain_write_still_kills_the_child() {
         let (dtx, drx) = std::sync::mpsc::channel();
         let cli = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-claude.sh"));
-        let s = LoginSession::start(&cli, Arc::new(FailingStore), |_| {}, move |r| {
+        let (ltx, lrx) = std::sync::mpsc::channel::<String>();
+        let s = LoginSession::start(&cli, Arc::new(FailingStore), move |l| { let _ = ltx.send(l.line); }, move |r| {
             dtx.send((std::time::Instant::now(), r)).unwrap();
         })
         .unwrap();
+        while !lrx.recv_timeout(Duration::from_secs(10)).unwrap().contains("oauth/authorize") {}
         std::thread::sleep(Duration::from_millis(500));
         let t0 = std::time::Instant::now();
         s.write_input("CODE").unwrap();
