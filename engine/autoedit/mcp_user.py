@@ -1,10 +1,14 @@
 """Customer MCP servers: AUTOEDIT_MCP (set by the app, never persisted here) -> SDK config; mcp-check."""
 import asyncio
+import contextlib
 import json
 import os
 import re
 import sys
+import tempfile
+from pathlib import Path
 
+from autoedit import secrets_env
 from autoedit.errors import AgentFailed
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
@@ -20,8 +24,7 @@ def _str_map(v) -> dict[str, str]:
 
 
 def load(env=None) -> dict[str, dict]:
-    env = os.environ if env is None else env
-    raw = env.get("AUTOEDIT_MCP")
+    raw = secrets_env.get("AUTOEDIT_MCP") if env is None else env.get("AUTOEDIT_MCP")
     if not raw:
         return {}
     try:
@@ -49,6 +52,26 @@ def load(env=None) -> dict[str, dict]:
         if len(out) >= MAX_SERVERS:
             break
     return out
+
+
+@contextlib.contextmanager
+def config_file(servers: dict[str, dict]):
+    """Write customer servers as a Claude CLI `--mcp-config` file (0600, deleted on exit); yields its path or None.
+
+    The SDK would put them in `--mcp-config <json>` on the command line, readable by any local process
+    through `ps`. A file path in argv leaks nothing. The CLI accepts several --mcp-config flags and merges
+    them (checked against the pinned CLI), so the in-process `autoedit` server still goes through the SDK."""
+    if not servers:
+        yield None
+        return
+    fd, name = tempfile.mkstemp(prefix="autoedit-mcp-", suffix=".json")    # mkstemp creates it 0600
+    path = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"mcpServers": servers}, f)
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def _leaf(e: BaseException) -> BaseException:

@@ -1,5 +1,6 @@
 import json
 import pytest
+import autoedit
 from autoedit import cli
 from autoedit.agent.runner import AgentOutcome
 from autoedit.edl import validate_edl
@@ -27,7 +28,7 @@ def events(capsys):
 
 def test_version(capsys):
     assert cli.main(["--version"]) == 0
-    assert "0.1.0" in capsys.readouterr().out
+    assert capsys.readouterr().out.strip() == autoedit.__version__
 
 
 def test_edit_happy_path(project, monkeypatch, capsys):
@@ -46,6 +47,18 @@ def test_edit_happy_path(project, monkeypatch, capsys):
     assert "set_edl" in (project / "runs" / "1" / "agent.jsonl").read_text()
     pj = json.loads((project / "project.json").read_text())
     assert pj["runs"][0]["n"] == 1 and pj["prompt"] == "gọn gàng"
+
+
+def test_edit_save_keeps_posts_published_during_the_run(project, monkeypatch, capsys):
+    from autoedit.project import update_project
+
+    async def fake_agent(session, prompt, options, **kw):
+        update_project(project, lambda d: d.setdefault("posts", []).append({"id": "p9", "run": 0}))   # a publish lands
+        return AgentOutcome(False, 1, "x")
+    monkeypatch.setattr(cli, "run_agent", fake_agent)
+    assert cli.main(["edit", "--project", str(project)]) == 0
+    pj = json.loads((project / "project.json").read_text())
+    assert pj["posts"] == [{"id": "p9", "run": 0}] and pj["runs"][0]["n"] == 1
 
 
 def test_edit_falls_back_when_agent_fails(project, monkeypatch, capsys):

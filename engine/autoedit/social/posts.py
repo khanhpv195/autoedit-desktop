@@ -69,7 +69,7 @@ def near(a: datetime, b: datetime, minutes: int = 1) -> bool:
 
 def next_queue_slot(now: datetime, routines: list[dict], taken: list[str]) -> datetime:
     """Earliest routine slot (within 30 days) not within +-1 min of a taken post date; with no routine,
-    19:30 tomorrow (first free day) in now's timezone."""
+    19:30 tomorrow (first free day) in local time."""
     from autoedit.social.routine import slots
     busy = []
     for t in taken:
@@ -80,9 +80,9 @@ def next_queue_slot(now: datetime, routines: list[dict], taken: list[str]) -> da
     for dt, _ in slots(now, routines, days=30):
         if not any(near(dt, b) for b in busy):
             return dt
-    day = now.date() + timedelta(days=1)
+    day = now.astimezone().date() + timedelta(days=1)
     while True:
-        dt = datetime.combine(day, time(19, 30), tzinfo=now.tzinfo)
+        dt = datetime.combine(day, time(19, 30)).astimezone()
         if not any(near(dt, b) for b in busy):
             return dt
         day += timedelta(days=1)

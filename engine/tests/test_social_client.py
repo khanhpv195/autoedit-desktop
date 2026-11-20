@@ -33,10 +33,22 @@ def test_env_defaults(monkeypatch):
         assert f.requests[0].headers["x-api-key"] == "envkey"
 
 
-@pytest.mark.parametrize("status", [401, 403])
-def test_auth_error(status):
-    with FakeBundle({("GET", "/api/v1/organization/"): (status, {"message": "nope"})}) as f:
+def test_auth_error_401():
+    with FakeBundle({("GET", "/api/v1/organization/"): (401, {"message": "nope"})}) as f:
         with pytest.raises(SocialAuth, match="không đúng"):
+            make(f).organization()
+
+
+def test_403_is_failed_not_auth_with_message():
+    with FakeBundle({("GET", "/api/v1/organization/"): (403, {"message": "Plan does not include API"})}) as f:
+        with pytest.raises(SocialFailed, match="Plan does not include API") as e:
+            make(f).organization()
+    assert not isinstance(e.value, SocialAuth)
+
+
+def test_403_without_message():
+    with FakeBundle({("GET", "/api/v1/organization/"): (403, {})}) as f:
+        with pytest.raises(SocialFailed, match="từ chối yêu cầu"):
             make(f).organization()
 
 

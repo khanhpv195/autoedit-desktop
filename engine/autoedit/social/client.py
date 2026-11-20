@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from autoedit import secrets_env
 from autoedit.errors import SocialAuth, SocialFailed, SocialLimit
 
 DEFAULT_BASE = "https://api.bundle.social"
@@ -83,7 +84,7 @@ def _message(body: bytes) -> str | None:
 
 class Client:
     def __init__(self, key: str | None = None, base: str | None = None):
-        self.key = key if key is not None else os.environ.get("BUNDLE_SOCIAL_KEY")
+        self.key = key if key is not None else secrets_env.get("BUNDLE_SOCIAL_KEY")
         if not self.key:
             raise SocialAuth("Chưa nhập key bundle.social")
         self.base = (base or os.environ.get("BUNDLE_SOCIAL_BASE") or DEFAULT_BASE).rstrip("/")
@@ -95,8 +96,10 @@ class Client:
                 raw = resp.read()
         except urllib.error.HTTPError as e:
             body = e.read() if e.fp else b""
-            if e.code in (401, 403):
+            if e.code == 401:      # 403 is a plan/permission refusal, not a bad key: never make the app wipe the key
                 raise SocialAuth("Key bundle.social không đúng hoặc đã bị thu hồi") from None
+            if e.code == 403:
+                raise SocialFailed(_message(body) or "bundle.social từ chối yêu cầu (gói hoặc quyền)") from None
             if e.code == 429:
                 raise SocialLimit("bundle.social đang giới hạn, thử lại sau") from None
             raise SocialFailed(_message(body) or f"bundle.social trả lỗi {e.code}") from None
@@ -204,6 +207,9 @@ class Client:
         if not res.get("id"):
             raise SocialFailed("bundle.social không trả id video đã tải")
         return res["id"]
+
+    def tiktok_post_settings(self, team_id: str) -> dict:
+        return self._request("GET", "/api/v1/misc/tiktok/post-settings", query={"teamId": team_id})
 
     # -- posts -------------------------------------------------------------
     def create_post(self, body: dict) -> dict:

@@ -45,12 +45,66 @@ def test_load_caps_at_ten():
 
 def test_edit_options_with_user_mcp(tmp_path, monkeypatch):
     monkeypatch.setattr("autoedit.agent.options.find_cli", lambda: None)
-    user = {"shop": {"type": "http", "url": "http://x", "headers": {}}}
-    o = edit_options(tmp_path, {"type": "sdk", "name": "autoedit"}, "m", None, user)
-    assert set(o.mcp_servers) == {"autoedit", "shop"} and o.mcp_servers["shop"] == user["shop"]
+    user = {"shop": {"type": "http", "url": "http://x", "headers": {"Authorization": "Bearer SECRET"}}}
+    o = edit_options(tmp_path, {"type": "sdk", "name": "autoedit"}, "m", None, user, tmp_path / "u.json")
+    # customer configs never enter mcp_servers (the SDK would serialise them onto the command line)
+    assert set(o.mcp_servers) == {"autoedit"} and "SECRET" not in repr(o.mcp_servers) + repr(o.extra_args)
+    assert o.extra_args == {"mcp-config": str(tmp_path / "u.json")}
     assert o.allowed_tools == EDIT_TOOLS + ["mcp__shop"] and o.strict_mcp_config is True
     o2 = edit_options(tmp_path, {"type": "sdk", "name": "autoedit"}, "m", None, {"autoedit": {"type": "http", "url": "x"}})
     assert o2.mcp_servers == {"autoedit": {"type": "sdk", "name": "autoedit"}} and o2.allowed_tools == EDIT_TOOLS
+    assert o2.extra_args == {}
+
+
+def test_config_file_is_private_and_removed(tmp_path):
+    import json, os, stat
+    servers = {"shop": {"type": "stdio", "command": "npx", "args": [], "env": {"TOKEN": "SECRET"}}}
+    with mcp_user.config_file(servers) as path:
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+        assert json.loads(path.read_text()) == {"mcpServers": servers}
+    assert not path.exists()
+    with pytest.raises(RuntimeError):
+        with mcp_user.config_file(servers) as path:
+            raise RuntimeError
+    assert not path.exists()
+    with mcp_user.config_file({}) as none:
+        assert none is None
+
+
+def test_sdk_command_line_has_no_customer_secret(tmp_path, monkeypatch):
+    from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
+    monkeypatch.setattr("autoedit.agent.options.find_cli", lambda: tmp_path / "claude")
+    user = {"shop": {"type": "stdio", "command": "npx", "args": [], "env": {"TOKEN": "SECRET"}}}
+    with mcp_user.config_file(user) as path:
+        o = edit_options(tmp_path, {"type": "sdk", "name": "autoedit", "instance": object()}, "m", None, user, path)
+        cmd = SubprocessCLITransport(prompt="x", options=o)._build_command()
+    assert "SECRET" not in " ".join(cmd)
+    assert cmd.count("--mcp-config") == 2 and str(path) in cmd
+
+
+def test_scrub_removes_secrets_from_environ(monkeypatch):
+    import os
+    from autoedit import secrets_env
+    monkeypatch.setenv("AUTOEDIT_MCP", json.dumps({"shop": {"type": "http", "url": "http://x"}}))
+    monkeypatch.setenv("BUNDLE_SOCIAL_KEY", "k1")
+    secrets_env.scrub()
+    assert "AUTOEDIT_MCP" not in os.environ and "BUNDLE_SOCIAL_KEY" not in os.environ
+    assert list(mcp_user.load()) == ["shop"] and secrets_env.get("BUNDLE_SOCIAL_KEY") == "k1"
+
+
+def test_cli_main_scrubs_before_running(monkeypatch, capsys):
+    import os
+    from autoedit import cli
+    monkeypatch.setenv("BUNDLE_SOCIAL_KEY", "k1")
+    monkeypatch.setenv("AUTOEDIT_MCP", "{}")
+    seen = {}
+
+    async def spy(args, events):
+        seen.update(os.environ)
+        return 0
+    monkeypatch.setattr(cli, "_setup", spy)
+    assert cli.main(["setup"]) == 0
+    assert "BUNDLE_SOCIAL_KEY" not in seen and "AUTOEDIT_MCP" not in seen
 
 
 def test_prompt_mentions_user_tools(tmp_path):

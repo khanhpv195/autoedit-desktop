@@ -22,3 +22,22 @@ def clip(tmp_path) -> Path:
 @pytest.fixture
 def landscape_clip(tmp_path) -> Path:
     return _make(tmp_path / "land.mp4", 1920, 1080, 4.0)
+
+
+@pytest.fixture(autouse=True)
+def _local_tz(monkeypatch):
+    """Slots are local wall-clock time: pin the zone the tests are written in (UTC+7, no DST)."""
+    import time
+    monkeypatch.setenv("TZ", "Asia/Ho_Chi_Minh")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+@pytest.fixture(autouse=True)
+def _clean_secrets():
+    from autoedit import secrets_env
+    secrets_env.reset()
+    yield
+    secrets_env.reset()

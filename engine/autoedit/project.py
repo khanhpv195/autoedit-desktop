@@ -1,9 +1,70 @@
+import contextlib
 import json
+import sys
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from autoedit.errors import BadInput
 from autoedit.fsutil import atomic_write_text
+
+
+class LockBusy(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def file_lock(path: Path, blocking: bool = True):
+    """Exclusive advisory lock on `path` (created if missing). Raises LockBusy when not blocking and held.
+    fcntl.flock on POSIX, msvcrt.locking on Windows. Released when the process dies."""
+    path = Path(path)
+    with open(path, "a+b") as f:
+        if sys.platform == "win32":
+            import msvcrt
+            f.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if not blocking:
+                        raise LockBusy(str(path)) from None
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+            except OSError:
+                raise LockBusy(str(path)) from None
+            try:
+                yield
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+def read_project_json(dir: Path) -> dict:
+    f = Path(dir) / "project.json"
+    if not f.exists():
+        raise BadInput(f"Không thấy {f}")
+    return json.loads(f.read_text(encoding="utf-8"))
+
+
+def update_project(dir: Path, mutate) -> dict:
+    """Lock project.json, re-read it from disk, apply `mutate(data: dict)`, write it atomically. Returns the data.
+    Long operations (an edit, an upload) must not save a copy they loaded earlier: do the change here, so
+    fields written meanwhile by another command (runs, posts) are kept."""
+    dir = Path(dir)
+    with file_lock(dir / "project.json.lock"):
+        data = read_project_json(dir)
+        mutate(data)
+        atomic_write_text(dir / "project.json", json.dumps(data, ensure_ascii=False, indent=2))
+    return data
+
 
 NICHES = ("thoi-trang", "my-pham", "do-an", "phu-kien", "chung")
 _FIELDS = ("niche", "clip", "logo", "music", "prompt", "script_card", "runs", "posts")

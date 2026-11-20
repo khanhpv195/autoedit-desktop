@@ -83,7 +83,7 @@ def test_publish_now_body_and_project_record(monkeypatch, proj):
     assert body["socialAccountTypes"] == ["TIKTOK", "YOUTUBE", "INSTAGRAM", "FACEBOOK"]
     assert body["data"] == {
         "TIKTOK": {"type": "VIDEO", "text": caption, "uploadIds": ["up1"], "privacy": "PUBLIC_TO_EVERYONE"},
-        "YOUTUBE": {"type": "SHORT", "text": caption, "description": caption, "uploadIds": ["up1"]},
+        "YOUTUBE": {"type": "SHORT", "text": caption, "description": caption, "uploadIds": ["up1"], "privacy": "PUBLIC"},
         "INSTAGRAM": {"type": "REEL", "text": caption, "uploadIds": ["up1"]},
         "FACEBOOK": {"type": "REEL", "text": caption, "uploadIds": ["up1"]}}
     events_out = out()

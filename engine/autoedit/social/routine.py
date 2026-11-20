@@ -13,15 +13,17 @@ def _hhmm(value: str) -> time | None:
 
 
 def slots(now: datetime, routines: list[dict], days: int = 7) -> list[tuple[datetime, dict]]:
-    """Every slot of an enabled routine in [now, now+days), by time. Built in now's timezone."""
+    """Every slot of an enabled routine in [now, now+days), by time. Each slot is local wall-clock time on its
+    own date (`.astimezone()` picks that date's UTC offset), so a DST change inside the window keeps 19:30 at 19:30."""
     end = now + timedelta(days=days)
+    today = now.astimezone().date()
     out = []
     for r in routines:
         t = _hhmm(r.get("time")) if r.get("enabled") else None
         if t is None:
             continue
         for d in range(days + 1):
-            dt = datetime.combine(now.date() + timedelta(days=d), t, tzinfo=now.tzinfo)
+            dt = datetime.combine(today + timedelta(days=d), t).astimezone()
             if now <= dt < end:
                 out.append((dt, r))
     out.sort(key=lambda s: s[0])

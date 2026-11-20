@@ -19,12 +19,12 @@ from autoedit.agent.tools import build_server
 from autoedit.claude_cli import find_cli, install_cli
 from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited
 from autoedit.events import Emitter
-from autoedit import mcp_user
+from autoedit import mcp_user, secrets_env
 from autoedit.model_dl import install_model
 from autoedit.fsutil import atomic_write_text
 from autoedit.fallback import FALLBACK_SUMMARY, silence_cut_edl
 from autoedit.prep import prepare
-from autoedit.project import Project
+from autoedit.project import Project, update_project
 from autoedit.render.pipeline import render
 from autoedit.resources import agent_dir
 
@@ -93,9 +93,11 @@ async def _edit(args, events: Emitter) -> int:
                     user_mcp = mcp_user.load()
                     message = build_edit_message(project, prepared, user_prompt, args.feedback, previous, agent_dir(),
                                                  list(user_mcp))
-                    outcome = await run_agent(session, message,
-                                              edit_options(agent_dir(), build_server(session), model(), cli_stderr, user_mcp),
-                                              on_message=on_message)
+                    with mcp_user.config_file(user_mcp) as mcp_file:    # 0600 temp file, removed right after the run
+                        outcome = await run_agent(
+                            session, message,
+                            edit_options(agent_dir(), build_server(session), model(), cli_stderr, user_mcp, mcp_file),
+                            on_message=on_message)
                     usage["turns"] = outcome.turns
                     ok = outcome.finished
                 except (RateLimited, NoAuth):
@@ -111,11 +113,14 @@ async def _edit(args, events: Emitter) -> int:
                 ev.step("Đang xuất video…", 0.9)
                 res, edl, summary = _render_with_retry(prepared, project, edl, summary, run_dir, ev, usage)
             atomic_write_text(run_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
-            project.prompt = user_prompt
-            project.runs.append({"n": int(run_dir.name), "final": f"runs/{run_dir.name}/final.mp4",
-                                 "prompt": user_prompt, "feedback": args.feedback, "summary": summary,
-                                 "needs_review": res.needs_review, "fallback": usage["fallback"]})
-            project.save()
+            run_record = {"n": int(run_dir.name), "final": f"runs/{run_dir.name}/final.mp4",
+                          "prompt": user_prompt, "feedback": args.feedback, "summary": summary,
+                          "needs_review": res.needs_review, "fallback": usage["fallback"]}
+
+            def record(data: dict) -> None:     # re-read under lock: a publish may have added posts meanwhile
+                data["prompt"] = user_prompt
+                data.setdefault("runs", []).append(run_record)
+            update_project(project.dir, record)
             saved = True
             try:
                 ev.done(str(res.path), summary, usage, res.needs_review)
@@ -204,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     x = ss.add_parser("routine-sync"); x.add_argument("--team", required=True)
     x = ss.add_parser("retry"); x.add_argument("--post", required=True)
     args = p.parse_args(argv)
+    secrets_env.scrub()     # before any child process (Claude CLI, MCP servers, ffmpeg) can inherit them
     if args.version:
         print(__version__)
         return 0

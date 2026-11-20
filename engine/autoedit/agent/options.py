@@ -16,13 +16,18 @@ def model() -> str:
     return os.environ.get("AUTOEDIT_CLAUDE_MODEL", DEFAULT_MODEL)
 
 
-def edit_options(agent_dir: Path, server, model: str, stderr=None, user_mcp: dict | None = None) -> ClaudeAgentOptions:
+def edit_options(agent_dir: Path, server, model: str, stderr=None, user_mcp: dict | None = None,
+                 user_mcp_file: Path | None = None) -> ClaudeAgentOptions:
+    """`user_mcp` only supplies the server names to allow. Their configs (secrets) travel in `user_mcp_file`
+    (see mcp_user.config_file) as a second --mcp-config, never inside `mcp_servers`: the SDK would put those
+    on the CLI command line."""
     user_mcp = {n: c for n, c in (user_mcp or {}).items() if n != "autoedit"}
     return ClaudeAgentOptions(
         cwd=str(agent_dir),
         tools=[],                        # no built-in tools at all: only our MCP tools (skills ride in the first message)
         setting_sources=["project"],     # agent/CLAUDE.md only, never ~/.claude
-        mcp_servers={"autoedit": server, **user_mcp},
+        mcp_servers={"autoedit": server},
+        extra_args={"mcp-config": str(user_mcp_file)} if user_mcp and user_mcp_file else {},
         allowed_tools=EDIT_TOOLS + [f"mcp__{n}" for n in user_mcp],
         max_turns=15,
         model=model,

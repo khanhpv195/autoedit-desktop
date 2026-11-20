@@ -7,12 +7,13 @@ from pathlib import Path
 
 from autoedit.errors import BadInput
 from autoedit.events import Emitter
-from autoedit.project import Project
+from autoedit.project import LockBusy, Project, file_lock, read_project_json, update_project
 from autoedit.social import posts
 from autoedit.social.client import Client
 
 V2_CHANNELS = ("TIKTOK", "INSTAGRAM", "YOUTUBE", "FACEBOOK")
 MAX_CAPTION = 2200
+PUBLIC_TIKTOK = "PUBLIC_TO_EVERYONE"
 
 
 def _client(client: Client | None) -> Client:
@@ -63,6 +64,13 @@ def _parse_when(when: str, now: datetime) -> datetime:
     return dt
 
 
+def _parse_when_or_none(when: str, now: datetime) -> datetime | None:
+    try:
+        return _parse_when(when, now)
+    except BadInput:
+        return None
+
+
 def _routines() -> list[dict]:
     try:
         data = json.loads(os.environ.get("AUTOEDIT_ROUTINES") or "[]")
@@ -72,16 +80,30 @@ def _routines() -> list[dict]:
     return data if isinstance(data, list) else []
 
 
+def tiktok_privacy(c: Client, team: str) -> str:
+    """Ask TikTok (through bundle.social) what the account allows: PUBLIC_TO_EVERYONE if allowed, else the
+    first allowed level. A private account rejects PUBLIC at publish time (TT:40002). Any failure -> PUBLIC."""
+    try:
+        options = c.tiktok_post_settings(team).get("privacyLevelOptions")
+    except Exception:
+        return PUBLIC_TIKTOK
+    options = [o for o in options or [] if isinstance(o, str) and o]
+    if not options or PUBLIC_TIKTOK in options:
+        return PUBLIC_TIKTOK
+    return options[0]
+
+
 def build_body(team: str, project_dir: Path, run: int, channels: list[str], caption: str, upload_id: str,
-               post_date: datetime) -> dict:
+               post_date: datetime, tiktok_privacy: str = "PUBLIC_TO_EVERYONE") -> dict:
     """POST /api/v1/post/ body, per the swagger: TIKTOK type VIDEO + privacy, INSTAGRAM/FACEBOOK type REEL,
     YOUTUBE type SHORT where `text` is the title and `description` the caption."""
     base = {"text": caption, "uploadIds": [upload_id]}
     first_line = caption.strip().splitlines()[0] if caption.strip() else ""
     data = {
-        "TIKTOK": {"type": "VIDEO", **base, "privacy": "PUBLIC_TO_EVERYONE"},
+        "TIKTOK": {"type": "VIDEO", **base, "privacy": tiktok_privacy},
         "INSTAGRAM": {"type": "REEL", **base},
-        "YOUTUBE": {"type": "SHORT", "text": first_line[:100], "description": caption, "uploadIds": [upload_id]},
+        "YOUTUBE": {"type": "SHORT", "text": first_line[:100], "description": caption, "uploadIds": [upload_id],
+                    "privacy": "PUBLIC"},
         "FACEBOOK": {"type": "REEL", **base},
     }
     return {"teamId": team, "title": caption.strip()[:80] or "AutoEdit", "referenceKey": posts.reference_key(project_dir, run),
@@ -89,10 +111,22 @@ def build_body(team: str, project_dir: Path, run: int, channels: list[str], capt
             "socialAccountTypes": list(channels), "data": {c: data[c] for c in channels}}
 
 
+def _post_date(when: str, now: datetime, c: Client, team: str) -> datetime:
+    if when == "now":
+        return now + timedelta(minutes=1)
+    if when == "queue":
+        taken = [p.get("postDate") for p in c.list_posts(team, now.isoformat(timespec="seconds"),
+                                                           (now + timedelta(days=30)).isoformat(timespec="seconds"))]
+        return posts.next_queue_slot(now, _routines(), [t for t in taken if t])
+    return _parse_when(when, now)
+
+
 def create_post(project_dir: Path, run: int, team: str, channels: list[str], caption: str, when: str,
-                now: datetime | None = None, events: Emitter | None = None, client: Client | None = None) -> dict:
-    """Validate, upload final.mp4, create the post, record it in project.json. Returns the normalized Post."""
-    now = _now(now)
+                now: datetime | None = None, events: Emitter | None = None, client: Client | None = None,
+                only_if_unposted: bool = False) -> dict:
+    """Validate, upload final.mp4, create the post, record it in project.json. Returns the normalized Post.
+    `now` is for tests; normally each check reads the clock itself. The post date is computed (and a picked
+    time re-validated) after the upload, which can take minutes."""
     project = Project.load(project_dir)
     if not any(r.get("n") == run for r in project.runs):
         raise BadInput(f"Không thấy bản dựng {run}")
@@ -107,17 +141,9 @@ def create_post(project_dir: Path, run: int, team: str, channels: list[str], cap
         raise BadInput("Kênh chưa hỗ trợ đăng video: " + ", ".join(bad))
     if len(caption) > MAX_CAPTION:
         raise BadInput(f"Caption dài quá {MAX_CAPTION} ký tự")
-    if when == "now":
-        post_date = now + timedelta(minutes=1)
-    elif when == "queue":
-        post_date = None
-    else:
-        post_date = _parse_when(when, now)
+    if when not in ("now", "queue"):
+        _parse_when(when, _now(now))     # fail before spending an upload on a bad or past time
     c = _client(client)
-    if post_date is None:
-        taken = [p.get("postDate") for p in c.list_posts(team, now.isoformat(timespec="seconds"),
-                                                           (now + timedelta(days=30)).isoformat(timespec="seconds"))]
-        post_date = posts.next_queue_slot(now, _routines(), [t for t in taken if t])
     last = [-1]
 
     def progress(frac: float) -> None:
@@ -129,13 +155,18 @@ def create_post(project_dir: Path, run: int, team: str, channels: list[str], cap
     if events is not None:
         events.step("Đang tải video lên… 0%", 0.1)
     upload_id = c.upload(team, final, progress)
+    post_date = _post_date(when, _now(now), c, team)
     if events is not None:
         events.step("Đang lên lịch đăng…", 0.95)
-    raw = c.create_post(build_body(team, project.dir, run, channels, caption, upload_id, post_date))
+    if only_if_unposted and read_project_json(project.dir).get("posts"):
+        raise BadInput("Project này đã có bài đăng")
+    privacy = tiktok_privacy(c, team) if "TIKTOK" in channels else PUBLIC_TIKTOK
+    raw = c.create_post(build_body(team, project.dir, run, channels, caption, upload_id, post_date, privacy))
     post = posts.normalize(raw)
-    project.posts.append({"id": post["id"], "run": run, "postDate": post["postDate"] or post_date.isoformat(timespec="seconds"),
-                          "channels": post["channels"] or channels, "status": post["status"]})
-    project.save()
+    record = {"id": post["id"], "run": run, "postDate": post["postDate"] or post_date.isoformat(timespec="seconds"),
+              "channels": post["channels"] or channels, "status": post["status"]}
+    # re-read under lock: an edit may have added a run while we uploaded
+    update_project(project.dir, lambda data: data.setdefault("posts", []).append(record))
     return post
 
 
@@ -187,21 +218,34 @@ def scan_videos(root: Path) -> list[dict]:
 
 async def routine_sync(events: Emitter, team: str, now: datetime | None = None, client: Client | None = None,
                        query_fn=None) -> None:
-    from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited, SocialFailed, SocialLimit
-    from autoedit.resources import agent_dir
-    from autoedit.social import routine
-    from autoedit.social.caption import make_caption
-    kw = {"query_fn": query_fn} if query_fn else {}
-    now = _now(now)
     routines = [r for r in _routines() if isinstance(r, dict)]
     if not any(r.get("enabled") for r in routines):
         events.emit_raw({"type": "routine_sync", "created": [], "skipped": "Chưa bật routine"})
         return
     root = Path(os.environ.get("AUTOEDIT_PROJECTS_ROOT") or "")
+    if not root.is_dir():
+        await _routine_sync(events, team, routines, root, now, client, query_fn)
+        return
+    try:
+        with file_lock(root / ".routine-sync.lock", blocking=False):    # one sync at a time, across processes
+            await _routine_sync(events, team, routines, root, now, client, query_fn)
+    except LockBusy:
+        events.emit_raw({"type": "routine_sync", "created": [], "skipped": "Routine đang chạy"})
+
+
+async def _routine_sync(events: Emitter, team: str, routines: list[dict], root: Path, injected: datetime | None,
+                        client: Client | None, query_fn) -> None:
+    from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited, SocialFailed, SocialLimit
+    from autoedit.resources import agent_dir
+    from autoedit.social import routine
+    from autoedit.social.caption import make_caption
+    kw = {"query_fn": query_fn} if query_fn else {}
+    now = _now(injected)
     c = _client(client)
     existing = c.list_posts(team, now.isoformat(timespec="seconds"), (now + timedelta(days=7)).isoformat(timespec="seconds"))
-    niches = {v["project"]: v["niche"] for v in scan_videos(root)}
-    items = routine.plan(now, routines, scan_videos(root), existing)
+    videos = scan_videos(root)
+    niches = {v["project"]: v["niche"] for v in videos}
+    items = routine.plan(now, routines, videos, existing)
     created, skipped = [], None
     for it in items:
         channels = [ch for ch in it["channels"] if ch in V2_CHANNELS]
@@ -209,11 +253,17 @@ async def routine_sync(events: Emitter, team: str, now: datetime | None = None, 
             continue
         pdir = root / it["project"]
         try:
+            if _parse_when_or_none(it["slot"], _now(injected)) is None:    # slot went by while earlier items ran
+                print(f"routine: bỏ qua {it['project']}: giờ {it['slot']} đã qua", file=sys.stderr)
+                continue
+            if read_project_json(pdir).get("posts"):    # posted (by hand or another run) since the plan
+                continue
             try:
                 text = await make_caption(Project.load(pdir), it["run"], agent_dir(), **kw)
             except (RateLimited, NoAuth, AgentFailed):
                 text = fallback_caption(pdir, it["run"], niches.get(it["project"]) or "chung")
-            created.append(create_post(pdir, it["run"], team, channels, text, it["slot"], now, None, c))
+            created.append(create_post(pdir, it["run"], team, channels, text, it["slot"], injected, None, c,
+                                       only_if_unposted=True))
         except (SocialLimit, SocialFailed) as e:
             if not created:
                 raise
