@@ -88,3 +88,12 @@ def test_plain_options_also_pin_cli(tmp_path, monkeypatch):
     o = opt.plain_options(tmp_path, "m", 1)
     assert o.tools == [] and o.setting_sources == [] and o.cli_path is None
     assert o.env["DISABLE_AUTOUPDATER"] == "1" and o.strict_mcp_config is True
+
+
+def test_clip_cuts_on_word_boundary():
+    from autoedit.agent.runner import _clip
+    assert _clip("ngắn") == "ngắn"
+    text = ("abcd " * 100).strip()
+    out = _clip(text)
+    assert out.endswith("…") and len(out) <= 281
+    assert out[:-1].split()[-1] == "abcd"

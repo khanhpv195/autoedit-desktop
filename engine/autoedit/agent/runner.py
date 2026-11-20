@@ -22,6 +22,15 @@ def _iso(ts: int | None) -> str | None:
     return datetime.fromtimestamp(ts).astimezone().isoformat(timespec="seconds") if ts else None
 
 
+def _clip(text: str, limit: int = 280) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    if not text[limit].isspace():
+        cut = cut.rsplit(None, 1)[0] if " " in cut else cut
+    return cut.rstrip() + "…"
+
+
 async def run_agent(session, prompt: str, options, *, query_fn=query, timeout: float = 600) -> AgentOutcome:
     turns, reset_at = 0, None
     try:
@@ -42,7 +51,7 @@ async def run_agent(session, prompt: str, options, *, query_fn=query, timeout: f
                             name = b.name.removeprefix("mcp__autoedit__")
                             session.events.agent(TOOL_LABELS.get(name, name), tool=name)
                         elif isinstance(b, TextBlock) and b.text.strip():
-                            session.events.agent(b.text.strip()[:280])
+                            session.events.agent(_clip(b.text.strip()))
                 elif isinstance(msg, ResultMessage):
                     turns = msg.num_turns
                     if msg.is_error:
