@@ -44,7 +44,7 @@ async def test_set_edl_ok_writes_file(session):
     res = await tools.set_edl(session, {"edl": EDL})
     assert not res.get("is_error") and session.edl is not None
     saved = json.loads((session.project.work_dir / "edl.json").read_text())
-    assert saved["keep"][0]["start"] == pytest.approx(0.55)
+    assert saved["keep"][0]["start"] == pytest.approx(0.55, abs=0.02)
 
 
 async def test_set_edl_error_counts(session):

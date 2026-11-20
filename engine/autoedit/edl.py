@@ -1,3 +1,4 @@
+import math
 from dataclasses import asdict, dataclass, field
 
 from autoedit.transcript import Word, speech_duration
@@ -83,12 +84,54 @@ class Edl:
         return sum(r.duration for r in self.ordered())
 
 
+FPS = 30
+
+
+def _grid(t: float, lo: float, hi: float, dur: float) -> float:
+    """Nearest 1/30 s frame boundary inside [lo, hi] (never into a neighbouring word); t itself if none fits."""
+    hi = min(hi, dur)
+    lo = max(lo, 0.0)
+    g = round(t * FPS) / FPS
+    if lo - 1e-9 <= g <= hi + 1e-9:
+        return min(max(g, lo), hi)
+    for cand in (math.floor(t * FPS) / FPS, math.ceil(t * FPS) / FPS):
+        if lo - 1e-9 <= cand <= hi + 1e-9:
+            return cand
+    return t
+
+
+def _free_gap(t: float, words: list[Word]) -> tuple[float, float]:
+    lo = max((w.end for w in words if w.end <= t + 1e-9), default=0.0)
+    hi = min((w.start for w in words if w.start >= t - 1e-9), default=float("inf"))
+    return lo, max(lo, hi)
+
+
+def _snap_start(a: float, words: list[Word], dur: float) -> float:
+    """An edge inside (or within the pad of) a word moves to that word's start, padded but clamped to the
+    midpoint of the gap before it. An edge in silence stays where the agent put it (frame-aligned)."""
+    for i, w in enumerate(words):
+        if w.start - PAD_BEFORE <= a < w.end:
+            lo = 0.0 if i == 0 else min(w.start, (words[i - 1].end + w.start) / 2)
+            lo = max(lo, 0.0)
+            return _grid(max(w.start - PAD_BEFORE, lo), lo, w.start, dur)
+    lo, hi = _free_gap(a, words)
+    return _grid(a, lo, hi, dur)
+
+
+def _snap_end(b: float, words: list[Word], dur: float) -> float:
+    for i in range(len(words) - 1, -1, -1):
+        w = words[i]
+        if w.start < b <= w.end + PAD_AFTER:
+            hi = dur if i + 1 == len(words) else max(w.end, (w.end + words[i + 1].start) / 2)
+            hi = min(hi, dur)
+            return _grid(min(w.end + PAD_AFTER, hi), w.end, hi, dur)
+    lo, hi = _free_gap(b, words)
+    return _grid(b, lo, hi, dur)
+
+
 def _snap_pad(a: float, b: float, words: list[Word], dur: float) -> tuple[float, float]:
-    """Snap to word edges and pad. A range with no words (silent scene) keeps its edges unpadded."""
-    inside = [w for w in words if w.end > a and w.start < b]
-    if not inside:
-        return a, b
-    return max(0.0, inside[0].start - PAD_BEFORE), min(dur, inside[-1].end + PAD_AFTER)
+    ws = sorted(words, key=lambda w: w.start)
+    return _snap_start(a, ws, dur), _snap_end(b, ws, dur)
 
 
 def _speech_in(ranges: list[Range], words: list[Word]) -> float:
@@ -146,13 +189,21 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float) -> tuple[Ed
         a, b = _snap_pad(a, min(b, clip_duration), words, clip_duration)
         hook = Hook(a, b, text)
 
+    fixes = [CaptionFix(float(c["at"]), str(c["wrong"]).strip(), str(c["right"]).strip())
+             for c in raw.get("caption_fixes") or []]
+    emph = [Emphasis(float(e["at"]), str(e["word"]).strip()) for e in raw.get("emphasis") or []]
+    if any(not f.wrong or not f.right for f in fixes):
+        raise EdlError("caption_fixes need non-empty wrong and right text")
+    if any(not e.word for e in emph):
+        raise EdlError("emphasis needs a non-empty word")
+
     music = raw.get("music") or {}
     duck = float(music.get("duck_db", -14.0))
     edl = Edl(
         keep=kept,
         hook=hook,
-        caption_fixes=[CaptionFix(float(c["at"]), str(c["wrong"]), str(c["right"])) for c in raw.get("caption_fixes") or []],
-        emphasis=[Emphasis(float(e["at"]), str(e["word"])) for e in raw.get("emphasis") or []],
+        caption_fixes=fixes,
+        emphasis=emph,
         cta_text=(raw.get("cta_text") or "").strip() or DEFAULT_CTA,
         music_use=bool(music.get("use", True)),
         music_duck_db=min(-6.0, max(-24.0, duck)),

@@ -11,20 +11,38 @@ def v(raw, words=WORDS, dur=8.0):
     return validate_edl(raw, words, dur)
 
 
+FRAME = 1 / 30
+
+
+def on_grid(t):
+    return abs(t * 30 - round(t * 30)) < 1e-6
+
+
 def test_snaps_inside_word_and_pads():
     edl, notes = v({"keep": [{"start": 1.2, "end": 1.7}]})  # starts inside "một", ends inside "hai"
     r = edl.keep[0]
-    assert r.start == pytest.approx(1.0 - 0.05) and r.end == pytest.approx(2.0 + 0.08)
+    assert r.start == pytest.approx(1.0 - 0.05, abs=FRAME / 2 + 1e-6) and r.end == pytest.approx(2.0 + 0.08, abs=FRAME / 2 + 1e-6)
+    assert on_grid(r.start) and on_grid(r.end)
 
 
-def test_snaps_from_silence_to_next_word():
+def test_silent_footage_inside_range_is_kept():
+    """I4: keep [3.0, 6.5] over speech at 4.0-6.0 must not be trimmed to the speech."""
     edl, _ = v({"keep": [{"start": 3.0, "end": 6.5}]})
-    assert edl.keep[0].start == pytest.approx(3.95) and edl.keep[0].end == pytest.approx(6.08)
+    r = edl.keep[0]
+    assert r.start == pytest.approx(3.0, abs=FRAME / 2 + 1e-6) and r.end == pytest.approx(6.5, abs=FRAME / 2 + 1e-6)
+
+
+def test_edge_inside_word_snaps_but_silent_edge_stays():
+    edl, _ = v({"keep": [{"start": 0.2, "end": 5.0}]})  # silent start, ends inside "bốn" (4.6-5.2)
+    r = edl.keep[0]
+    assert r.start == pytest.approx(0.2, abs=FRAME / 2 + 1e-6)
+    assert r.end == pytest.approx(5.25, abs=FRAME)   # pad clamped to mid-gap before 'năm'
 
 
 def test_merges_overlaps_and_sorts():
     edl, _ = v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}, {"start": 1.5, "end": 2.0}]})
-    assert [(round(r.start, 2), round(r.end, 2)) for r in edl.keep] == [(0.95, 2.08), (3.95, 6.08)]
+    got = [x for r in edl.keep for x in (r.start, r.end)]
+    assert got == pytest.approx([0.95, 2.08, 3.95, 6.08], abs=FRAME / 2 + 1e-6)
 
 
 def test_drops_short_segment_with_note():
@@ -49,7 +67,7 @@ def test_rejects_out_of_bounds_and_inverted():
 
 def test_hook_rules():
     edl, _ = v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"move_to_front": [4.0, 5.2], "text": "XEM NGAY"}})
-    assert edl.hook.text == "XEM NGAY" and edl.hook.start == pytest.approx(3.95)
+    assert edl.hook.text == "XEM NGAY" and edl.hook.start == pytest.approx(3.95, abs=FRAME / 2 + 1e-6)
     with pytest.raises(EdlError, match="5"):
         v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"move_to_front": [4.0, 5.2], "text": "một hai ba bốn năm sáu"}})
 
@@ -58,7 +76,7 @@ def test_ordered_puts_hook_first_and_removes_overlap():
     edl, _ = v({"keep": [{"start": 1.0, "end": 2.0}, {"start": 4.0, "end": 6.0}],
                 "hook": {"move_to_front": [4.6, 5.2], "text": "HOOK"}})
     o = edl.ordered()
-    assert o[0].start == pytest.approx(4.55) and o[0].end == pytest.approx(5.28)
+    assert o[0].start == pytest.approx(4.55, abs=FRAME) and o[0].end == pytest.approx(5.25, abs=FRAME)
     # the 4.0-6.0 keep is split around the hook; pieces < 0.4s dropped
     assert all(not (r.start < o[0].end and r.end > o[0].start) for r in o[1:])
     assert edl.output_duration() == pytest.approx(sum(r.duration for r in o))
@@ -79,3 +97,49 @@ def test_to_dict_roundtrip():
                 "emphasis": [{"at": 4.6, "word": "bốn"}], "cta_text": "MUA NGAY"})
     again, _ = v(edl.to_dict())
     assert again.to_dict() == edl.to_dict()
+
+
+TIGHT = [Word("a", 1.0, 1.5), Word("b", 1.52, 2.0), Word("c", 2.03, 2.5), Word("d", 3.0, 3.5)]
+
+
+def inside_word(t, words):
+    return any(w.start + 1e-6 < t < w.end - 1e-6 for w in words)
+
+
+def test_padding_never_crosses_into_neighbour_words():
+    """I3: tight gaps, hook on word b only."""
+    edl, _ = v({"keep": [{"start": 1.0, "end": 3.5}], "hook": {"move_to_front": [1.52, 2.0], "text": "HOOK"}},
+               TIGHT, 4.0)
+    h = edl.ordered()[0]
+    assert h.start >= 1.5 - 1e-6 and h.end <= 2.03 + 1e-6      # not into a (ends 1.5) nor c (starts 2.03)
+    for r in edl.ordered():
+        assert not inside_word(r.start, TIGHT) and not inside_word(r.end, TIGHT), (r.start, r.end)
+
+
+def test_hook_split_never_starts_mid_word():
+    edl, _ = v({"keep": [{"start": 1.0, "end": 3.5}], "hook": {"move_to_front": [1.52, 2.0], "text": "HOOK"}},
+               TIGHT, 4.0)
+    for r in edl.ordered()[1:]:
+        assert not inside_word(r.start, TIGHT) and not inside_word(r.end, TIGHT)
+    assert edl.ordered()[1].start == pytest.approx(edl.hook.end) or edl.ordered()[1].end <= edl.hook.start + 1e-9
+
+
+def test_keep_padding_clamped_to_gap_midpoint():
+    edl, _ = v({"keep": [{"start": 1.52, "end": 2.0}, {"start": 3.0, "end": 3.5}]}, TIGHT, 4.0)
+    r = edl.keep[0]
+    assert r.start >= 1.5 - 1e-6 and r.end <= 2.03 + 1e-6 and r.duration >= 0.4
+
+
+def test_all_edges_on_frame_grid_when_there_is_room():
+    edl, _ = v({"keep": [{"start": 1.2, "end": 1.7}, {"start": 3.0123, "end": 3.9}]})
+    assert all(on_grid(r.start) and on_grid(r.end) for r in edl.keep)
+
+
+@pytest.mark.parametrize("bad", [
+    {"keep": [{"start": 1.0, "end": 6.0}], "caption_fixes": [{"at": 4.0, "wrong": "ba", "right": ""}]},
+    {"keep": [{"start": 1.0, "end": 6.0}], "caption_fixes": [{"at": 4.0, "wrong": " ", "right": "BA"}]},
+    {"keep": [{"start": 1.0, "end": 6.0}], "emphasis": [{"at": 4.0, "word": ""}]},
+])
+def test_rejects_empty_fix_text(bad):
+    with pytest.raises(EdlError):
+        v(bad)
