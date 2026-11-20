@@ -1,4 +1,5 @@
 """`autoedit social …` commands. Every function emits the Contract event (see the M4 plan)."""
+import json
 import os
 import sys
 from datetime import datetime, timedelta
@@ -63,7 +64,6 @@ def _parse_when(when: str, now: datetime) -> datetime:
 
 
 def _routines() -> list[dict]:
-    import json
     try:
         data = json.loads(os.environ.get("AUTOEDIT_ROUTINES") or "[]")
     except ValueError:
@@ -153,3 +153,72 @@ def list_(events: Emitter, team: str, start: str, end: str, client: Client | Non
 
 def retry(events: Emitter, post_id: str, client: Client | None = None) -> None:
     events.emit_raw({"type": "social_post", "post": posts.normalize(_client(client).retry_post(post_id))})
+
+
+FALLBACK_TAGS = {"thoi-trang": "#thoitrang #outfit", "my-pham": "#mypham #skincare", "do-an": "#monngon #review",
+                 "phu-kien": "#phukien #xuhuong", "chung": "#xuhuong #review"}
+
+
+def fallback_caption(project_dir: Path, run: int, niche: str) -> str:
+    from autoedit.social.caption import _hook
+    hook = _hook(Project.load(project_dir), run) or "Xem ngay"
+    return f"{hook}\n{FALLBACK_TAGS.get(niche, FALLBACK_TAGS['chung'])}"
+
+
+def scan_videos(root: Path) -> list[dict]:
+    """One entry per finished run of every project under root (`posted` = project.json has posts)."""
+    out = []
+    for d in sorted(root.iterdir()) if root.is_dir() else []:
+        f = d / "project.json"
+        if not f.is_file():
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for r in data.get("runs") or []:
+            final = d / "runs" / str(r.get("n")) / "final.mp4"
+            if final.is_file():
+                created = datetime.fromtimestamp(final.stat().st_mtime).astimezone().isoformat(timespec="seconds")
+                out.append({"project": d.name, "run": r["n"], "created": created, "posted": bool(data.get("posts")),
+                            "niche": data.get("niche")})
+    return out
+
+
+async def routine_sync(events: Emitter, team: str, now: datetime | None = None, client: Client | None = None,
+                       query_fn=None) -> None:
+    from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited, SocialFailed, SocialLimit
+    from autoedit.resources import agent_dir
+    from autoedit.social import routine
+    from autoedit.social.caption import make_caption
+    kw = {"query_fn": query_fn} if query_fn else {}
+    now = _now(now)
+    routines = [r for r in _routines() if isinstance(r, dict)]
+    if not any(r.get("enabled") for r in routines):
+        events.emit_raw({"type": "routine_sync", "created": [], "skipped": "Chưa bật routine"})
+        return
+    root = Path(os.environ.get("AUTOEDIT_PROJECTS_ROOT") or "")
+    c = _client(client)
+    existing = c.list_posts(team, now.isoformat(timespec="seconds"), (now + timedelta(days=7)).isoformat(timespec="seconds"))
+    niches = {v["project"]: v["niche"] for v in scan_videos(root)}
+    items = routine.plan(now, routines, scan_videos(root), existing)
+    created, skipped = [], None
+    for it in items:
+        channels = [ch for ch in it["channels"] if ch in V2_CHANNELS]
+        if not channels:
+            continue
+        pdir = root / it["project"]
+        try:
+            try:
+                text = await make_caption(Project.load(pdir), it["run"], agent_dir(), **kw)
+            except (RateLimited, NoAuth, AgentFailed):
+                text = fallback_caption(pdir, it["run"], niches.get(it["project"]) or "chung")
+            created.append(create_post(pdir, it["run"], team, channels, text, it["slot"], now, None, c))
+        except (SocialLimit, SocialFailed) as e:
+            if not created:
+                raise
+            skipped = e.message
+            break
+        except AutoeditError as e:   # one broken project must not block the rest
+            print(f"routine: bỏ qua {it['project']}: {e.message}", file=sys.stderr)
+    events.emit_raw({"type": "routine_sync", "created": created, "skipped": skipped})

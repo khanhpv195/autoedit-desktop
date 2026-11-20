@@ -1,4 +1,5 @@
 """Post helpers: normalising bundle.social posts, referenceKey, queue slots."""
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 REF_PREFIX = "autoedit:"
@@ -54,5 +55,34 @@ def normalize(raw: dict) -> dict:
             "permalinks": _permalinks(raw)}
 
 
-def next_queue_slot(now, routines, taken):   # replaced in the routine task
-    raise NotImplementedError
+def parse_time(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def near(a: datetime, b: datetime, minutes: int = 1) -> bool:
+    if a.tzinfo is None:
+        a = a.astimezone()
+    if b.tzinfo is None:
+        b = b.astimezone()
+    return abs((a - b).total_seconds()) <= minutes * 60
+
+
+def next_queue_slot(now: datetime, routines: list[dict], taken: list[str]) -> datetime:
+    """Earliest routine slot (within 30 days) not within +-1 min of a taken post date; with no routine,
+    19:30 tomorrow (first free day) in now's timezone."""
+    from autoedit.social.routine import slots
+    busy = []
+    for t in taken:
+        try:
+            busy.append(parse_time(t))
+        except ValueError:
+            continue
+    for dt, _ in slots(now, routines, days=30):
+        if not any(near(dt, b) for b in busy):
+            return dt
+    day = now.date() + timedelta(days=1)
+    while True:
+        dt = datetime.combine(day, time(19, 30), tzinfo=now.tzinfo)
+        if not any(near(dt, b) for b in busy):
+            return dt
+        day += timedelta(days=1)

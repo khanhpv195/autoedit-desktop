@@ -150,6 +150,8 @@ async def _social(args, events: Emitter) -> int:
         sc.list_(events, args.team, args.from_, args.to)
     elif c == "retry":
         sc.retry(events, args.post)
+    elif c == "routine-sync":
+        await sc.routine_sync(events, args.team)
     return 0
 
 
@@ -186,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     x.add_argument("--caption", required=True); x.add_argument("--when", required=True)
     x = ss.add_parser("list"); x.add_argument("--team", required=True)
     x.add_argument("--from", dest="from_", required=True); x.add_argument("--to", required=True)
+    x = ss.add_parser("routine-sync"); x.add_argument("--team", required=True)
     x = ss.add_parser("retry"); x.add_argument("--post", required=True)
     args = p.parse_args(argv)
     if args.version:
