@@ -1,5 +1,6 @@
 
 pub const OAUTH_ACCOUNT: &str = "claude-oauth-token";
+pub const SOCIAL_ACCOUNT: &str = "bundle-social-key";
 pub const API_KEY_ACCOUNT: &str = "anthropic-api-key";
 const SERVICE: &str = "AutoEdit";
 

@@ -39,6 +39,7 @@ pub struct ProjectDetail {
     pub prompt: String,
     pub script_card: Option<Value>,
     pub runs: Vec<Run>,
+    pub posts: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -209,6 +210,7 @@ pub fn detail(dir: &Path) -> Result<ProjectDetail, String> {
         prompt: opt_str(&m, "prompt").unwrap_or_default(),
         script_card: m.get("script_card").filter(|v| !v.is_null()).cloned(),
         runs,
+        posts: m.get("posts").and_then(Value::as_array).cloned().unwrap_or_default(),
     })
 }
 
@@ -359,5 +361,20 @@ mod tests {
         assert_eq!(v["runs"][0]["needsReview"], true);
         assert_eq!(v["runCount"], 1);
         assert_eq!(run_feed(dir, 1).len(), 1);
+    }
+    #[test]
+    fn detail_exposes_posts() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let clip = src.path().join("a.mp4");
+        touch(&clip);
+        let s = create(root.path(), "do-an", &clip, None, None, "2026-11-20").unwrap();
+        let dir = Path::new(&s.dir);
+        assert!(detail(dir).unwrap().posts.is_empty());
+        let mut j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
+        j["posts"] = json!([{"id":"p1","run":1,"postDate":"2026-11-21T19:30:00+07:00","channels":["TIKTOK"],"status":"SCHEDULED"}]);
+        std::fs::write(dir.join("project.json"), j.to_string()).unwrap();
+        let v = serde_json::to_value(detail(dir).unwrap()).unwrap();
+        assert_eq!(v["posts"][0]["id"], "p1");
     }
 }

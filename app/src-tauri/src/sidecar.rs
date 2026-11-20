@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 #[cfg(unix)]
 use std::time::{Duration, Instant};
 
-use crate::secrets::{SecretStore, API_KEY_ACCOUNT, OAUTH_ACCOUNT};
+use crate::settings::Settings;
+use crate::secrets::{SecretStore, API_KEY_ACCOUNT, OAUTH_ACCOUNT, SOCIAL_ACCOUNT};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineCmd {
@@ -47,7 +48,13 @@ pub fn locate_engine(resource_dir: Option<&Path>, repo_root: Option<&Path>) -> O
     })
 }
 
-pub fn engine_env(secrets: &dyn SecretStore, model: &str, has_claude_code: bool) -> Vec<(String, String)> {
+pub fn engine_env(
+    secrets: &dyn SecretStore,
+    model: &str,
+    has_claude_code: bool,
+    settings: &Settings,
+    mcp_json: &str,
+) -> Vec<(String, String)> {
     let mut env = vec![
         ("DISABLE_AUTOUPDATER".to_string(), "1".to_string()),
         ("AUTOEDIT_CLAUDE_MODEL".to_string(), model.to_string()),
@@ -59,6 +66,15 @@ pub fn engine_env(secrets: &dyn SecretStore, model: &str, has_claude_code: bool)
     } else if !has_claude_code && let Some(key) = secrets.get(API_KEY_ACCOUNT) {
         env.push(("ANTHROPIC_API_KEY".into(), key));
     }
+    if let Some(k) = secrets.get(SOCIAL_ACCOUNT) {
+        env.push(("BUNDLE_SOCIAL_KEY".into(), k));
+    }
+    env.push((
+        "AUTOEDIT_ROUTINES".into(),
+        serde_json::to_string(&settings.routines).unwrap_or_else(|_| "[]".into()),
+    ));
+    env.push(("AUTOEDIT_PROJECTS_ROOT".into(), settings.projects_root.clone()));
+    env.push(("AUTOEDIT_MCP".into(), mcp_json.to_string()));
     env
 }
 
@@ -261,7 +277,7 @@ mod tests {
         let m = MemoryStore::default();
         m.set(OAUTH_ACCOUNT, "tok").unwrap();
         m.set(API_KEY_ACCOUNT, "key").unwrap();
-        let e = engine_env(&m, "claude-opus-5-5", false);
+        let e = engine_env(&m, "claude-opus-5-5", false, &Settings::default(), "{}");
         assert!(e.contains(&("CLAUDE_CODE_OAUTH_TOKEN".into(), "tok".into())));
         assert!(!e.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
         assert!(e.contains(&("DISABLE_AUTOUPDATER".into(), "1".into())));
@@ -270,8 +286,28 @@ mod tests {
     fn env_api_key_only_without_any_subscription() {
         let m = MemoryStore::default();
         m.set(API_KEY_ACCOUNT, "key").unwrap();
-        assert!(engine_env(&m, "m", false).iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
-        assert!(!engine_env(&m, "m", true).iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
+        assert!(engine_env(&m, "m", false, &Settings::default(), "{}").iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
+        assert!(!engine_env(&m, "m", true, &Settings::default(), "{}").iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
+    }
+    #[test]
+    fn env_social_key_routines_projects_root_and_mcp() {
+        use crate::settings::Routine;
+        let m = MemoryStore::default();
+        let st = Settings {
+            projects_root: "/p".into(),
+            routines: vec![Routine { id: "r".into(), time: "19:30".into(), channels: vec!["TIKTOK".into()], enabled: true }],
+            ..Default::default()
+        };
+        let none = engine_env(&m, "m", false, &st, "{}");
+        assert!(!none.iter().any(|(k, _)| k == "BUNDLE_SOCIAL_KEY"));
+        m.set(SOCIAL_ACCOUNT, "bk").unwrap();
+        let e = engine_env(&m, "m", false, &st, r#"{"x":{}}"#);
+        assert!(e.contains(&("BUNDLE_SOCIAL_KEY".into(), "bk".into())));
+        let get = |k: &str| e.iter().find(|(n, _)| n == k).unwrap().1.clone();
+        let routines: serde_json::Value = serde_json::from_str(&get("AUTOEDIT_ROUTINES")).unwrap();
+        assert_eq!(routines[0]["time"], "19:30");
+        assert_eq!(get("AUTOEDIT_PROJECTS_ROOT"), "/p");
+        assert_eq!(get("AUTOEDIT_MCP"), r#"{"x":{}}"#);
     }
     #[test]
     fn locate_packaged_engine_with_bin_dir() {

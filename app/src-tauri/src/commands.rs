@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::secrets::{SecretStore, API_KEY_ACCOUNT, OAUTH_ACCOUNT};
+use crate::mcp::{self, McpServer};
+use crate::secrets::{SecretStore, API_KEY_ACCOUNT, OAUTH_ACCOUNT, SOCIAL_ACCOUNT};
 use crate::auth;
 use crate::login::{LoginLine, LoginSession};
 use crate::projects::{self, FeedItem, ProjectDetail, ProjectSummary};
@@ -65,15 +66,50 @@ pub fn clear_api_key(state: State<'_, AppState>) -> Result<(), String> {
     state.secrets.delete(API_KEY_ACCOUNT)
 }
 
+#[tauri::command]
+pub fn social_key_status(state: State<'_, AppState>) -> serde_json::Value {
+    serde_json::json!({ "hasKey": state.secrets.get(SOCIAL_ACCOUNT).is_some() })
+}
+
+#[tauri::command]
+pub fn set_social_key(state: State<'_, AppState>, key: String) -> Result<(), String> {
+    state.secrets.set(SOCIAL_ACCOUNT, key.trim())
+}
+
+#[tauri::command]
+pub fn clear_social_key(state: State<'_, AppState>) -> Result<(), String> {
+    state.secrets.delete(SOCIAL_ACCOUNT)
+}
+
+#[tauri::command]
+pub fn mcp_list(state: State<'_, AppState>) -> Vec<McpServer> {
+    mcp::load(&state.data_dir)
+}
+
+#[tauri::command]
+pub fn mcp_save(
+    state: State<'_, AppState>,
+    server: McpServer,
+    secrets: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    mcp::save_server(&state.data_dir, state.secrets.as_ref(), server, &secrets)
+}
+
+#[tauri::command]
+pub fn mcp_delete(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    mcp::delete(&state.data_dir, state.secrets.as_ref(), &name)
+}
+
 #[tauri::command(async)]
 pub fn engine_run(app: AppHandle, state: State<'_, AppState>, args: Vec<String>) -> Result<String, String> {
     let resource_dir = app.path().resource_dir().ok();
     let repo_root = cfg!(debug_assertions).then(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(".."));
     let cmd = sidecar::locate_engine(resource_dir.as_deref(), repo_root.as_deref())
         .ok_or_else(|| "Không tìm thấy engine".to_string())?;
-    let model = settings::load(&state.data_dir).model;
+    let st = settings::load(&state.data_dir);
     let has_cc = has_claude_code_here();
-    let env = sidecar::engine_env(state.secrets.as_ref(), &model, has_cc);
+    let mcp_json = mcp::engine_json(&state.data_dir, state.secrets.as_ref());
+    let env = sidecar::engine_env(state.secrets.as_ref(), &st.model, has_cc, &st, &mcp_json);
     let log_file = state.data_dir.join("logs").join("engine.log");
     let handle = app.clone();
     sidecar::spawn_job(&cmd, &args, &env, &log_file, state.jobs.clone(), move |msg| match msg {
