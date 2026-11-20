@@ -10,3 +10,4 @@ spikes/sdk/dist/
 .playwright-mcp/
 .superpowers/
 .DS_Store
+/.claude/

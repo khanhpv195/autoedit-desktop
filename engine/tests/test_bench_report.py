@@ -1,5 +1,9 @@
+import importlib.util
 from pathlib import Path
-from bench_path import run_bench
+
+_spec = importlib.util.spec_from_file_location("run_bench", Path(__file__).parents[1] / "bench" / "run_bench.py")
+run_bench = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(run_bench)
 
 
 def test_report_html(tmp_path):

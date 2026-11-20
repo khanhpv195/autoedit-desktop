@@ -1,12 +1,6 @@
 import subprocess
 from pathlib import Path
 import pytest
-import sys, types, importlib.util
-_spec = importlib.util.spec_from_file_location("run_bench", Path(__file__).parents[1] / "bench" / "run_bench.py")
-bench_path = types.ModuleType("bench_path")
-bench_path.run_bench = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(bench_path.run_bench)
-sys.modules["bench_path"] = bench_path
 
 
 def _make(path: Path, w: int, h: int, dur: float, silent_from: float | None = None) -> Path:
