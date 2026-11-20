@@ -1,9 +1,10 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::secrets::{SecretStore, API_KEY_ACCOUNT};
+use crate::projects::{self, FeedItem, ProjectDetail, ProjectSummary};
 use crate::settings::{self, Settings};
 use crate::sidecar::{self, JobMsg, Jobs};
 
@@ -69,4 +70,54 @@ pub fn engine_run(app: AppHandle, state: State<'_, AppState>, args: Vec<String>)
 pub fn engine_cancel(state: State<'_, AppState>, job: String) {
     let jobs = state.jobs.clone();
     std::thread::spawn(move || sidecar::cancel(&jobs, &job));
+}
+
+fn projects_root(state: &AppState) -> PathBuf {
+    PathBuf::from(settings::load(&state.data_dir).projects_root)
+}
+
+#[tauri::command]
+pub fn create_project(
+    state: State<'_, AppState>,
+    niche: String,
+    clip: String,
+    logo: Option<String>,
+    music: Option<String>,
+) -> Result<ProjectSummary, String> {
+    let root = projects_root(&state);
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    projects::create(
+        &root,
+        &niche,
+        Path::new(&clip),
+        logo.as_deref().map(Path::new),
+        music.as_deref().map(Path::new),
+        &today,
+    )
+}
+
+#[tauri::command]
+pub fn list_projects(state: State<'_, AppState>) -> Vec<ProjectSummary> {
+    projects::list(&projects_root(&state))
+}
+
+#[tauri::command]
+pub fn get_project(dir: String) -> Result<ProjectDetail, String> {
+    projects::detail(Path::new(&dir))
+}
+
+#[tauri::command]
+pub fn update_project(dir: String, patch: serde_json::Value) -> Result<(), String> {
+    projects::update(Path::new(&dir), &patch)
+}
+
+#[tauri::command]
+pub fn set_project_asset(dir: String, kind: String, path: Option<String>) -> Result<ProjectDetail, String> {
+    projects::set_asset(Path::new(&dir), &kind, path.as_deref().map(Path::new))
+}
+
+#[tauri::command]
+pub fn read_run_feed(dir: String, n: u64) -> Vec<FeedItem> {
+    projects::run_feed(Path::new(&dir), n)
 }

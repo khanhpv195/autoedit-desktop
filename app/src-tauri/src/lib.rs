@@ -1,5 +1,6 @@
 mod commands;
 mod paths;
+mod projects;
 mod secrets;
 mod settings;
 mod sidecar;
@@ -36,6 +37,12 @@ pub fn run() {
             commands::clear_api_key,
             commands::engine_run,
             commands::engine_cancel,
+            commands::create_project,
+            commands::list_projects,
+            commands::get_project,
+            commands::update_project,
+            commands::set_project_asset,
+            commands::read_run_feed,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
