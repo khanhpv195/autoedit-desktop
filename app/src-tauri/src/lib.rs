@@ -1,4 +1,6 @@
+mod auth;
 mod commands;
+mod login;
 mod paths;
 mod projects;
 mod secrets;
@@ -27,6 +29,7 @@ pub fn run() {
                 secrets: Arc::new(secrets::KeyringStore),
                 data_dir,
                 jobs: Arc::new(sidecar::Jobs::default()),
+                login: Arc::new(std::sync::Mutex::new(None)),
             });
             Ok(())
         })
@@ -43,6 +46,11 @@ pub fn run() {
             commands::update_project,
             commands::set_project_asset,
             commands::read_run_feed,
+            commands::auth_status,
+            commands::login_start,
+            commands::login_input,
+            commands::login_cancel,
+            commands::logout,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

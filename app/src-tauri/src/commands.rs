@@ -1,9 +1,11 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::secrets::{SecretStore, API_KEY_ACCOUNT};
+use crate::secrets::{SecretStore, API_KEY_ACCOUNT, OAUTH_ACCOUNT};
+use crate::auth;
+use crate::login::{LoginLine, LoginSession};
 use crate::projects::{self, FeedItem, ProjectDetail, ProjectSummary};
 use crate::settings::{self, Settings};
 use crate::sidecar::{self, JobMsg, Jobs};
@@ -12,6 +14,7 @@ pub struct AppState {
     pub secrets: Arc<dyn SecretStore + Send + Sync>,
     pub data_dir: PathBuf,
     pub jobs: Arc<Jobs>,
+    pub login: Arc<Mutex<Option<Arc<LoginSession>>>>,
 }
 
 #[tauri::command]
@@ -51,8 +54,8 @@ pub fn engine_run(app: AppHandle, state: State<'_, AppState>, args: Vec<String>)
     let cmd = sidecar::locate_engine(resource_dir.as_deref(), repo_root.as_deref())
         .ok_or_else(|| "Không tìm thấy engine".to_string())?;
     let model = settings::load(&state.data_dir).model;
-    // TODO(task 6): replace `false` with auth::has_claude_code(...)
-    let env = sidecar::engine_env(state.secrets.as_ref(), &model, false);
+    let has_cc = has_claude_code_here();
+    let env = sidecar::engine_env(state.secrets.as_ref(), &model, has_cc);
     let log_file = state.data_dir.join("logs").join("engine.log");
     let handle = app.clone();
     sidecar::spawn_job(&cmd, &args, &env, &log_file, state.jobs.clone(), move |msg| match msg {
@@ -120,4 +123,61 @@ pub fn set_project_asset(dir: String, kind: String, path: Option<String>) -> Res
 #[tauri::command]
 pub fn read_run_feed(dir: String, n: u64) -> Vec<FeedItem> {
     projects::run_feed(Path::new(&dir), n)
+}
+
+fn has_claude_code_here() -> bool {
+    let home = dirs::home_dir().unwrap_or_default();
+    auth::has_claude_code(&home, auth::mac_keychain_has_claude)
+}
+
+#[tauri::command]
+pub fn auth_status(state: State<'_, AppState>) -> serde_json::Value {
+    serde_json::json!({ "source": auth::status(state.secrets.as_ref(), has_claude_code_here()) })
+}
+
+#[tauri::command]
+pub fn login_start(app: AppHandle, state: State<'_, AppState>, cli_path: String) -> Result<(), String> {
+    let mut slot = state.login.lock().map_err(|e| e.to_string())?;
+    if slot.is_some() {
+        return Err("Đang có một phiên đăng nhập".into());
+    }
+    let (out, done, active) = (app.clone(), app.clone(), state.login.clone());
+    let session = LoginSession::start(
+        Path::new(&cli_path),
+        state.secrets.clone(),
+        move |l: LoginLine| {
+            let _ = out.emit("login-output", l);
+        },
+        move |r| {
+            if let Ok(mut s) = active.lock() {
+                *s = None;
+            }
+            let payload = match r {
+                Ok(()) => serde_json::json!({ "ok": true, "error": null }),
+                Err(e) => serde_json::json!({ "ok": false, "error": e }),
+            };
+            let _ = done.emit("login-done", payload);
+        },
+    )?;
+    *slot = Some(Arc::new(session));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn login_input(state: State<'_, AppState>, text: String) -> Result<(), String> {
+    let session = state.login.lock().map_err(|e| e.to_string())?.clone();
+    session.ok_or_else(|| "Chưa bắt đầu đăng nhập".to_string())?.write_input(&text)
+}
+
+#[tauri::command]
+pub fn login_cancel(state: State<'_, AppState>) {
+    let session = state.login.lock().ok().and_then(|s| s.clone());
+    if let Some(s) = session {
+        s.cancel();
+    }
+}
+
+#[tauri::command]
+pub fn logout(state: State<'_, AppState>) -> Result<(), String> {
+    state.secrets.delete(OAUTH_ACCOUNT)
 }
