@@ -19,6 +19,7 @@ from autoedit.agent.tools import build_server
 from autoedit.claude_cli import find_cli, install_cli
 from autoedit.errors import AutoeditError, NoAuth, RateLimited
 from autoedit.events import Emitter
+from autoedit.model_dl import install_model
 from autoedit.fsutil import atomic_write_text
 from autoedit.fallback import FALLBACK_SUMMARY, silence_cut_edl
 from autoedit.prep import prepare
@@ -131,6 +132,11 @@ async def _setup(args, events: Emitter) -> int:
     return 0
 
 
+async def _setup_model(args, events: Emitter) -> int:
+    events.model(str(install_model(events)))
+    return 0
+
+
 async def _auth(args, events: Emitter) -> int:
     events.auth(await auth_check(agent_dir()))
     return 0
@@ -144,12 +150,14 @@ def main(argv: list[str] | None = None) -> int:
     e = sub.add_parser("edit"); e.add_argument("--project", required=True); e.add_argument("--prompt"); e.add_argument("--feedback")
     sub.add_parser("auth-check")
     sub.add_parser("setup")
+    sub.add_parser("setup-model")
     args = p.parse_args(argv)
     if args.version:
         print(__version__)
         return 0
     events = Emitter()
-    handler = {"analyze": _analyze, "edit": _edit, "auth-check": _auth, "setup": _setup}.get(args.cmd)
+    handler = {"analyze": _analyze, "edit": _edit, "auth-check": _auth, "setup": _setup,
+               "setup-model": _setup_model}.get(args.cmd)
     if handler is None:
         p.print_help(sys.stderr)
         return 1

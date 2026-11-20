@@ -27,6 +27,7 @@ class Emitter:
 
     def error(self, code: str, message: str, retry_at: str | None = None) -> None:
         self._emit({"type": "error", "code": code, "message": message, "retry_at": retry_at})
+
     def cards(self, cards: list[dict]) -> None:
         self._emit({"type": "cards", "cards": cards})
 
@@ -35,3 +36,6 @@ class Emitter:
 
     def setup(self, claude_cli: str) -> None:
         self._emit({"type": "setup", "claude_cli": claude_cli})
+
+    def model(self, path: str) -> None:
+        self._emit({"type": "model", "path": path})
