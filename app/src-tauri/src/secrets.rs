@@ -1,6 +1,3 @@
-#![allow(dead_code)] // TEMP: get/MemoryStore are consumed by sidecar/auth tasks
-use std::collections::HashMap;
-use std::sync::Mutex;
 
 pub const OAUTH_ACCOUNT: &str = "claude-oauth-token";
 pub const API_KEY_ACCOUNT: &str = "anthropic-api-key";
@@ -37,9 +34,11 @@ impl SecretStore for KeyringStore {
 }
 
 /// In-memory store for tests; never touches the real Keychain.
+#[cfg(test)]
 #[derive(Default)]
-pub struct MemoryStore(Mutex<HashMap<String, String>>);
+pub struct MemoryStore(std::sync::Mutex<std::collections::HashMap<String, String>>);
 
+#[cfg(test)]
 impl SecretStore for MemoryStore {
     fn get(&self, account: &str) -> Option<String> {
         self.0.lock().unwrap().get(account).cloned()

@@ -2,6 +2,7 @@ mod commands;
 mod paths;
 mod secrets;
 mod settings;
+mod sidecar;
 
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ pub fn run() {
             app.manage(commands::AppState {
                 secrets: Arc::new(secrets::KeyringStore),
                 data_dir,
+                jobs: Arc::new(sidecar::Jobs::default()),
             });
             Ok(())
         })
@@ -32,6 +34,8 @@ pub fn run() {
             commands::save_settings,
             commands::set_api_key,
             commands::clear_api_key,
+            commands::engine_run,
+            commands::engine_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
