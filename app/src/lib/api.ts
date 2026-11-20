@@ -12,6 +12,7 @@ export const authStatus = () => invoke<{ source: AuthSource }>("auth_status");
 export const loginStart = (cliPath: string) => invoke<null>("login_start", { cliPath });
 export const loginInput = (text: string) => invoke<null>("login_input", { text });
 export const loginCancel = () => invoke<null>("login_cancel");
+export const killAllJobs = () => invoke<null>("kill_all_jobs");
 export const logout = () => invoke<null>("logout");
 export const setApiKey = (key: string) => invoke<null>("set_api_key", { key });
 export const clearApiKey = () => invoke<null>("clear_api_key");

@@ -3,6 +3,7 @@ import { nicheLabel } from "../lib/format";
 import type { ProjectStatus } from "../lib/types";
 
 const DOT: Record<ProjectStatus, string> = { new: "new", done: "done", needs_review: "review" };
+const BUILDING = "run";
 
 export default function Sidebar() {
   const { state, go } = useStore();
@@ -22,8 +23,12 @@ export default function Sidebar() {
           <div key={p.dir} className={"pi" + (cur === p.dir ? " on" : "")} role="button" tabIndex={0}
             onClick={() => go({ name: "project", dir: p.dir })}
             onKeyDown={(e) => { if (e.key === "Enter") go({ name: "project", dir: p.dir }); }}>
-            <div className="tx"><b>{p.title}</b><span>{nicheLabel(p.niche)} · {p.created}</span></div>
-            <i className={"st " + DOT[p.status]} data-status={p.status} />
+            <div className="tx">
+              <b>{p.title}</b>
+              <span>{state.builds[p.dir] ? "đang dựng…" : `${nicheLabel(p.niche)} · ${p.created}`}</span>
+            </div>
+            <i className={"st " + (state.builds[p.dir] ? BUILDING : DOT[p.status])}
+              data-status={state.builds[p.dir] ? "building" : p.status} />
           </div>
         ))}
       </div>

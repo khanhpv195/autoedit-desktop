@@ -57,9 +57,42 @@ test("pendingEdit starts the edit; Building shows steps, feed, preview, cancel",
   expect(screen.getByText("Xuất video").closest("li")).toHaveClass("cur");
   expect(screen.getByText("✂️")).toBeInTheDocument();
   expect(screen.getByText("Bản xem nhanh vòng 1")).toBeInTheDocument();
-  expect(document.querySelector("video")).toHaveAttribute("src", "asset:///p/1/runs/1/preview.mp4");
+  expect(document.querySelector("video")).toHaveAttribute("src", "asset:///p/1/runs/1/preview.mp4?r=1");
+  act(() => emit({ type: "preview", path: "/p/1/runs/1/preview.mp4", round: 2 }));
+  expect(document.querySelector("video")).toHaveAttribute("src", "asset:///p/1/runs/1/preview.mp4?r=2");
   await userEvent.click(screen.getByRole("button", { name: "Hủy" }));
   expect(cancel).toHaveBeenCalled();
+});
+
+function Nav() {
+  const { state, dispatch } = useStore();
+  const [other, setOther] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOther((v) => !v)}>toggle</button>
+      <button onClick={() => dispatch({ type: "pendingEdit", pendingEdit: { dir: "/p/1", prompt: "again" } })}>second</button>
+      <span data-testid="b">{Object.keys(state.builds).join(",")}</span>
+      {!other && <ProjectView dir="/p/1" />}
+    </>
+  );
+}
+
+test("a running build survives leaving the project and a second edit is blocked", async () => {
+  a.getProject.mockResolvedValue(detail([run1]));
+  render(<StoreProvider><Nav /></StoreProvider>);
+  await screen.findByRole("button", { name: "Dựng lại" });
+  await userEvent.type(screen.getByRole("textbox"), "ngắn hơn");
+  await userEvent.click(screen.getByRole("button", { name: "Dựng lại" }));
+  expect(await screen.findByText("Đang dựng…")).toBeInTheDocument();
+  await userEvent.click(screen.getByText("toggle"));   // leave the project
+  expect(screen.queryByText("Đang dựng…")).toBeNull();
+  expect(screen.getByTestId("b").textContent).toBe("/p/1");
+  act(() => emit({ type: "step", label: "Xuất", progress: 0.9 }));
+  await userEvent.click(screen.getByText("toggle"));   // come back
+  expect(await screen.findByText("Đang dựng…")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Dựng lại" })).toBeNull();
+  await userEvent.click(screen.getByText("second"));   // try to start another one
+  expect(e.runEngine).toHaveBeenCalledTimes(1);
 });
 
 test("done reloads the project and shows the Result", async () => {

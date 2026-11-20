@@ -19,7 +19,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export default function Settings() {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify, refreshProjects } = useStore();
   const [tab, setTab] = useState<Tab>("gen");
   const [source, setSource] = useState<AuthSource | undefined>(undefined);
   const [changing, setChanging] = useState(false);
@@ -33,7 +33,10 @@ export default function Settings() {
 
   async function save(next: SettingsT) {
     dispatch({ type: "settings", settings: next });
-    try { await api.saveSettings(next); } catch (e) { notify(toEngineError(e).message); }
+    try {
+      await api.saveSettings(next);
+      if (settings && next.projectsRoot !== settings.projectsRoot) await refreshProjects();
+    } catch (e) { notify(toEngineError(e).message); }
   }
 
   async function changeFolder() {

@@ -23,7 +23,7 @@ App sẽ làm lần lượt:
 
 1. Tải Claude, khoảng 160MB. Đợi vài phút.
 2. Mở trình duyệt để bạn đăng nhập Claude. Nếu app hỏi mã, dán mã từ trình duyệt vào.
-3. Tải model giọng nói, khoảng 1.5GB. Bước này chạy nền, bạn vẫn xem app được. Nếu mạng đứt, mở lại app, nó tải tiếp.
+3. Tải model giọng nói, khoảng 1.5GB. Nút "Bắt đầu" chỉ sáng lên khi tải xong, nên đợi bước này. Nếu mạng đứt, bấm thử lại trên màn hình, app tải tiếp phần còn lại.
 
 ## 4. Dựng một video
 
@@ -46,7 +46,7 @@ Mỗi video có một thư mục riêng, tên bắt đầu bằng ngày dựng. 
 |---|---|
 | Đã hết lượt Claude | Đợi đến giờ ghi trên màn hình, rồi thử lại. |
 | Chưa đăng nhập Claude | Vào Cài đặt, chọn AI dựng, bấm Đổi tài khoản. |
-| Cần tải lại Claude | Mở lại app, app sẽ tải lại. Cần có mạng. |
+| Cần tải lại Claude | Bấm nút "Tải lại Claude" ngay trong thông báo lỗi. Cần có mạng. |
 | Clip quá dài | Cắt clip còn dưới 3 phút rồi thả lại. |
 
 ## 7. Cập nhật

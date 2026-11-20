@@ -28,3 +28,16 @@ test("buffers early events, filters by job, resolves on exit", async () => {
 test("setupCli returns the cli path", async () => {
   expect(await setupCli()).toBe("/c");
 });
+
+test("two exits that arrive before the job id is known do not drop the right one", async () => {
+  const core = await import("@tauri-apps/api/core");
+  vi.mocked(core.invoke).mockImplementationOnce(async (cmd: string) => {
+    if (cmd === "engine_run") {
+      handlers["engine-exit"]({ payload: { job: "j2", code: 0 } });   // another job's exit first
+      handlers["engine-exit"]({ payload: { job: "j3", code: 1 } });   // then ours
+      return "j3";
+    }
+  });
+  const r = await runEngine(["auth-check"]).result;
+  expect(r.code).toBe(1);
+});

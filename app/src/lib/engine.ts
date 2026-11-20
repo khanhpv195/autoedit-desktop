@@ -12,7 +12,7 @@ export function runEngine(args: string[], onEvent?: (e: EngineEvent) => void): E
   let jobId: string | null = null;
   let last: EngineEvent | null = null;
   let error: EngineError | null = null;
-  let exit: ExitPayload | null = null;
+  const exits: ExitPayload[] = []; // exits that arrive before the job id is known (any job)
   let finish!: (r: EngineResult) => void;
   let fail!: (e: unknown) => void;
   const buffered: EventPayload[] = [];
@@ -27,9 +27,10 @@ export function runEngine(args: string[], onEvent?: (e: EngineEvent) => void): E
     onEvent?.(p.event);
   };
   const maybeFinish = () => {
-    if (jobId !== null && exit && exit.job === jobId) {
+    const mine = jobId === null ? undefined : exits.find((x) => x.job === jobId);
+    if (mine) {
       cleanup();
-      finish({ code: exit.code, last, error });
+      finish({ code: mine.code, last, error });
     }
   };
 
@@ -40,13 +41,12 @@ export function runEngine(args: string[], onEvent?: (e: EngineEvent) => void): E
         else if (e.payload.job === jobId) handle(e.payload);
       }));
       unlisteners.push(await listen<ExitPayload>("engine-exit", (e) => {
-        if (jobId === null) { exit = e.payload; return; }
-        if (e.payload.job === jobId) { exit = e.payload; maybeFinish(); }
+        exits.push(e.payload);
+        if (jobId !== null) maybeFinish();
       }));
       const id = await invoke<string>("engine_run", { args });
       jobId = id;
       for (const p of buffered.splice(0)) if (p.job === id) handle(p);
-      if (exit && (exit as ExitPayload).job !== id) exit = null;
       maybeFinish();
       if (cancelled) await invoke("engine_cancel", { job: id });
     } catch (e) {
@@ -91,10 +91,14 @@ export async function authCheck(): Promise<string> {
   return r.last.source;
 }
 
-export async function analyze(dir: string, exclude: string[], onEvent?: (e: EngineEvent) => void): Promise<Card[]> {
+export async function analyze(
+  dir: string, exclude: string[], onEvent?: (e: EngineEvent) => void, onJob?: (job: EngineJob) => void,
+): Promise<Card[]> {
   const args = ["analyze", "--project", dir];
   for (const t of exclude) args.push("--exclude", t);
-  const r = await runEngine(args, onEvent).result;
+  const job = runEngine(args, onEvent);
+  onJob?.(job);
+  const r = await job.result;
   if (r.error) throw r.error;
   if (r.last?.type !== "cards") throw new Error("AI không gợi ý được kịch bản");
   return r.last.cards;

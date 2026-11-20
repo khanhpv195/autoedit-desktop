@@ -35,3 +35,19 @@ test("hidden during onboarding", async () => {
   await screen.findByText(/onboarding/);
   expect(screen.queryByText("AutoEdit")).toBeNull();
 });
+
+test("shows a building marker for a project with a running job", async () => {
+  m.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
+  m.listProjects.mockResolvedValue([
+    { dir: "/a", title: "Váy hoa", niche: "thoi-trang", created: "2026-11-20", status: "done", runCount: 1 },
+  ]);
+  function Start() {
+    const { dispatch } = useStore();
+    return <button onClick={() => dispatch({ type: "buildStart", dir: "/a", last: { prompt: "x" } })}>go</button>;
+  }
+  const { container } = render(<StoreProvider><Sidebar /><Start /></StoreProvider>);
+  await screen.findByText("Váy hoa");
+  await userEvent.click(screen.getByText("go"));
+  expect(screen.getByText("đang dựng…")).toBeInTheDocument();
+  expect(container.querySelector("i.st")).toHaveAttribute("data-status", "building");
+});

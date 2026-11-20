@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import * as api from "../lib/api";
 
 export default function UpdateBanner() {
   const [update, setUpdate] = useState<Update | null>(null);
@@ -20,6 +21,7 @@ export default function UpdateBanner() {
     setBusy(true);
     try {
       await update.downloadAndInstall();
+      try { await api.killAllJobs(); } catch { /* ignore */ } // relaunch must not leave an engine running headless
       await relaunch();
     } catch {
       setBusy(false);

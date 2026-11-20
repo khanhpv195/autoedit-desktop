@@ -14,6 +14,8 @@ export default function ClaudeLogin({ cliPath, onConnected }: { cliPath: string 
   const [error, setError] = useState<string | null>(null);
   const [keyOpen, setKeyOpen] = useState(false);
   const [key, setKey] = useState("");
+  const phaseRef = useRef<Phase>("idle");
+  phaseRef.current = phase;
   const onConnectedRef = useRef(onConnected);
   onConnectedRef.current = onConnected;
 
@@ -35,6 +37,11 @@ export default function ClaudeLogin({ cliPath, onConnected }: { cliPath: string 
       else [a, b].forEach((f) => typeof f === "function" && f());
     })();
     return () => { alive = false; unsubs.forEach((f) => f()); };
+  }, []);
+
+  // Leaving the screen mid-login must free the single login slot.
+  useEffect(() => () => {
+    if (phaseRef.current !== "idle") void (async () => { try { await api.loginCancel(); } catch { /* ignore */ } })();
   }, []);
 
   async function start() {

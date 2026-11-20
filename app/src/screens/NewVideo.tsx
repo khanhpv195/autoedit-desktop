@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
+import type { EngineJob } from "../lib/engine";
 import DropZone from "../components/DropZone";
 import ErrorPanel from "../components/ErrorPanel";
 import { toEngineError, type AnyEngineError } from "../lib/errors";
@@ -10,12 +11,12 @@ import { useStore } from "../state/store";
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
-export default function NewVideo({ niche }: { niche: string }) {
+export default function NewVideo({ niche, dir: existingDir }: { niche: string; dir?: string }) {
   const { dispatch, go, refreshProjects, notify } = useStore();
   const [clip, setClip] = useState<string | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
   const [music, setMusic] = useState<string | null>(null);
-  const [dir, setDir] = useState<string | null>(null);
+  const [dir, setDir] = useState<string | null>(existingDir ?? null);
   const [cards, setCards] = useState<Card[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -23,19 +24,48 @@ export default function NewVideo({ niche }: { niche: string }) {
   const [stepLabel, setStepLabel] = useState("");
   const [err, setErr] = useState<AnyEngineError | null>(null);
   const shown = useRef<string[]>([]);
+  const job = useRef<EngineJob | null>(null);
+
+  // Leaving the screen must not leave an analyze job burning a Claude turn.
+  useEffect(() => () => { void job.current?.cancel(); }, []);
 
   async function runAnalyze(d: string, exclude: string[]) {
     setAnalyzing(true); setErr(null); setPicked(null); setStepLabel("");
     try {
-      const got = await engine.analyze(d, exclude, (e) => { if (e.type === "step") setStepLabel(e.label); });
+      const got = await engine.analyze(d, exclude, (e) => { if (e.type === "step") setStepLabel(e.label); },
+        (j) => { job.current = j; });
       shown.current = [...shown.current, ...got.map((c) => c.title)];
       setCards(got);
     } catch (e) {
       setErr(toEngineError(e));
     } finally {
+      job.current = null;
       setAnalyzing(false);
     }
   }
+
+  // Opened from an existing, not-yet-built project: reuse its clip, assets, prompt and saved card.
+  useEffect(() => {
+    if (!existingDir) return;
+    let alive = true;
+    (async () => {
+      try {
+        const d = await api.getProject(existingDir);
+        if (!alive) return;
+        setClip(d.clip); setLogo(d.logo); setMusic(d.music);
+        if (d.scriptCard) {
+          shown.current = [d.scriptCard.title];
+          setCards([d.scriptCard]); setPicked(0);
+          setPrompt(d.prompt || d.scriptCard.prompt);
+        } else {
+          setPrompt(d.prompt);
+          await runAnalyze(existingDir, []);
+        }
+      } catch (e) { if (alive) setErr(toEngineError(e)); }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingDir]);
 
   async function onClip(path: string) {
     setClip(path); setCards([]); setErr(null); shown.current = [];
@@ -111,7 +141,8 @@ export default function NewVideo({ niche }: { niche: string }) {
             <div className="sc-empty"><span className="spin" /> AI đang xem clip…{stepLabel && <div className="hint">{stepLabel}</div>}</div>
           )}
           {!analyzing && !clip && <div className="sc-empty">Chọn clip để AI gợi ý kịch bản</div>}
-          {err && <div style={{ marginBottom: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })} /></div>}
+          {err && <div style={{ marginBottom: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
+            onSetup={() => go({ name: "onboarding" })} onRetry={dir ? () => void runAnalyze(dir, shown.current) : undefined} /></div>}
           <div className="scripts">
             {cards.map((c, i) => (
               <div key={c.title + i} className={"sc" + (picked === i ? " on" : "")} role="button" tabIndex={0}

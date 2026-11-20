@@ -25,7 +25,7 @@ export default function Building({ build, onCancel }: { build: BuildState; onCan
           {build.preview && (
             <div className="card">
               <h3>Bản xem nhanh vòng {build.preview.round}</h3>
-              <VideoPlayer small src={api.fileSrc(build.preview.path)} />
+              <VideoPlayer small key={build.preview.round} src={`${api.fileSrc(build.preview.path)}?r=${build.preview.round}`} />
             </div>
           )}
           <button className="btn ghost" onClick={onCancel}>Hủy</button>

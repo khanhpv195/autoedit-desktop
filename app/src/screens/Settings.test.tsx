@@ -72,3 +72,12 @@ test("connection check reports failure", async () => {
   // toast is held by the store; no crash is the contract here
   expect(engine.authCheck).toHaveBeenCalled();
 });
+
+test("changing the project folder refreshes the sidebar list", async () => {
+  a.pickFolder.mockResolvedValue("/new/root");
+  await open();
+  a.listProjects.mockClear();
+  await userEvent.click(screen.getByRole("button", { name: /Đổi/ }));
+  await vi.waitFor(() => expect(a.saveSettings).toHaveBeenCalledWith({ ...base, projectsRoot: "/new/root" }));
+  await vi.waitFor(() => expect(a.listProjects).toHaveBeenCalled());
+});

@@ -13,7 +13,7 @@ function Screen() {
   switch (r.name) {
     case "onboarding": return <Onboarding />;
     case "niche": return <NichePicker />;
-    case "new": return <NewVideo key={r.niche} niche={r.niche} />;
+    case "new": return <NewVideo key={r.dir ?? r.niche} niche={r.niche} dir={r.dir} />;
     case "project": return <ProjectView key={r.dir} dir={r.dir} />;
     case "settings": return <Settings />;
   }

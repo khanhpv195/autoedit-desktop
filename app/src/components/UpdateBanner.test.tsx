@@ -3,10 +3,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import * as api from "../lib/api";
 import UpdateBanner from "./UpdateBanner";
 
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: vi.fn() }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
+vi.mock("../lib/api");
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -25,6 +27,8 @@ test("shows the new version and installs then relaunches on click", async () => 
   await userEvent.click(screen.getByRole("button", { name: "Cập nhật" }));
   await waitFor(() => expect(relaunch).toHaveBeenCalled());
   expect(downloadAndInstall).toHaveBeenCalled();
+  expect(api.killAllJobs).toHaveBeenCalled();
+  expect(vi.mocked(api.killAllJobs).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(relaunch).mock.invocationCallOrder[0]);
 });
 
 test("stays silent when check throws", async () => {
