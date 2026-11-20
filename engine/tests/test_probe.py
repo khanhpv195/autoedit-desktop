@@ -30,7 +30,8 @@ def test_check_clip_rejects_garbage(tmp_path):
 
 
 def test_check_clip_rejects_too_long(clip, monkeypatch):
-    import autoedit.prep.probe as m
+    import importlib
+    m = importlib.import_module("autoedit.prep.probe")  # `prep.probe` attr is the re-exported function
     monkeypatch.setattr(m, "MAX_CLIP_SECONDS", 5)
     with pytest.raises(BadInput):
         m.check_clip(clip)

@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
 import pytest
-from autoedit.prep import transcribe as tr
+import importlib
 from autoedit.transcript import Word
 
+# prep/__init__ re-exports the function `transcribe`, shadowing the submodule attribute
+tr = importlib.import_module("autoedit.prep.transcribe")
 FIX = Path(__file__).parent / "fixtures" / "whisper_sample.json"
 
 
