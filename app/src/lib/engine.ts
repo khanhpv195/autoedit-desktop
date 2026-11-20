@@ -68,8 +68,10 @@ function failure(r: EngineResult, fallback: string): Error {
   return new Error(r.error?.message || fallback);
 }
 
-export async function setupCli(): Promise<string> {
-  const r = await runEngine(["setup"]).result;
+export async function setupCli(onProgress?: (p: number, label: string) => void): Promise<string> {
+  const r = await runEngine(["setup"], (e) => {
+    if (e.type === "step") onProgress?.(e.progress, e.label);
+  }).result;
   if (r.error) throw failure(r, "Không tải được Claude");
   if (r.last?.type !== "setup") throw failure(r, "Không tải được Claude");
   return r.last.claude_cli;
