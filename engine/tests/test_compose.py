@@ -8,7 +8,20 @@ from autoedit.render.segments import render_base
 
 
 def test_filter_path_escapes():
-    assert filter_path(__import__("pathlib").PureWindowsPath(r"C:\a b\c.ass")) == r"C\:/a b/c.ass"
+    # option level (C\:/...), then filtergraph level doubles the backslash
+    assert filter_path(__import__("pathlib").PureWindowsPath(r"C:\a b\c.ass")) == "C\\\\:/a b/c.ass"
+    assert filter_path(__import__("pathlib").PurePosixPath("/a/it's,[x];y")) == r"/a/it\\\'s\,\[x\]\;y"
+
+
+def test_render_in_project_dir_with_awkward_characters(clip, tmp_path):
+    """I5: apostrophe, spaces, colon, comma, brackets, Vietnamese in the project path."""
+    work = tmp_path / "2026-11-20_Shop's Việt: [clip], đẹp;1"
+    work.mkdir()
+    base = render_base(clip, [Range(0.5, 1.9), Range(3.0, 4.0)], "chung", work, preview=False)
+    hook, logo, music, ass = _assets(work)
+    out = compose(base, work / "out.mp4", duration=2.4, ass=ass, hook_png=hook, logo_png=None,
+                  cta_png=None, music=None, speech=[], duck_db=-14, preview=False)
+    assert abs(probe(out).duration - 2.4) < 0.1
 
 
 def test_music_volume_expr():

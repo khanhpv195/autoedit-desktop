@@ -1,4 +1,5 @@
 """Final pass: base -> hook -> logo -> CTA -> subtitles LAST (Hard Rule 1); music ducked under speech."""
+import re
 from pathlib import Path, PurePath
 
 from autoedit import bins
@@ -9,7 +10,11 @@ CTA_SECONDS = 2.0
 
 
 def filter_path(p: PurePath) -> str:
-    return str(p).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+    """Escape a path for use as an unquoted filter option value, at both ffmpeg levels:
+    option level (backslash, colon, apostrophe), then filtergraph level (backslash, quote, brackets, comma, semicolon)."""
+    s = str(p).replace("\\", "/")
+    s = s.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    return re.sub(r"([\\'\[\],;])", r"\\\1", s)
 
 
 def music_volume_expr(intervals: list[tuple[float, float]], duck_db: float, base_db: float = -8.0) -> str:
@@ -47,7 +52,7 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
     if cta_png:
         add_overlay(cta_png, "(W-w)/2", 1000, f"gte(t,{max(0.0, duration - CTA_SECONDS):.3f})")
     fonts = filter_path(assets_dir() / "fonts")
-    graph.append(f"[{cur}]subtitles=filename='{filter_path(ass)}':fontsdir='{fonts}'"
+    graph.append(f"[{cur}]subtitles=filename={filter_path(ass)}:fontsdir={fonts}"
                  f"{':original_size=1080x1920' if preview else ''}[vout]")
 
     if music:

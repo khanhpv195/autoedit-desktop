@@ -21,6 +21,11 @@ def extract_segment(src: Path, rng: Range, niche: str, out: Path, preview: bool)
     return out
 
 
+def _quote(path: str) -> str:
+    """Concat demuxer: inside '...' only the quote itself needs escaping, as '\\''."""
+    return path.replace("'", "'\\''")
+
+
 def render_base(src: Path, ranges: list[Range], niche: str, work: Path, preview: bool) -> Path:
     seg_dir = work / ("segs_preview" if preview else "segs")
     seg_dir.mkdir(parents=True, exist_ok=True)
@@ -28,7 +33,7 @@ def render_base(src: Path, ranges: list[Range], niche: str, work: Path, preview:
         old.unlink()
     segs = [extract_segment(src, r, niche, seg_dir / f"seg_{i:02d}.mov", preview) for i, r in enumerate(ranges)]
     lst = seg_dir / "concat.txt"
-    lst.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in segs), encoding="utf-8")
+    lst.write_text("".join(f"file '{_quote(p.resolve().as_posix())}'\n" for p in segs), encoding="utf-8")
     base = work / ("base_preview.mov" if preview else "base.mov")
     bins.run([bins.tool_path("ffmpeg"), "-y", "-v", "error", "-f", "concat", "-safe", "0",
               "-i", str(lst), "-c", "copy", str(base)])
