@@ -1,0 +1,38 @@
+import { useStore } from "../state/store";
+import { nicheLabel } from "../lib/format";
+import type { ProjectStatus } from "../lib/types";
+
+const DOT: Record<ProjectStatus, string> = { new: "new", done: "done", needs_review: "review" };
+
+export default function Sidebar() {
+  const { state, go } = useStore();
+  if (state.route.name === "onboarding") return null;
+  const cur = state.route.name === "project" ? state.route.dir : null;
+  const n = state.projects.length;
+  return (
+    <aside className="side" id="side">
+      <div className="brand"><div className="logo">▶</div><b>AutoEdit</b></div>
+      <div className="snav">
+        <div className="sn on">🎬 Video</div>
+        <div className="sn off" aria-disabled="true" title="Bản sau">📅 Lịch đăng <span className="tag">Bản sau</span></div>
+      </div>
+      <button className="newbtn" onClick={() => go({ name: "niche" })}>＋ Video mới</button>
+      <div className="plist">
+        {state.projects.map((p) => (
+          <div key={p.dir} className={"pi" + (cur === p.dir ? " on" : "")} role="button" tabIndex={0}
+            onClick={() => go({ name: "project", dir: p.dir })}
+            onKeyDown={(e) => { if (e.key === "Enter") go({ name: "project", dir: p.dir }); }}>
+            <div className="tx"><b>{p.title}</b><span>{nicheLabel(p.niche)} · {p.created}</span></div>
+            <i className={"st " + DOT[p.status]} data-status={p.status} />
+          </div>
+        ))}
+      </div>
+      <div className="sidefoot">
+        <div className="ministat"><span>{n} video</span></div>
+        <div className="pi" role="button" tabIndex={0} onClick={() => go({ name: "settings" })}>
+          ⚙ <div className="tx"><b>Cài đặt</b></div>
+        </div>
+      </div>
+    </aside>
+  );
+}
