@@ -266,6 +266,20 @@ Theo prototype `docs/superpowers/prototypes/ui-v6-bundle.html` (onboarding sẽ 
   - post đã lên lịch chạy trên server bundle.social nên vẫn đăng khi máy tắt.
 - **Routine** (ví dụ "mỗi ngày 19:30 đăng video mới nhất chưa đăng"): chỉ chạy khi app mở. Mỗi lần mở app, routine tạo sẵn post cho 7 ngày tới trên bundle.social.
 
+**Quyết định đã chốt cho v2:**
+- Hỗ trợ đăng video lên TikTok, Instagram, YouTube Shorts và Facebook Reels. Kênh khác hiện "chưa hỗ trợ đăng video".
+- "Vào hàng đợi" = slot routine kế tiếp còn trống; không có routine thì 19:30 ngày mai (giờ máy).
+- Routine truyền cho engine qua env `AUTOEDIT_ROUTINES` và đồng bộ khi mở app, không có tiến trình nền.
+- Engine không có lời gọi xóa (post, upload, kênh, team).
+
+## M5. MCP server của khách (v3)
+
+- Khách tự thêm MCP server ở Cài đặt → Kết nối & MCP, kiểu stdio (lệnh + tham số + biến môi trường) hoặc HTTP (URL + header). Có cảnh báo chỉ thêm server tin cậy.
+- Tên server khớp `^[a-z0-9][a-z0-9-]{0,30}$`, khác `autoedit`. Tối đa 10 server.
+- Secret (biến môi trường của stdio, header của HTTP) chỉ nằm trong Keychain, account `mcp:<tên>:<khóa>`; `mcp.json` chỉ lưu tên khóa.
+- Chỉ agent `edit` dùng MCP của khách; `analyze` và `auth-check` không.
+- Nút "Kiểm tra" chạy `mcp-check` để liệt kê tool của server.
+
 ## 8. Cấu trúc repo và bản bàn giao
 
 **Repo**

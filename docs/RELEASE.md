@@ -30,6 +30,8 @@ Khóa updater riêng nằm ở `~/.tauri/autoedit-updater.key`, không nằm tro
 4. Workflow `release` build Mac (arm64) và Windows, tạo bản draft trên GitHub Releases.
 5. Mở bản draft, thử cài, rồi bấm Publish. Updater của khách đọc `latest.json` từ bản mới nhất đã publish.
 
+Bản v0.2.0 (đăng bài, MCP) không cần thêm secret CI nào. Key bundle.social và secret MCP do khách nhập trong app và nằm trong Keychain trên máy khách.
+
 ## 3. Nâng Claude SDK và CLI
 
 1. Sửa `SDK_VERSION` và `WHEELS` trong `engine/autoedit/claude_cli.py`.
@@ -46,7 +48,7 @@ scripts/build-app.sh
 Script build engine, lấy ffmpeg và whisper-cli (cần `cmake`), rồi build app. Kết quả ở `app/src-tauri/target/release/bundle/`:
 
 - `macos/AutoEdit.app`
-- `dmg/AutoEdit_0.1.0_aarch64.dmg`
+- `dmg/AutoEdit_0.2.0_aarch64.dmg`
 
 Bản local ký ad-hoc. Để thử ký thật, chạy `scripts/sign-mac-resources.sh "<identity>"` trước `npm run tauri build`.
 
