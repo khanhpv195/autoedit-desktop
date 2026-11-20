@@ -63,3 +63,35 @@ test("startup does not sync without key, team or an enabled routine", async () =
     unmount();
   }
 });
+
+test("syncRoutine shares one engine job: a second call while running gets the first result", async () => {
+  m.getSettings.mockResolvedValue({ ...settings, onboarded: false });
+  let finish!: (r: any) => void;
+  e.routineSync.mockReturnValue(new Promise((res) => { finish = res; }));
+  let ctx!: ReturnType<typeof useStore>;
+  function Grab() { ctx = useStore(); return <div>running:{String(ctx.state.routineRunning)}</div>; }
+  render(<StoreProvider><Grab /></StoreProvider>);
+  const p1 = ctx.syncRoutine("t1");
+  const p2 = ctx.syncRoutine("t1");
+  expect(p2).toBe(p1);
+  expect(e.routineSync).toHaveBeenCalledTimes(1);
+  expect(await screen.findByText("running:true")).toBeInTheDocument();
+  const result = { created: [], skipped: "Routine đang chạy" };
+  finish(result);
+  expect(await p1).toBe(result);
+  expect(await screen.findByText("running:false")).toBeInTheDocument();
+  e.routineSync.mockResolvedValue({ created: [], skipped: null });
+  await ctx.syncRoutine("t1");
+  expect(e.routineSync).toHaveBeenCalledTimes(2);
+});
+
+test("startup sync shows a skipped message as a normal toast", async () => {
+  const routines = [{ id: "r", time: "19:30", channels: ["TIKTOK"], enabled: true }];
+  m.getSettings.mockResolvedValue({ ...settings, onboarded: true, socialTeamId: "t1", routines });
+  m.listProjects.mockResolvedValue([]);
+  m.socialKeyStatus.mockResolvedValue({ hasKey: true });
+  e.routineSync.mockResolvedValue({ created: [], skipped: "Routine đang chạy" });
+  function T() { const { state } = useStore(); return <div>toast:{state.toast}</div>; }
+  render(<StoreProvider><T /></StoreProvider>);
+  expect(await screen.findByText("toast:Routine đang chạy")).toBeInTheDocument();
+});

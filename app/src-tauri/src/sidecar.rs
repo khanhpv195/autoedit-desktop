@@ -54,7 +54,11 @@ pub fn engine_env(
     has_claude_code: bool,
     settings: &Settings,
     mcp_json: &str,
+    args: &[String],
 ) -> Vec<(String, String)> {
+    let sub = args.first().map(String::as_str).unwrap_or("");
+    let is_social = sub == "social";
+    let wants_mcp = sub == "edit" || sub == "mcp-check";
     let mut env = vec![
         ("DISABLE_AUTOUPDATER".to_string(), "1".to_string()),
         ("AUTOEDIT_CLAUDE_MODEL".to_string(), model.to_string()),
@@ -66,16 +70,66 @@ pub fn engine_env(
     } else if !has_claude_code && let Some(key) = secrets.get(API_KEY_ACCOUNT) {
         env.push(("ANTHROPIC_API_KEY".into(), key));
     }
-    if let Some(k) = secrets.get(SOCIAL_ACCOUNT) {
-        env.push(("BUNDLE_SOCIAL_KEY".into(), k));
+    // Least privilege: each secret only reaches the commands that need it.
+    if is_social {
+        if let Some(k) = secrets.get(SOCIAL_ACCOUNT) {
+            env.push(("BUNDLE_SOCIAL_KEY".into(), k));
+        }
+        env.push((
+            "AUTOEDIT_ROUTINES".into(),
+            serde_json::to_string(&settings.routines).unwrap_or_else(|_| "[]".into()),
+        ));
+        env.push(("AUTOEDIT_PROJECTS_ROOT".into(), settings.projects_root.clone()));
     }
-    env.push((
-        "AUTOEDIT_ROUTINES".into(),
-        serde_json::to_string(&settings.routines).unwrap_or_else(|_| "[]".into()),
-    ));
-    env.push(("AUTOEDIT_PROJECTS_ROOT".into(), settings.projects_root.clone()));
-    env.push(("AUTOEDIT_MCP".into(), mcp_json.to_string()));
+    if wants_mcp {
+        env.push(("AUTOEDIT_MCP".into(), mcp_json.to_string()));
+    }
+    if !cfg!(windows)
+        && let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+    {
+        let inherited = std::env::var("PATH").unwrap_or_default();
+        env.push(("PATH".into(), augmented_path(&home, &inherited)));
+    }
     env
+}
+
+/// A GUI app starts with a minimal PATH. Prepend the usual user tool dirs that exist
+/// (node, npx, uvx, bun, cargo ...) so customer MCP servers can be found.
+pub fn augmented_path(home: &Path, inherited: &str) -> String {
+    let mut dirs: Vec<PathBuf> = ["/opt/homebrew/bin", "/usr/local/bin"].iter().map(PathBuf::from).collect();
+    for rel in [".volta/bin", ".local/bin", ".bun/bin", ".cargo/bin"] {
+        dirs.push(home.join(rel));
+    }
+    let nvm = home.join(".nvm").join("versions").join("node");
+    let newest = std::fs::read_dir(&nvm)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.join("bin").is_dir())
+        .max_by_key(|p| node_version(p));
+    if let Some(n) = newest {
+        dirs.push(n.join("bin"));
+    }
+    let mut out: Vec<String> = Vec::new();
+    for d in dirs.into_iter().filter(|d| d.is_dir()) {
+        let s = d.to_string_lossy().into_owned();
+        if !out.contains(&s) {
+            out.push(s);
+        }
+    }
+    for part in inherited.split(':').filter(|p| !p.is_empty()) {
+        if !out.iter().any(|x| x == part) {
+            out.push(part.to_string());
+        }
+    }
+    out.join(":")
+}
+
+fn node_version(p: &Path) -> Vec<u64> {
+    p.file_name()
+        .map(|n| n.to_string_lossy().trim_start_matches('v').split('.').map(|x| x.parse().unwrap_or(0)).collect())
+        .unwrap_or_default()
 }
 
 #[derive(Default)]
@@ -277,7 +331,7 @@ mod tests {
         let m = MemoryStore::default();
         m.set(OAUTH_ACCOUNT, "tok").unwrap();
         m.set(API_KEY_ACCOUNT, "key").unwrap();
-        let e = engine_env(&m, "claude-opus-5-5", false, &Settings::default(), "{}");
+        let e = engine_env(&m, "claude-opus-5-5", false, &Settings::default(), "{}", &[]);
         assert!(e.contains(&("CLAUDE_CODE_OAUTH_TOKEN".into(), "tok".into())));
         assert!(!e.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
         assert!(e.contains(&("DISABLE_AUTOUPDATER".into(), "1".into())));
@@ -286,8 +340,8 @@ mod tests {
     fn env_api_key_only_without_any_subscription() {
         let m = MemoryStore::default();
         m.set(API_KEY_ACCOUNT, "key").unwrap();
-        assert!(engine_env(&m, "m", false, &Settings::default(), "{}").iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
-        assert!(!engine_env(&m, "m", true, &Settings::default(), "{}").iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
+        assert!(engine_env(&m, "m", false, &Settings::default(), "{}", &[]).iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
+        assert!(!engine_env(&m, "m", true, &Settings::default(), "{}", &[]).iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
     }
     #[test]
     fn env_social_key_routines_projects_root_and_mcp() {
@@ -298,16 +352,47 @@ mod tests {
             routines: vec![Routine { id: "r".into(), time: "19:30".into(), channels: vec!["TIKTOK".into()], enabled: true }],
             ..Default::default()
         };
-        let none = engine_env(&m, "m", false, &st, "{}");
+        let social: Vec<String> = vec!["social".into(), "check".into()];
+        let none = engine_env(&m, "m", false, &st, "{}", &social);
         assert!(!none.iter().any(|(k, _)| k == "BUNDLE_SOCIAL_KEY"));
         m.set(SOCIAL_ACCOUNT, "bk").unwrap();
-        let e = engine_env(&m, "m", false, &st, r#"{"x":{}}"#);
+        let e = engine_env(&m, "m", false, &st, r#"{"x":{}}"#, &social);
         assert!(e.contains(&("BUNDLE_SOCIAL_KEY".into(), "bk".into())));
         let get = |k: &str| e.iter().find(|(n, _)| n == k).unwrap().1.clone();
         let routines: serde_json::Value = serde_json::from_str(&get("AUTOEDIT_ROUTINES")).unwrap();
         assert_eq!(routines[0]["time"], "19:30");
         assert_eq!(get("AUTOEDIT_PROJECTS_ROOT"), "/p");
+        assert!(!e.iter().any(|(k, _)| k == "AUTOEDIT_MCP"));
+        let edit: Vec<String> = vec!["edit".into()];
+        let e = engine_env(&m, "m", false, &st, r#"{"x":{}}"#, &edit);
+        let get = |k: &str| e.iter().find(|(n, _)| n == k).unwrap().1.clone();
         assert_eq!(get("AUTOEDIT_MCP"), r#"{"x":{}}"#);
+        assert!(!e.iter().any(|(k, _)| k == "BUNDLE_SOCIAL_KEY" || k == "AUTOEDIT_ROUTINES"));
+        let chk: Vec<String> = vec!["mcp-check".into(), "--name".into(), "x".into()];
+        assert!(engine_env(&m, "m", false, &st, "{}", &chk).iter().any(|(k, _)| k == "AUTOEDIT_MCP"));
+        for a in [vec!["analyze"], vec!["setup"], vec![]] {
+            let a: Vec<String> = a.into_iter().map(String::from).collect();
+            let e = engine_env(&m, "m", false, &st, "{}", &a);
+            assert!(!e.iter().any(|(k, _)| k == "BUNDLE_SOCIAL_KEY" || k == "AUTOEDIT_MCP"));
+        }
+    }
+    #[test]
+    fn augmented_path_prepends_existing_dirs_only() {
+        let h = tempfile::tempdir().unwrap();
+        for d in [".volta/bin", ".cargo/bin", ".nvm/versions/node/v18.2.0/bin", ".nvm/versions/node/v20.10.0/bin", ".nvm/versions/node/v9.0.0/bin"] {
+            std::fs::create_dir_all(h.path().join(d)).unwrap();
+        }
+        let p = augmented_path(h.path(), "/usr/bin:/bin");
+        let parts: Vec<&str> = p.split(':').collect();
+        let hs = h.path().to_string_lossy();
+        assert!(parts.contains(&format!("{hs}/.volta/bin").as_str()));
+        assert!(parts.contains(&format!("{hs}/.cargo/bin").as_str()));
+        assert!(!parts.contains(&format!("{hs}/.bun/bin").as_str()));
+        assert!(parts.contains(&format!("{hs}/.nvm/versions/node/v20.10.0/bin").as_str()));
+        assert!(!p.contains("v18.2.0") && !p.contains("v9.0.0"));
+        assert!(p.ends_with(":/usr/bin:/bin"));
+        let idx = |x: &str| parts.iter().position(|y| *y == x).unwrap();
+        assert!(idx(&format!("{hs}/.volta/bin")) < idx("/usr/bin"));
     }
     #[test]
     fn locate_packaged_engine_with_bin_dir() {

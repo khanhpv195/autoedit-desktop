@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
-import { StoreProvider } from "../state/store";
+import { StoreProvider, useStore } from "../state/store";
 import SocialSettings from "./SocialSettings";
 
 vi.mock("../lib/api");
@@ -96,4 +96,16 @@ test("refresh re-reads the account", async () => {
   await screen.findByText(/Đã đăng 11/);
   await userEvent.click(screen.getByRole("button", { name: /Làm mới/ }));
   await waitFor(() => expect(e.socialCheck).toHaveBeenCalledTimes(2));
+});
+
+test("saving the team uses the newest settings from the store, not a stale copy", async () => {
+  a.socialKeyStatus.mockResolvedValue({ hasKey: true });
+  let resolve!: (acc: any) => void;
+  e.socialCheck.mockReturnValue(new Promise((r) => { resolve = r; }));
+  function Bump() { const { dispatch, state } = useStore(); return <button onClick={() => dispatch({ type: "settings", settings: { ...state.settings!, lastNiche: "my-pham" } })}>bump</button>; }
+  render(<StoreProvider><SocialSettings /><Bump /></StoreProvider>);
+  await waitFor(() => expect(e.socialCheck).toHaveBeenCalled());
+  await userEvent.click(screen.getByText("bump"));
+  resolve(account());
+  await waitFor(() => expect(a.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ socialTeamId: "t1", lastNiche: "my-pham" })));
 });

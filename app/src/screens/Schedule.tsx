@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import ErrorPanel from "../components/ErrorPanel";
 import RoutineEditor from "../components/RoutineEditor";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
 import { describeError, toEngineError, type AnyEngineError } from "../lib/errors";
-import { V2_CHANNELS, channelLabel, hhmm, localIso, postTime, weekRange } from "../lib/format";
+import { STATUS_VI, V2_CHANNELS, channelLabel, hhmm, localIso, postTime, weekRange } from "../lib/format";
 import type { Post, Routine } from "../lib/types";
 import { useStore } from "../state/store";
 
 const DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const COLOR: Record<string, string> = { SCHEDULED: "#2563eb", POSTED: "#16a34a", ERROR: "#dc2626" };
 const colorOf = (s: string) => COLOR[s] ?? "#9ca3af";
-const STATUS_VI: Record<string, string> = { SCHEDULED: "Đã lên lịch", POSTED: "Đã đăng", ERROR: "Lỗi", PROCESSING: "Đang xử lý" };
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 export default function Schedule() {
-  const { state, dispatch, go, notify } = useStore();
+  const { state, dispatch, go, notify, syncRoutine } = useStore();
   const settings = state.settings;
   const team = settings?.socialTeamId ?? state.social?.teams[0]?.id ?? null;
   const [offset, setOffset] = useState(0);
@@ -24,7 +24,8 @@ export default function Schedule() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<AnyEngineError | null>(null);
   const [sel, setSel] = useState<Post | null>(null);
-  const [running, setRunning] = useState(false);
+  const running = state.routineRunning;
+  const [accountErr, setAccountErr] = useState<AnyEngineError | null>(null);
   const [retrying, setRetrying] = useState(false);
 
   const range = useMemo(() => weekRange(new Date(), offset), [offset]);
@@ -44,9 +45,35 @@ export default function Schedule() {
   // Channels of the team (for new routines) come from the cached account read.
   useEffect(() => {
     if (state.hasSocialKey && !state.social) {
-      engine.socialCheck().then((acc) => dispatch({ type: "social", social: acc })).catch(() => {});
+      setAccountErr(null);
+      engine.socialCheck().then((acc) => dispatch({ type: "social", social: acc })).catch((e) => setAccountErr(toEngineError(e)));
     }
   }, [state.hasSocialKey, state.social, dispatch]);
+
+  if (state.hasSocialKey && !team) {
+    const toConn = () => go({ name: "settings", tab: "conn" });
+    return (
+      <div className="view on">
+        <div className="lock">
+          <div className="big">📅</div>
+          {accountErr ? (
+            <>
+              <h2>Chưa đọc được tài khoản bundle.social</h2>
+              <ErrorPanel error={accountErr} context="social" compact onSettings={toConn} />
+            </>
+          ) : state.social ? (
+            <>
+              <h2>Chưa có team trên bundle.social</h2>
+              <p>Tạo team và nối kênh trên bundle.social, rồi vào Cài đặt → Kết nối &amp; MCP bấm Làm mới.</p>
+            </>
+          ) : (
+            <h2>Đang đọc tài khoản bundle.social…</h2>
+          )}
+          <button className="btn primary" onClick={toConn}>Mở Cài đặt → Kết nối &amp; MCP</button>
+        </div>
+      </div>
+    );
+  }
 
   if (!state.hasSocialKey || !team) {
     return (
@@ -81,13 +108,11 @@ export default function Schedule() {
 
   async function runNow() {
     if (!team) return;
-    setRunning(true);
     try {
-      const r = await engine.routineSync(team);
+      const r = await syncRoutine(team);
       notify(r.skipped ?? `Đã tạo ${r.created.length} bài cho 7 ngày tới`);
       await load();
     } catch (e) { const d = describeError(toEngineError(e)); notify(`${d.title}. ${d.detail}`); }
-    finally { setRunning(false); }
   }
 
   async function retry(p: Post) {
@@ -128,7 +153,7 @@ export default function Schedule() {
       </div>
       <div className="sub">Video đã lên lịch và các routine tự động đăng.</div>
       <div className="banner" style={{ marginBottom: 16 }}>Lịch đăng chạy trên bundle.social, đăng đúng giờ kể cả khi tắt máy.</div>
-      {error && <div className="errline" role="alert" style={{ marginBottom: 10 }}>{describeError(error).title}. {describeError(error).detail}</div>}
+      {error && <div className="errline" role="alert" style={{ marginBottom: 10 }}>{describeError(error, "social").title}. {describeError(error, "social").detail}</div>}
       {loading && <div className="hint" style={{ marginBottom: 8 }}>Đang tải…</div>}
 
       {mode === "week" ? (

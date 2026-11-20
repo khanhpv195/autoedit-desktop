@@ -8,15 +8,36 @@ import { useStore } from "../state/store";
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,30}$/;
 const MAX = 10;
 
-/** Split on whitespace but keep "quoted strings" (single or double) together. */
+/**
+ * Shell-like split: whitespace separates, "double" and 'single' quotes group (also inside a word,
+ * as in --opt="a b"), and a backslash escapes a quote, backslash or space. Any other backslash
+ * stays literal so Windows paths survive.
+ */
 export function splitArgs(text: string): string[] {
   const out: string[] = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) out.push(m[1] ?? m[2] ?? m[3]);
+  let cur = "";
+  let started = false;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const n = text[i + 1];
+    if (c === "\\" && n !== undefined && (quote === "'" ? false : quote === '"' ? n === '"' || n === "\\" : /["'\\\s]/.test(n))) {
+      cur += n; started = true; i++;
+    } else if (quote) {
+      if (c === quote) quote = null; else cur += c;
+    } else if (c === '"' || c === "'") {
+      quote = c; started = true;
+    } else if (/\s/.test(c)) {
+      if (started) { out.push(cur); cur = ""; started = false; }
+    } else { cur += c; started = true; }
+  }
+  if (started) out.push(cur);
   return out;
 }
-const joinArgs = (args: string[]) => args.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ");
+/** Inverse of splitArgs: quote only when needed, so save -> edit -> save keeps every argument. */
+export function joinArgs(args: string[]): string {
+  return args.map((a) => (a !== "" && /^[\w@%+=:,./-]+$/.test(a) ? a : `"${a.replace(/(["\\])/g, "\\$1")}"`)).join(" ");
+}
 
 type Row = { key: string; value: string };
 type Form = {
@@ -80,6 +101,8 @@ export default function McpSettings() {
     if (form.transport === "http" && !/^https?:\/\//.test(form.url.trim())) { setFormErr("URL phải bắt đầu bằng http:// hoặc https://"); return; }
     const rows = form.rows.map((r) => ({ key: r.key.trim(), value: r.value })).filter((r) => r.key);
     if (new Set(rows.map((r) => r.key)).size !== rows.length) { setFormErr("Tên khóa bị trùng"); return; }
+    const missing = rows.find((r) => !r.value && !form.saved.has(r.key));
+    if (missing) { setFormErr(`Nhập giá trị cho ${missing.key}`); return; }
     const keys = rows.map((r) => r.key);
     const server: McpServer = form.transport === "stdio"
       ? { name, enabled: form.enabled, transport: "stdio", command: form.command.trim(), args: splitArgs(form.args), envKeys: keys }

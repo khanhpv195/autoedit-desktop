@@ -32,3 +32,5 @@ export function weekRange(now: Date, offset = 0): { from: Date; to: Date } {
   const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 7);
   return { from, to };
 }
+
+export const STATUS_VI: Record<string, string> = { SCHEDULED: "Đã lên lịch", POSTED: "Đã đăng", ERROR: "Lỗi", PROCESSING: "Đang xử lý" };

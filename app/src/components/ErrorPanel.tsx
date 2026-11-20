@@ -1,4 +1,4 @@
-import { describeError, type AnyEngineError } from "../lib/errors";
+import { describeError, type AnyEngineError, type ErrorContext } from "../lib/errors";
 
 type Props = {
   error: AnyEngineError;
@@ -6,10 +6,11 @@ type Props = {
   onSettings?: () => void;
   onSetup?: () => void;
   compact?: boolean;
+  context?: ErrorContext;
 };
 
-export default function ErrorPanel({ error, onRetry, onSettings, onSetup, compact }: Props) {
-  const d = describeError(error);
+export default function ErrorPanel({ error, onRetry, onSettings, onSetup, compact, context }: Props) {
+  const d = describeError(error, context);
   return (
     <div className="err" role="alert" style={compact ? { padding: 12, fontSize: 13 } : undefined}>
       <b>{d.title}</b>

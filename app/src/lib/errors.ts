@@ -1,9 +1,18 @@
 import { hhmm } from "./format";
 
+const KNOWN = new Set(["RATE_LIMIT", "NO_AUTH", "SETUP_REQUIRED", "BAD_INPUT", "SOCIAL_AUTH", "SOCIAL_LIMIT", "SOCIAL_FAILED"]);
+
 export type ErrorAction = "retry" | "settings" | "setup" | "none";
 export type ErrorInfo = { title: string; detail: string; action: ErrorAction };
 
-export function describeError(e: { code: string; message: string; retry_at: string | null }): ErrorInfo {
+/** Where the error came from: social commands and caption writing get their own wording. */
+export type ErrorContext = "social" | "caption";
+
+export function describeError(e: { code: string; message: string; retry_at: string | null }, context?: ErrorContext): ErrorInfo {
+  if (context && (e.code === "BAD_INPUT" || !KNOWN.has(e.code))) {
+    const title = context === "caption" ? "Chưa viết được caption" : "Chưa đăng được";
+    return { title, detail: e.message, action: e.code === "BAD_INPUT" ? "none" : "retry" };
+  }
   switch (e.code) {
     case "RATE_LIMIT": {
       const t = e.retry_at ? hhmm(e.retry_at) : "";

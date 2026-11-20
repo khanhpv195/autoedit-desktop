@@ -4,11 +4,24 @@ use std::path::Path;
 use crate::paths::default_projects_root;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Routine {
     pub id: String,
     pub time: String,
     pub channels: Vec<String>,
     pub enabled: bool,
+}
+
+impl Default for Routine {
+    fn default() -> Self {
+        Routine { id: String::new(), time: "19:30".into(), channels: Vec::new(), enabled: true }
+    }
+}
+
+/// A malformed routine entry is dropped instead of failing the whole settings file.
+fn lenient_routines<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Routine>, D::Error> {
+    let raw = Vec::<serde_json::Value>::deserialize(d).unwrap_or_default();
+    Ok(raw.into_iter().filter_map(|v| serde_json::from_value::<Routine>(v).ok()).filter(|r| !r.id.is_empty()).collect())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -19,6 +32,7 @@ pub struct Settings {
     pub last_niche: Option<String>,
     pub onboarded: bool,
     pub social_team_id: Option<String>,
+    #[serde(deserialize_with = "lenient_routines")]
     pub routines: Vec<Routine>,
 }
 
@@ -94,6 +108,21 @@ mod tests {
         save(d.path(), &s).unwrap();
         assert!(std::fs::read_to_string(d.path().join("settings.json")).unwrap().contains("socialTeamId"));
         assert_eq!(load(d.path()), s);
+    }
+    #[test]
+    fn malformed_routine_is_dropped_and_settings_survive() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(
+            d.path().join("settings.json"),
+            r#"{"model":"m","onboarded":true,"routines":[{"id":"a","time":"08:00","channels":["TIKTOK"],"enabled":true},{"id":"b","time":5},"junk",{"id":"c"}]}"#,
+        )
+        .unwrap();
+        let s = load(d.path());
+        assert!(s.onboarded);
+        assert_eq!(s.model, "m");
+        let ids: Vec<_> = s.routines.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["a", "c"]);
+        assert!(s.routines[1].channels.is_empty());
     }
     #[test]
     fn corrupt_file_gives_default() {
