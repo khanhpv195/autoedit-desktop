@@ -81,3 +81,11 @@ test("changing the project folder refreshes the sidebar list", async () => {
   await vi.waitFor(() => expect(a.saveSettings).toHaveBeenCalledWith({ ...base, projectsRoot: "/new/root" }));
   await vi.waitFor(() => expect(a.listProjects).toHaveBeenCalled());
 });
+
+test("connection tab shows bundle.social and MCP blocks", async () => {
+  a.socialKeyStatus.mockResolvedValue({ hasKey: false });
+  a.mcpList.mockResolvedValue([]);
+  await open("Kết nối & MCP");
+  expect(await screen.findByLabelText("API key bundle.social")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Thêm MCP server/ })).toBeInTheDocument();
+});
