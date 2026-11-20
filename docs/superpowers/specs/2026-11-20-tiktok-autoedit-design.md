@@ -233,7 +233,7 @@ Theo prototype `docs/superpowers/prototypes/ui-v6-bundle.html` (onboarding sẽ 
 - Chân sidebar: tổng số video, nút Cài đặt.
 
 **Màn hình**
-1. **Onboarding**: (1) Tải Claude (~160MB, vài phút) → (2) Đăng nhập Claude, trong lúc đó model Whisper tải nền → (3) Nhập key bundle.social, bước này có thể bỏ qua (v2).
+1. **Onboarding**: (1) Tải Claude (~160MB, vài phút) → (2) Đăng nhập Claude, trong lúc đó model Whisper tải nền. Bản v1 chỉ có 2 bước này; bước nhập key bundle.social chuyển sang v2.
 2. **Chọn ngành**: 5 thẻ (thời trang, mỹ phẩm, đồ ăn, phụ kiện, khác). Ngành dùng lần trước có nhãn "Lần trước".
 3. **Màn dựng**: nút "← Đổi ngành", nhãn ngành, vùng thả clip, logo và nhạc. Khi thả clip, app tự chạy `analyze` và hiện 3 thẻ kịch bản cùng nút "↻ Gợi ý khác". Sau đó là ô mô tả và nút "Dựng video".
 4. **Đang dựng**: các bước, feed hoạt động của agent, preview từng vòng, nút Hủy.
@@ -290,7 +290,7 @@ tiktok-autoedit/
 - `Resources/agent/`,
 - `assets/` (font, PNG cho CTA).
 
-Khách không phải tự cài gì. Lần mở đầu app tự tải CLI Claude (~160MB) và model Whisper (~1.5GB). Tự cập nhật qua Tauri updater, lấy bản mới từ GitHub Releases.
+Khách không phải tự cài gì. Lần mở đầu app tự tải CLI Claude (~160MB) và model Whisper (~1.5GB). Tự cập nhật qua Tauri updater, lấy bản mới từ GitHub Releases của repo phát hành (endpoint `https://github.com/<repo>/releases/latest/download/latest.json`, workflow phát hành điền tên repo lúc build).
 
 **Dữ liệu trên máy khách**
 ```
