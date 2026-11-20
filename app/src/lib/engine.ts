@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Card, EngineError, EngineEvent } from "./types";
+import type { Card, EngineError, EngineEvent, McpTool, Post, SocialAccount } from "./types";
 
 export type EngineResult = { code: number | null; last: EngineEvent | null; error: EngineError | null };
 export type EngineJob = { result: Promise<EngineResult>; cancel(): Promise<void> };
@@ -102,4 +102,52 @@ export async function analyze(
   if (r.error) throw r.error;
   if (r.last?.type !== "cards") throw new Error("AI không gợi ý được kịch bản");
   return r.last.cards;
+}
+
+async function social<T extends EngineEvent["type"]>(
+  args: string[], type: T, fallback: string, onEvent?: (e: EngineEvent) => void,
+): Promise<Extract<EngineEvent, { type: T }>> {
+  const r = await runEngine(args, onEvent).result;
+  if (r.error) throw r.error;
+  if (r.last?.type !== type) throw new Error(fallback);
+  return r.last as Extract<EngineEvent, { type: T }>;
+}
+
+export const socialCheck = (): Promise<SocialAccount> =>
+  social(["social", "check"], "social_account", "Không đọc được tài khoản bundle.social");
+
+export async function socialPortal(team: string): Promise<string> {
+  return (await social(["social", "portal", "--team", team], "social_portal", "Không mở được trang quản lý kênh")).url;
+}
+
+export async function socialCaption(dir: string, run: number): Promise<string> {
+  return (await social(["social", "caption", "--project", dir, "--run", String(run)], "caption", "AI không viết được caption")).text;
+}
+
+export type PublishArgs = { dir: string; run: number; team: string; channels: string[]; caption: string; when: string };
+export async function socialPublish(a: PublishArgs, onStep?: (label: string, progress: number) => void): Promise<Post> {
+  const args = ["social", "publish", "--project", a.dir, "--run", String(a.run), "--team", a.team];
+  for (const c of a.channels) args.push("--channel", c);
+  args.push("--caption", a.caption, "--when", a.when);
+  const e = await social(args, "social_post", "Đăng bài không có kết quả", (ev) => {
+    if (ev.type === "step") onStep?.(ev.label, ev.progress);
+  });
+  return e.post;
+}
+
+export async function socialList(team: string, from: string, to: string): Promise<Post[]> {
+  return (await social(["social", "list", "--team", team, "--from", from, "--to", to], "social_posts", "Không đọc được lịch đăng")).posts;
+}
+
+export async function socialRetry(post: string): Promise<Post> {
+  return (await social(["social", "retry", "--post", post], "social_post", "Thử lại không có kết quả")).post;
+}
+
+export async function routineSync(team: string): Promise<{ created: Post[]; skipped: string | null }> {
+  const e = await social(["social", "routine-sync", "--team", team], "routine_sync", "Routine không chạy được");
+  return { created: e.created, skipped: e.skipped };
+}
+
+export async function mcpCheck(name: string): Promise<McpTool[]> {
+  return (await social(["mcp-check", "--name", name], "mcp_tools", "Không kết nối được MCP")).tools;
 }

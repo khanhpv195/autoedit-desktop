@@ -19,6 +19,12 @@ export function describeError(e: { code: string; message: string; retry_at: stri
       return { title: "Cần tải lại Claude", detail: e.message || "Thiếu thành phần của Claude.", action: "setup" };
     case "BAD_INPUT":
       return { title: "File không dùng được", detail: e.message, action: "none" };
+    case "SOCIAL_AUTH":
+      return { title: "Key bundle.social không dùng được", detail: e.message || "Nhập lại key ở Cài đặt → Kết nối.", action: "settings" };
+    case "SOCIAL_LIMIT":
+      return { title: "Hết lượt đăng của gói bundle.social", detail: e.message || "Thử lại sau hoặc nâng gói.", action: "none" };
+    case "SOCIAL_FAILED":
+      return { title: "Đăng bài lỗi", detail: e.message, action: "retry" };
     default:
       return { title: "Dựng video bị lỗi", detail: e.message, action: "retry" };
   }

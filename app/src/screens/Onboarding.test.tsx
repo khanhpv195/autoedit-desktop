@@ -35,6 +35,10 @@ test("step 1 downloads Claude then step 2 shows connected and waits for the mode
   await act(async () => finishModel());
   expect(start).toBeEnabled();
   await userEvent.click(start);
+  expect(a.saveSettings).not.toHaveBeenCalled();
+  expect(await screen.findByText(/Bước 3/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Bỏ qua" }));
+  await waitFor(() => expect(a.saveSettings).toHaveBeenCalled());
   expect(a.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ onboarded: true }));
 });
 

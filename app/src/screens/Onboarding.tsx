@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
 import ClaudeLogin from "../components/ClaudeLogin";
+import SocialSettings from "../components/SocialSettings";
 import { useStore } from "../state/store";
 
 const pct = (p: number) => Math.round(Math.max(0, Math.min(1, p)) * 100);
@@ -9,7 +10,7 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : typeof e === "stri
 
 export default function Onboarding() {
   const { state, dispatch, refreshProjects, go } = useStore();
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [cliP, setCliP] = useState(0);
   const [cliLabel, setCliLabel] = useState("");
   const [cliErr, setCliErr] = useState<string | null>(null);
@@ -19,6 +20,7 @@ export default function Onboarding() {
   const [modelDone, setModelDone] = useState(false);
   const [modelErr, setModelErr] = useState<string | null>(null);
   const [modelTry, setModelTry] = useState(0);
+  const [socialOk, setSocialOk] = useState(false);
   const [cli, setCli] = useState<string | null>(null);
   const cliStarted = useRef(-1);
   const modelStarted = useRef(-1);
@@ -60,9 +62,9 @@ export default function Onboarding() {
   return (
     <div className="view on">
       <div className="onb">
-        <div className="stepn"><span className="on" /><span className={step === 2 ? "on" : ""} /></div>
+        <div className="stepn"><span className="on" /><span className={step >= 2 ? "on" : ""} /><span className={step === 3 ? "on" : ""} /></div>
         <h1>Chào mừng đến AutoEdit</h1>
-        <div className="sub"><b>1 Tải Claude</b> · <b>2 Đăng nhập Claude</b></div>
+        <div className="sub"><b>1 Tải Claude</b> · <b>2 Đăng nhập Claude</b> · <b>3 Đăng bài (tùy chọn)</b></div>
 
         {step === 1 && (
           <div className="card">
@@ -119,7 +121,20 @@ export default function Onboarding() {
               )}
             </div>
             <div style={{ textAlign: "right" }}>
-              <button className="btn primary big" disabled={!source || !modelDone} onClick={begin}>Bắt đầu</button>
+              <button className="btn primary big" disabled={!source || !modelDone} onClick={() => setStep(3)}>Bắt đầu</button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="stack">
+            <div className="card">
+              <h3>Bước 3 · Đăng bài (tùy chọn)</h3>
+              <div className="sub" style={{ margin: "0 0 12px" }}>Nối bundle.social để đăng video thẳng lên TikTok, Instagram, YouTube, Facebook. Có thể làm sau trong Cài đặt.</div>
+            </div>
+            <SocialSettings onConnected={setSocialOk} />
+            <div style={{ textAlign: "right" }}>
+              <button className="btn primary big" onClick={begin}>{socialOk ? "Hoàn tất" : "Bỏ qua"}</button>
             </div>
           </div>
         )}
