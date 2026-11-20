@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
 
 from autoedit import bins
+from autoedit.fsutil import part_path
 from autoedit.prep.probe import MediaInfo
 
 W, H, FPS = 1080, 1920, 30
@@ -23,6 +25,7 @@ def build_filter(info: MediaInfo) -> str:
 
 def normalize(src: Path, dst: Path, info: MediaInfo) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = part_path(dst)
     cmd = [bins.tool_path("ffmpeg"), "-y", "-v", "error", "-i", str(src)]
     if not info.has_audio:
         cmd += ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
@@ -30,6 +33,10 @@ def normalize(src: Path, dst: Path, info: MediaInfo) -> Path:
             "-map", "1:a" if not info.has_audio else "0:a:0",
             "-c:v", "libx264", "-preset", "fast", "-crf", "16",
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
-            "-t", f"{info.duration:.3f}", "-movflags", "+faststart", str(dst)]
-    bins.run(cmd)
+            "-t", f"{info.duration:.3f}", "-movflags", "+faststart", str(tmp)]
+    try:
+        bins.run(cmd)
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
     return dst

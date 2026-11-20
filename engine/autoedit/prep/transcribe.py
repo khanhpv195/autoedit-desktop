@@ -5,6 +5,7 @@ from pathlib import Path
 
 from autoedit import bins
 from autoedit.errors import RenderFailed
+from autoedit.fsutil import atomic_write_text
 from autoedit.transcript import Word, words_from_json, words_to_json
 
 WHISPER_LAG = 0.10
@@ -66,11 +67,13 @@ def transcribe(video: Path, work_dir: Path, language: str = "vi") -> list[Word]:
     cache = work_dir / "transcript.json"
     digest = _sha256(video)
     if cache.exists():
-        data = json.loads(cache.read_text(encoding="utf-8"))
-        if data.get("sha256") == digest:
-            return words_from_json(data["words"])
+        try:
+            data = json.loads(cache.read_text(encoding="utf-8"))
+            if data.get("sha256") == digest:
+                return words_from_json(data["words"])
+        except (ValueError, KeyError, TypeError):
+            pass    # corrupt or half-written cache: transcribe again
     words = _run_whisper(video, work_dir, language)
     work_dir.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({"sha256": digest, "words": words_to_json(words)}, ensure_ascii=False),
-                     encoding="utf-8")
+    atomic_write_text(cache, json.dumps({"sha256": digest, "words": words_to_json(words)}, ensure_ascii=False))
     return words

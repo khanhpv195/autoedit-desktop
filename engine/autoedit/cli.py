@@ -17,6 +17,7 @@ from autoedit.agent.tools import build_server
 from autoedit.claude_cli import find_cli, install_cli
 from autoedit.errors import AutoeditError, NoAuth, RateLimited
 from autoedit.events import Emitter
+from autoedit.fsutil import atomic_write_text
 from autoedit.fallback import FALLBACK_SUMMARY, silence_cut_edl
 from autoedit.prep import prepare
 from autoedit.project import Project
@@ -77,7 +78,7 @@ async def _edit(args, events: Emitter) -> int:
             usage["fallback"] = True
         ev.step("Đang xuất video…", 0.9)
         res = render(prepared, project, edl, run_dir / "final.mp4", preview=False)
-        (run_dir / "edl.json").write_text(json.dumps(edl.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(run_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
         project.prompt = user_prompt
         project.runs.append({"n": int(run_dir.name), "final": f"runs/{run_dir.name}/final.mp4",
                              "prompt": user_prompt, "feedback": args.feedback, "summary": summary,

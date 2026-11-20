@@ -9,6 +9,7 @@ from autoedit import __version__
 from autoedit.agent.session import EditSession
 from autoedit.edl import EdlError, validate_edl
 from autoedit.errors import AutoeditError
+from autoedit.fsutil import atomic_write_text
 from autoedit.prep.keyframes import frame_at
 from autoedit.render.pipeline import preview_frames, render
 from autoedit.transcript import format_phrases, pack_phrases
@@ -69,8 +70,7 @@ async def set_edl(s: EditSession, args: dict) -> dict:
             s.aborted = True
         return _text(f"Invalid EDL: {e}", error=True)
     s.edl = edl
-    (s.project.work_dir / "edl.json").write_text(json.dumps(edl.to_dict(), ensure_ascii=False, indent=2),
-                                                 encoding="utf-8")
+    atomic_write_text(s.project.work_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
     msg = {"corrected_edl": edl.to_dict(), "notes": notes, "output_duration": round(edl.output_duration(), 2)}
     return _text(json.dumps(msg, ensure_ascii=False))
 

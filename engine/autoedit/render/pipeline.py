@@ -1,7 +1,9 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from autoedit.edl import Edl
+from autoedit.fsutil import part_path
 from autoedit.prep import Prepared
 from autoedit.prep.keyframes import frame_at
 from autoedit.project import Project
@@ -37,7 +39,13 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
     def once() -> Path:
         mixed = compose(base, work / "composite.mp4", duration=total, ass=ass, hook_png=hook, logo_png=logo,
                         cta_png=cta, music=music, speech=speech, duck_db=edl.music_duck_db, preview=preview)
-        return loudnorm(mixed, out, two_pass=not preview)
+        tmp = part_path(out)
+        try:
+            loudnorm(mixed, tmp, two_pass=not preview)
+            os.replace(tmp, out)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return out
 
     once()
     if preview:

@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from autoedit.errors import BadInput
+from autoedit.fsutil import atomic_write_text
 
 NICHES = ("thoi-trang", "my-pham", "do-an", "phu-kien", "chung")
 _FIELDS = ("niche", "clip", "logo", "music", "prompt", "script_card", "runs")
@@ -36,7 +37,7 @@ class Project:
 
     def save(self) -> None:
         data = {k: v for k, v in asdict(self).items() if k in _FIELDS}
-        (self.dir / "project.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(self.dir / "project.json", json.dumps(data, ensure_ascii=False, indent=2))
 
     @property
     def input_dir(self) -> Path:
