@@ -6,7 +6,7 @@ const DOT: Record<ProjectStatus, string> = { new: "new", done: "done", needs_rev
 const BUILDING = "run";
 
 export default function Sidebar() {
-  const { state, go } = useStore();
+  const { state, go, notify } = useStore();
   if (state.route.name === "onboarding") return null;
   const cur = state.route.name === "project" ? state.route.dir : null;
   const n = state.projects.length;
@@ -14,8 +14,15 @@ export default function Sidebar() {
     <aside className="side" id="side">
       <div className="brand"><div className="logo">▶</div><b>AutoEdit</b></div>
       <div className="snav">
-        <div className="sn on">🎬 Video</div>
-        <div className="sn off" aria-disabled="true" title="Bản sau">📅 Lịch đăng <span className="tag">Bản sau</span></div>
+        <div className={"sn" + (state.route.name === "schedule" ? "" : " on")} role="button" tabIndex={0}
+          onClick={() => { if (state.route.name === "schedule") go({ name: "niche" }); }}>🎬 Video</div>
+        {state.hasSocialKey ? (
+          <div className={"sn" + (state.route.name === "schedule" ? " on" : "")} role="button" tabIndex={0}
+            onClick={() => go({ name: "schedule" })} onKeyDown={(e) => { if (e.key === "Enter") go({ name: "schedule" }); }}>📅 Lịch đăng</div>
+        ) : (
+          <div className="sn off" aria-disabled="true" role="button" tabIndex={0} title="Nhập key bundle.social ở Cài đặt → Kết nối"
+            onClick={() => notify("Nhập key bundle.social ở Cài đặt → Kết nối")}>📅 Lịch đăng</div>
+        )}
       </div>
       <button className="newbtn" onClick={() => go({ name: "niche" })}>＋ Video mới</button>
       <div className="plist">

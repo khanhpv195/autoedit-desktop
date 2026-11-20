@@ -25,3 +25,10 @@ export function postTime(iso: string): string {
 export const CHANNELS: Record<string, string> = { TIKTOK: "TikTok", INSTAGRAM: "Instagram", YOUTUBE: "YouTube Shorts", FACEBOOK: "Facebook Reels" };
 export const V2_CHANNELS = Object.keys(CHANNELS);
 export const channelLabel = (t: string) => CHANNELS[t] ?? t;
+
+/** Monday 00:00 (local) of the week `offset` weeks from `now`, and the next Monday 00:00. */
+export function weekRange(now: Date, offset = 0): { from: Date; to: Date } {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) + offset * 7);
+  const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 7);
+  return { from, to };
+}
