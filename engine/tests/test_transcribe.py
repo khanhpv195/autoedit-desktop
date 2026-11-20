@@ -70,9 +70,32 @@ def test_closing_lines_at_end_are_dropped(closing):
     assert tr.drop_closing_lines(words) == REAL
 
 
-def test_closing_line_glued_to_last_sentence_is_dropped_too():
+@pytest.mark.parametrize("spoken", [
+    "cảm ơn mọi người đã xem nhé bấm giỏ hàng để mua liền",
+    "theo dõi kênh của shop để nhận mã giảm giá",
+    "nhớ like và share cho shop",
+    "mua ngay nhé các bạn theo dõi kênh của shop để nhận mã giảm giá nha",
+])
+def test_seller_speech_with_cta_keeps_every_word(spoken):
+    words = _line(spoken, 1.0)
+    assert tr.drop_closing_lines(words) == words
+    words = REAL + _line(spoken, 6.0)
+    assert tr.drop_closing_lines(words) == words
+
+
+def test_closing_glued_to_a_real_sentence_is_kept():
     words = _line("bấm giỏ hàng nha cảm ơn các bạn đã theo dõi", 1.0)
-    assert [w.text for w in tr.drop_closing_lines(words)] == ["bấm", "giỏ", "hàng", "nha"]
+    assert tr.drop_closing_lines(words) == words
+
+
+def test_nothing_after_a_non_matching_phrase_is_deleted():
+    words = REAL + _line("cảm ơn các bạn đã theo dõi", 6.0) + _line("bấm giỏ hàng nha", 8.0)
+    assert tr.drop_closing_lines(words) == words
+
+
+def test_pure_closing_phrase_in_the_middle_is_kept():
+    words = REAL + _line("Cảm ơn các bạn đã theo dõi", 6.0) + _line("giá chỉ 189K thôi", 8.0)
+    assert tr.drop_closing_lines(words) == words
 
 
 def test_isolated_closing_line_in_a_silent_region_is_dropped():

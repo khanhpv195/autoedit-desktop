@@ -46,8 +46,9 @@ CLOSING = re.compile(
     r"|(?:(?:hãy|nhớ|các bạn hãy) )?(?:đăng ký|subscribe|theo dõi)(?: cho)? (?:kênh|channel)"
     r"|(?:(?:hãy|nhớ) )?\bsubscribe\b|ghiền mì gõ|để không bỏ lỡ|hẹn gặp lại(?: các bạn)? trong"
     r"|like (?:và|&) (?:share|subscribe)|đừng quên (?:like|đăng ký)")
-TAIL_WORDS = 30
-TAIL_SECONDS = 10.0
+SALES = re.compile(
+    r"(?<!\w)(?:giỏ hàng|bấm|mua|đặt|inbox|link|mã giảm giá|shop|like|share|giá|freeship)(?!\w)")
+WHOLE_PHRASE = 0.5     # a closing pattern must cover at least this share of the phrase's characters
 ISOLATION = 2.0
 
 
@@ -55,26 +56,26 @@ def _norm(text: str) -> str:
     return re.sub(r"[^\w&]+", " ", text.casefold()).strip()
 
 
+def _is_closing(phrase_text: str) -> bool:
+    """The whole phrase is a closing line: a pattern covers most of it and nothing in it sells."""
+    t = _norm(phrase_text)
+    if not t or SALES.search(t):
+        return False
+    covered = sum(m.end() - m.start() for m in CLOSING.finditer(t))
+    return covered >= WHOLE_PHRASE * len(t)
+
+
 def drop_closing_lines(words: list[Word]) -> list[Word]:
     """Whisper invents YouTube-style outros ("cảm ơn các bạn đã theo dõi", "hãy đăng ký kênh") over silence or
-    music, with real durations. Drop them at the end of the transcript (from the first outro phrase to the end) and
-    when a phrase that matches sits alone in a silent region (>=2 s of silence on both sides)."""
+    music, with real durations. Drop (1) trailing whole phrases at the very end of the transcript that are closing
+    lines without any sales term, and (2) such a phrase alone in a silent region (>=2 s of silence on both sides).
+    Words after a non-matching phrase are never deleted."""
     if not words:
         return words
-    # 1) tail: earliest outro match that starts in the trailing region
-    norms = [_norm(w.text) for w in words]
-    text, starts = "", []
-    for n in norms:
-        starts.append(len(text))
-        text += n + " "
-    last_end = words[-1].end
-    for m in CLOSING.finditer(text):
-        i = max(k for k, st in enumerate(starts) if st <= m.start())
-        if i >= len(words) - TAIL_WORDS and words[i].start >= last_end - TAIL_SECONDS:
-            words = words[:i]
-            break
-    # 2) isolated outro phrases
     phrases = pack_phrases(words)
+    keep = len(phrases)
+    while keep and _is_closing(phrases[keep - 1].text):
+        keep -= 1
     drop: set[int] = set()
     pos = 0
     spans = []
@@ -82,10 +83,13 @@ def drop_closing_lines(words: list[Word]) -> list[Word]:
         n = len(p.text.split())
         spans.append((pos, pos + n))
         pos += n
-    for k, p in enumerate(phrases):
+    for k in range(keep, len(phrases)):
+        drop.update(range(*spans[k]))
+    # 2) isolated outro phrases
+    for k, p in enumerate(phrases[:keep]):
         before = p.start - phrases[k - 1].end if k else ISOLATION
         after = phrases[k + 1].start - p.end if k + 1 < len(phrases) else ISOLATION
-        if before >= ISOLATION and after >= ISOLATION and CLOSING.search(_norm(p.text)):
+        if before >= ISOLATION and after >= ISOLATION and _is_closing(p.text):
             drop.update(range(*spans[k]))
     return [w for i, w in enumerate(words) if i not in drop]
 
