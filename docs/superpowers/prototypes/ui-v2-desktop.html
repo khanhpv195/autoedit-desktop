@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>tiktok-autoedit — prototype desktop v2</title>
+<style>
+  :root{--bg:#f6f6f8;--side:#efeff3;--card:#fff;--ink:#16161b;--muted:#6b6b76;--line:#e3e3e8;
+        --accent:#fe2c55;--ok:#16a34a;--warn:#d97706;--err:#dc2626;--r:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#cfd0d8;color:var(--ink);
+       min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}
+  .dev{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;align-items:center}
+  .dev b{margin-right:4px}
+  .dev button{border:1px solid #999;background:#fff;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px}
+  .dev button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  .win{width:1280px;height:800px;background:var(--bg);border-radius:12px;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,.3);
+       display:flex;flex-direction:column;border:1px solid #aaa}
+  .titlebar{height:38px;background:#e7e7ec;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .titlebar .t{flex:1;text-align:center;font-size:13px;color:var(--muted);margin-right:60px}
+  .body{flex:1;display:flex;min-height:0}
+
+  /* sidebar */
+  .side{width:260px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:10px;padding:16px}
+  .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#25f4ee,var(--accent));color:#fff;display:grid;place-items:center;font-weight:800;font-size:14px}
+  .brand b{font-size:15px}
+  .newbtn{margin:0 12px 10px;border:0;background:var(--accent);color:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer}
+  .newbtn small{opacity:.8;font-weight:400;margin-left:6px}
+  .sec{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:10px 16px 6px}
+  .plist{flex:1;overflow-y:auto;padding:0 8px}
+  .pi{display:flex;gap:10px;align-items:center;padding:8px;border-radius:9px;cursor:pointer}
+  .pi:hover{background:#e4e4ea}
+  .pi.on{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .pi .th{width:30px;height:44px;border-radius:5px;flex-shrink:0}
+  .pi .tx{flex:1;min-width:0;font-size:13px}
+  .pi .tx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .pi .tx span{font-size:11px;color:var(--muted)}
+  .st{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .st.done{background:var(--ok)} .st.run{background:var(--warn);animation:pulse 1s infinite} .st.fail{background:var(--err)}
+  @keyframes pulse{50%{opacity:.3}}
+  .sidefoot{border-top:1px solid var(--line);padding:10px 8px}
+  .sidefoot .pi{font-size:13px}
+
+  /* main */
+  .main{flex:1;overflow-y:auto;position:relative}
+  .view{display:none;padding:28px 36px;min-height:100%}
+  .view.on{display:block}
+  h1{font-size:22px;margin-bottom:4px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+  .btn{border:0;border-radius:10px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.primary:disabled{background:#f3a5b5;cursor:not-allowed}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .btn.dark{background:var(--ink);color:#fff}
+  .btn.big{padding:14px 28px;font-size:15px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+  .card h3{font-size:14px;margin-bottom:10px}
+  .label{font-size:13px;font-weight:600;margin:0 0 8px;display:flex;justify-content:space-between}
+  .label span{font-weight:400;color:var(--muted)}
+  .hint{font-size:12px;color:var(--muted)}
+  textarea,input[type=text],input[type=password]{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;font-family:inherit;background:#fff}
+  textarea{resize:none;min-height:90px}
+
+  /* new */
+  .newgrid{display:grid;grid-template-columns:1.1fr 1fr;gap:22px}
+  .drop{border:2px dashed #c4c4ce;border-radius:var(--r);background:#fff;height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        text-align:center;cursor:pointer;transition:.15s}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#fff5f7}
+  .drop .ic{font-size:44px;margin-bottom:8px}
+  .drop b{font-size:16px}
+  .drop small{color:var(--muted);margin-top:6px}
+  .clipcard{background:#fff;border:1px solid var(--line);border-radius:var(--r);height:380px;display:flex;gap:18px;padding:18px}
+  .clipcard .prev{width:190px;border-radius:10px;flex-shrink:0;position:relative}
+  .clipcard .prev .dur{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:2px 6px;border-radius:4px}
+  .clipcard .meta{flex:1;font-size:13px;line-height:1.9}
+  .clipcard .meta b{font-size:15px;display:block;margin-bottom:4px}
+  .clipcard .meta .k{color:var(--muted);display:inline-block;width:92px}
+  .slots{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+  .slot{background:#fff;border:1px dashed #c4c4ce;border-radius:10px;padding:12px;display:flex;gap:10px;align-items:center;cursor:pointer;font-size:13px}
+  .slot .ic{font-size:22px}
+  .slot small{display:block;color:var(--muted);font-size:11px}
+  .slot.set{border-style:solid;border-color:var(--ok);background:#f0fdf4}
+  .sugs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 6px}
+  .sug{font-size:12px;background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 10px;cursor:pointer}
+  .sug:hover{border-color:var(--accent);color:var(--accent)}
+  .buildrow{display:flex;align-items:center;gap:14px;margin-top:20px}
+
+  /* project */
+  .pgrid{display:grid;grid-template-columns:360px 1fr;gap:26px;align-items:start}
+  .video{aspect-ratio:9/16;border-radius:var(--r);position:relative;overflow:hidden;color:#fff;background:#222}
+  .video .bg{position:absolute;inset:0}
+  .person{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:46%;height:72%;background:rgba(0,0,0,.25);border-radius:50% 50% 0 0/30% 30% 0 0}
+  .v-logo{position:absolute;top:14px;left:14px;width:40px;height:40px;border-radius:9px;background:#fff;color:var(--accent);font-weight:800;display:grid;place-items:center;font-size:12px}
+  .v-hook{position:absolute;top:18%;left:8%;right:20%;font-weight:900;font-size:24px;line-height:1.15;background:#ffe14d;color:#111;padding:6px 10px;border-radius:6px;transform:rotate(-2deg)}
+  .v-cap{position:absolute;bottom:22%;left:8%;right:18%;text-align:center;font-weight:800;font-size:19px;text-shadow:0 2px 0 #000,0 -2px 0 #000,2px 0 0 #000,-2px 0 0 #000}
+  .v-cta{position:absolute;bottom:12%;left:50%;transform:translateX(-50%);background:var(--accent);padding:8px 14px;border-radius:99px;font-weight:700;font-size:14px;white-space:nowrap}
+  .v-ctrl{position:absolute;left:0;right:0;bottom:0;padding:10px 12px;background:linear-gradient(transparent,rgba(0,0,0,.6));display:flex;gap:10px;align-items:center;font-size:12px}
+  .v-ctrl .tl{flex:1;height:4px;background:rgba(255,255,255,.35);border-radius:4px;position:relative}
+  .v-ctrl .tl i{position:absolute;left:0;top:0;bottom:0;width:30%;background:#fff;border-radius:4px}
+  .ui-zone{position:absolute;right:0;top:35%;bottom:8%;width:16%;border-left:1px dashed rgba(255,255,255,.4)}
+  .ui-zone span{position:absolute;top:4px;left:4px;font-size:8px;opacity:.65;writing-mode:vertical-rl}
+  .tabs{display:flex;gap:6px;margin-bottom:14px}
+  .tab{font-size:12px;padding:6px 12px;border-radius:99px;background:#fff;border:1px solid var(--line);cursor:pointer}
+  .tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .actions{display:flex;gap:10px;margin-bottom:16px}
+  .stack>*+*{margin-top:14px}
+  ul.sum{padding-left:18px;font-size:14px;line-height:1.7}
+  .pq{font-size:13px;color:var(--muted);font-style:italic}
+  .kv{display:flex;gap:18px;font-size:12px;color:var(--muted);margin-top:10px}
+  .kv b{color:var(--ink)}
+  .steps{list-style:none}
+  .steps li{display:flex;gap:10px;align-items:center;padding:8px 0;font-size:14px;color:var(--muted)}
+  .steps .d{width:22px;height:22px;border-radius:50%;border:2px solid #ccc;display:grid;place-items:center;font-size:12px;flex-shrink:0}
+  .steps li.done{color:var(--ink)} .steps li.done .d{background:var(--ok);border-color:var(--ok);color:#fff}
+  .steps li.cur{color:var(--ink);font-weight:600} .steps li.cur .d{border-color:var(--accent);border-top-color:transparent;animation:spin 1s linear infinite}
+  .steps li small{margin-left:auto;font-weight:400;color:var(--muted)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .bar{height:8px;background:#eee;border-radius:9px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
+  .wait{aspect-ratio:9/16;border-radius:var(--r);position:relative;overflow:hidden;display:grid;place-items:center;color:#fff;text-align:center}
+  .wait .ov{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+  .wait div.c{position:relative;font-size:14px}
+  .wait .big{font-size:44px;font-weight:800}
+  .err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:var(--r);padding:18px;font-size:14px;line-height:1.6;max-width:640px}
+  .flag{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;border-radius:10px;padding:10px 12px}
+
+  /* settings */
+  .set-wrap{max-width:720px}
+  .row{display:flex;gap:10px;align-items:center}
+  .pill{font-size:12px;border-radius:99px;padding:4px 10px;font-weight:600}
+  .pill.ok{background:#dcfce7;color:#166534} .pill.warn{background:#fef3c7;color:#92400e}
+  .setgrid{display:grid;grid-template-columns:180px 1fr;gap:12px 18px;font-size:14px;align-items:center}
+  .setgrid .k{color:var(--muted)}
+
+  /* onboarding */
+  .onb{max-width:620px;margin:30px auto}
+  .onb .stepn{display:flex;gap:8px;margin-bottom:20px}
+  .onb .stepn span{flex:1;height:4px;border-radius:4px;background:#ddd}
+  .onb .stepn span.on{background:var(--accent)}
+  .onb ol{padding-left:20px;font-size:14px;line-height:1.8;margin:10px 0 16px}
+  .onb a{color:var(--accent)}
+
+  .toast{position:fixed;left:50%;bottom:40px;transform:translateX(-50%) translateY(10px);background:var(--ink);color:#fff;font-size:14px;border-radius:10px;
+         padding:11px 16px;opacity:0;transition:.25s;z-index:20;pointer-events:none}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+
+<div class="dev"><b>Xem nhanh:</b>
+  <button data-v="onb1">Lần đầu mở app</button>
+  <button data-v="new">Video mới</button>
+  <button data-v="run">Đang dựng</button>
+  <button data-v="done">Đã xong</button>
+  <button data-v="fail">Lỗi</button>
+  <button data-v="settings">Cài đặt</button>
+</div>
+
+<div class="win">
+  <div class="titlebar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span>
+    <div class="t">AutoEdit</div></div>
+  <div class="body">
+
+    <aside class="side" id="side">
+      <div class="brand"><div class="logo">▶</div><b>AutoEdit</b></div>
+      <button class="newbtn" onclick="show('new')">＋ Video mới <small>⌘N</small></button>
+      <div class="sec">Video</div>
+      <div class="plist" id="plist"></div>
+      <div class="sidefoot"><div class="pi" id="navSettings" onclick="show('settings')">⚙️ <div class="tx"><b>Cài đặt</b></div></div></div>
+    </aside>
+
+    <main class="main">
+
+      <!-- ONBOARDING 1: API key -->
+      <section class="view" id="v-onb1">
+        <div class="onb">
+          <div class="stepn"><span class="on"></span><span></span></div>
+          <h1>Chào mừng 👋</h1>
+          <div class="sub">Cần 2 bước để bắt đầu. Chỉ làm một lần.</div>
+          <div class="card">
+            <h3>Bước 1 · Kết nối Claude (AI dựng video)</h3>
+            <ol>
+              <li>Mở <a href="#" onclick="toast('(Prototype) mở console.anthropic.com');return false">console.anthropic.com</a> → đăng nhập → nạp tiền (Billing)</li>
+              <li>Vào <b>API Keys</b> → <b>Create Key</b> → sao chép</li>
+              <li>Dán vào ô dưới</li>
+            </ol>
+            <div class="row"><input type="password" id="keyIn" placeholder="sk-ant-api03-…"><button class="btn dark" onclick="checkKey()">Kiểm tra</button></div>
+            <div class="hint" id="keyMsg" style="margin-top:8px">Key được lưu an toàn trong Keychain của máy. Mỗi video tốn khoảng 300–1.500đ.</div>
+          </div>
+          <div style="text-align:right;margin-top:18px"><button class="btn primary" id="onbNext" disabled onclick="show('onb2')">Tiếp tục →</button></div>
+        </div>
+      </section>
+
+      <!-- ONBOARDING 2: model download -->
+      <section class="view" id="v-onb2">
+        <div class="onb">
+          <div class="stepn"><span class="on"></span><span class="on"></span></div>
+          <h1>Tải bộ nhận giọng nói</h1>
+          <div class="sub">Để chuyển lời nói thành phụ đề ngay trên máy, không gửi giọng nói lên mạng.</div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between;margin-bottom:10px"><b style="font-size:14px">Whisper large-v3-turbo · 1.5 GB</b><span class="hint" id="dlTxt">0%</span></div>
+            <div class="bar"><i id="dlBar" style="width:0"></i></div>
+            <div class="kv"><span>Máy: <b>Apple M2</b></span><span>Tăng tốc: <b>GPU (Metal)</b></span><span>Ước tính dựng clip 1 phút: <b>~40 giây</b></span></div>
+          </div>
+          <div style="text-align:right;margin-top:18px"><button class="btn primary" id="dlDone" disabled onclick="finishOnb()">Bắt đầu dùng →</button></div>
+        </div>
+      </section>
+
+      <!-- NEW -->
+      <section class="view" id="v-new">
+        <h1>Video mới</h1>
+        <div class="sub">Kéo clip vào, gõ một câu, bấm Dựng.</div>
+        <div class="newgrid">
+          <div id="clipZone"></div>
+          <div>
+            <div class="label">Thêm vào video <span>không bắt buộc</span></div>
+            <div class="slots">
+              <div class="slot" id="sLogo" onclick="slot(this,'logo')"><span class="ic">🏷️</span><div><b>Logo</b><small>Kéo thả PNG/JPG</small></div></div>
+              <div class="slot" id="sMusic" onclick="slot(this,'music')"><span class="ic">🎵</span><div><b>Nhạc nền</b><small>Kéo thả MP3/M4A</small></div></div>
+            </div>
+            <div class="label">Bạn muốn video thế nào? <span>không bắt buộc</span></div>
+            <textarea id="prompt" placeholder="VD: cắt thật gọn, nhấn mạnh giá 189K, chốt đơn mạnh"></textarea>
+            <div class="sugs">
+              <span class="sug">Cuốn, nhịp nhanh</span><span class="sug">Chốt đơn mạnh</span><span class="sug">Nhẹ nhàng, tự nhiên</span>
+              <span class="sug">Không cần CTA</span><span class="sug">Đưa giá lên đầu</span>
+            </div>
+            <div class="hint">Để trống thì AI tự dựng: cắt gọn, phụ đề, hook nếu có câu hay.</div>
+            <div class="buildrow">
+              <button class="btn primary big" id="buildBtn" disabled onclick="build()">Dựng video</button>
+              <span class="hint" id="buildHint">Chọn clip để bắt đầu</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PROJECT -->
+      <section class="view" id="v-proj"><div id="projBody"></div></section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="v-settings">
+        <div class="set-wrap stack">
+          <div><h1>Cài đặt</h1><div class="sub" style="margin:0">Ít thôi, đa số không cần đụng tới.</div></div>
+          <div class="card">
+            <h3>Claude API key</h3>
+            <div class="row"><input type="password" value="sk-ant-api03-xxxxxxxxxxxxxxxx" readonly><span class="pill ok">Đang hoạt động</span><button class="btn ghost" onclick="toast('Dán key mới…')">Đổi key</button></div>
+          </div>
+          <div class="card">
+            <h3>Chi phí AI</h3>
+            <div class="setgrid">
+              <span class="k">Tháng này</span><span><b>18 video</b> · khoảng <b>14.200đ</b></span>
+              <span class="k">Trung bình / video</span><span>~790đ</span>
+            </div>
+            <div class="hint" style="margin-top:8px">Số tiền thật xem tại console.anthropic.com → Usage.</div>
+          </div>
+          <div class="card">
+            <h3>Máy & lưu trữ</h3>
+            <div class="setgrid">
+              <span class="k">Nhận giọng nói</span><span>Whisper large-v3-turbo <span class="pill ok">Đã tải</span></span>
+              <span class="k">Tăng tốc</span><span>GPU (Metal) · Apple M2</span>
+              <span class="k">Thư mục lưu project</span><span class="row"><code style="font-size:12px">~/Movies/AutoEdit</code><button class="btn ghost" style="padding:6px 10px" onclick="toast('Chọn thư mục…')">Đổi</button></span>
+              <span class="k">Dung lượng đang dùng</span><span>4.2 GB · <a href="#" style="color:var(--accent)" onclick="toast('Xóa bản dựng cũ hơn 30 ngày');return false">Dọn bản cũ</a></span>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Phiên bản</h3>
+            <div class="row" style="justify-content:space-between"><span style="font-size:14px">AutoEdit 1.0.3 · đang là bản mới nhất</span><button class="btn ghost" onclick="toast('Đang kiểm tra cập nhật…')">Kiểm tra cập nhật</button></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const G=['linear-gradient(160deg,#5b4b8a,#c06c84 55%,#f8b195)','linear-gradient(160deg,#355c7d,#6c5b7b 55%,#c06c84)',
+         'linear-gradient(160deg,#134e5e,#71b280)','linear-gradient(160deg,#614385,#516395)','linear-gradient(160deg,#c94b4b,#4b134f)'];
+let P=[
+  {id:1,title:'Váy hoa nhí',status:'done',dur:'0:56',out:'0:34',ago:'5 phút trước',g:0,prompt:'cuốn, chốt đơn mạnh',ver:1,redo:3},
+  {id:2,title:'Son kem lì #04',status:'run',dur:'1:12',ago:'đang dựng',g:1,prompt:'nhẹ nhàng, tự nhiên',step:2},
+  {id:3,title:'Áo khoác dạ',status:'fail',dur:'2:05',ago:'hôm qua',g:2,prompt:''},
+  {id:4,title:'Kem chống nắng',status:'done',dur:'0:41',out:'0:29',ago:'hôm qua',g:3,prompt:'',ver:2,redo:2},
+];
+let cur=null, timers={};
+const STEPS=['Chuẩn bị video','Nghe lời thoại','AI lên kịch bản dựng','Dựng video','Kiểm tra chất lượng'];
+
+function renderList(){
+  $('#plist').innerHTML=P.map(p=>`<div class="pi ${cur===p.id?'on':''}" onclick="openP(${p.id})">
+    <div class="th" style="background:${G[p.g]}"></div>
+    <div class="tx"><b>${p.title}</b><span>${p.status==='run'?'Đang dựng…':p.status==='fail'?'Lỗi':p.ago}</span></div>
+    <span class="st ${p.status}"></span></div>`).join('');
+  $('#navSettings').classList.toggle('on',cur==='settings');
+}
+function setView(v){document.querySelectorAll('.view').forEach(e=>e.classList.remove('on'));$('#v-'+v).classList.add('on');
+  document.querySelectorAll('.dev button').forEach(b=>b.classList.remove('on'));}
+function show(v){
+  if(v==='new'){cur=null;resetNew();}
+  if(v==='settings')cur='settings';
+  setView(v); renderList();
+  const side=$('#side'); side.style.display=(v==='onb1'||v==='onb2')?'none':'flex';
+  if(v==='onb2')startDl();
+  document.querySelectorAll('.dev button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+}
+document.querySelectorAll('.dev button').forEach(b=>b.onclick=()=>{
+  const v=b.dataset.v;
+  if(v==='run')return openP(2); if(v==='done')return openP(1); if(v==='fail')return openP(3);
+  show(v); b.classList.add('on');
+});
+
+/* onboarding */
+function checkKey(){
+  const k=$('#keyIn').value.trim();
+  if(!k.startsWith('sk-ant-')){$('#keyMsg').innerHTML='<span style="color:var(--err)">Key không đúng dạng. Key bắt đầu bằng <b>sk-ant-</b></span>';return}
+  $('#keyMsg').innerHTML='<span style="color:var(--ok)">✓ Kết nối được. Tài khoản còn tiền.</span>'; $('#onbNext').disabled=false;
+}
+let dlT; function startDl(){clearInterval(dlT);let p=0;$('#dlDone').disabled=true;
+  dlT=setInterval(()=>{p=Math.min(100,p+Math.random()*9);$('#dlBar').style.width=p+'%';
+    $('#dlTxt').textContent=p<100?Math.floor(p)+'% · '+(1.5*p/100).toFixed(1)+' / 1.5 GB':'✓ Xong';
+    if(p>=100){clearInterval(dlT);$('#dlDone').disabled=false}},250)}
+function finishOnb(){show('new')}
+
+/* new */
+let picked=false;
+function resetNew(){picked=false;$('#prompt').value='';['sLogo','sMusic'].forEach(i=>{$('#'+i).classList.remove('set')});
+  $('#sLogo small').textContent='Kéo thả PNG/JPG';$('#sMusic small').textContent='Kéo thả MP3/M4A';renderClip()}
+function renderClip(){
+  if(!picked){
+    $('#clipZone').innerHTML=`<div class="drop" id="drop" onclick="pick()"><div class="ic">🎬</div><b>Kéo clip vào đây</b><small>hoặc bấm để chọn file · tối đa 3 phút<br>Quay dọc là đẹp nhất, quay ngang vẫn được</small></div>`;
+    const d=$('#drop'); d.ondragover=e=>{e.preventDefault();d.classList.add('over')}; d.ondragleave=()=>d.classList.remove('over');
+    d.ondrop=e=>{e.preventDefault();pick()};
+    $('#buildBtn').disabled=true;$('#buildHint').textContent='Chọn clip để bắt đầu';return;
+  }
+  $('#clipZone').innerHTML=`<div class="clipcard"><div class="prev" style="background:${G[4]}"><span class="dur">0:56</span></div>
+    <div class="meta"><b>IMG_4821.MOV</b>
+      <div><span class="k">Thời lượng</span>0:56</div><div><span class="k">Khung hình</span>Dọc · 2160×3840 · HDR</div>
+      <div><span class="k">Dung lượng</span>412 MB</div><div><span class="k">Có lời thoại</span>Có (tiếng Việt)</div>
+      <div style="margin-top:14px"><button class="btn ghost" onclick="picked=false;renderClip()">Đổi clip</button></div></div></div>`;
+  $('#buildBtn').disabled=false;$('#buildHint').textContent='Ước tính ~40 giây · chi phí AI ~800đ';
+}
+function pick(){picked=true;renderClip()}
+function slot(el,k){el.classList.toggle('set');el.querySelector('small').textContent=el.classList.contains('set')?(k==='logo'?'✓ logo-shop.png':'✓ nhac-trend.mp3 · tự hạ khi có lời'):(k==='logo'?'Kéo thả PNG/JPG':'Kéo thả MP3/M4A')}
+document.querySelectorAll('.sug').forEach(s=>s.onclick=()=>{const t=$('#prompt');t.value=(t.value?t.value+', ':'')+s.textContent.toLowerCase()});
+function build(){
+  const p={id:Date.now(),title:'Đang đặt tên…',status:'run',dur:'0:56',ago:'đang dựng',g:4,prompt:$('#prompt').value,step:0};
+  P.unshift(p); openP(p.id);
+}
+
+/* project */
+function openP(id){
+  cur=id; const p=P.find(x=>x.id===id); setView('proj'); renderList(); $('#side').style.display='flex';
+  document.querySelectorAll('.dev button').forEach(b=>b.classList.toggle('on',b.dataset.v===({done:'done',run:'run',fail:'fail'}[p.status])));
+  if(p.status==='run'){runP(p);return}
+  if(p.status==='fail')return renderFail(p);
+  renderDone(p);
+}
+function runP(p){
+  const draw=()=>{ if(cur!==p.id)return; const pct=Math.round(p.step/STEPS.length*100);
+    $('#projBody').innerHTML=`<h1>${p.title}</h1><div class="sub">Clip gốc ${p.dur} · Bạn có thể làm việc khác, app báo khi xong.</div>
+    <div class="pgrid"><div class="wait" style="background:${G[p.g]}"><div class="ov"></div><div class="c"><div class="big">${pct}%</div>Đang dựng…</div></div>
+    <div class="stack"><div class="card"><ul class="steps">${STEPS.map((s,i)=>`<li class="${i<p.step?'done':i===p.step?'cur':''}"><span class="d">${i<p.step?'✓':''}</span>${s}${i===p.step?'<small>~'+(10+i*4)+' giây</small>':''}</li>`).join('')}</ul></div>
+    <div class="card"><h3>${p.feedback?'Góp ý':'Yêu cầu của bạn'}</h3><div class="pq">“${p.feedback||p.prompt||'(để trống, AI tự quyết)'}”</div></div>
+    <div><button class="btn ghost" onclick="toast('Đã hủy (prototype)')">Hủy</button></div></div></div>`};
+  draw();
+  if(timers[p.id])return;
+  timers[p.id]=setInterval(()=>{p.step++;
+    if(p.step===1&&p.title==='Đang đặt tên…'){p.title='Váy babydoll trắng';renderList()}
+    if(p.step>=STEPS.length){clearInterval(timers[p.id]);delete timers[p.id];p.status='done';p.ago='vừa xong';p.out='0:31';
+      p.ver=(p.ver||0)+1;p.redo=p.redo??3;renderList();toast('🎉 '+p.title+' đã xong');if(cur===p.id)renderDone(p);return}
+    draw()},1200);
+}
+function renderDone(p){
+  const tabs=p.ver>1?`<div class="tabs">${Array.from({length:p.ver},(_,i)=>`<span class="tab ${i===p.ver-1?'on':''}" onclick="toast('Đang xem lần ${i+1}')">Lần ${i+1}</span>`).join('')}</div>`:'';
+  const sum=p.feedback?['Làm theo góp ý: “'+p.feedback+'”','Hook mới: “GIÁ CHỈ 189K!”','Video còn '+p.out]
+    :['Video gốc '+p.dur+' → còn '+p.out,'Bỏ 14 giây im lặng và 2 câu nói vấp','Đưa câu “chân ngắn mặc vẫn đẹp” lên đầu làm hook','Sửa phụ đề: “tuyết mưu” → “tuyết mưa”'];
+  $('#projBody').innerHTML=`<h1>${p.title}</h1><div class="sub">Clip gốc ${p.dur} → ${p.out} · ${p.ago}</div>
+  <div class="pgrid">
+    <div class="video"><div class="bg" style="background:${G[p.g]}"></div><div class="person"></div><div class="ui-zone"><span>vùng nút TikTok</span></div>
+      <div class="v-logo">SHOP</div><div class="v-hook">${p.feedback?'GIÁ CHỈ 189K!':'CHÂN NGẮN? XEM NGAY'}</div>
+      <div class="v-cap">mặc lên tôn dáng cực kỳ</div><div class="v-cta">Bấm giỏ hàng 👇</div>
+      <div class="v-ctrl">▶<div class="tl"><i></i></div>0:10 / ${p.out}</div></div>
+    <div class="stack">
+      ${tabs}
+      <div class="actions"><button class="btn primary" onclick="toast('Lưu video ra… (hộp thoại Save)')">⬇ Lưu video…</button>
+        <button class="btn ghost" onclick="toast('Mở Finder / Explorer')">📁 Mở thư mục</button></div>
+      <div class="card"><h3>AI đã làm gì</h3><ul class="sum">${sum.map(s=>`<li>${s}</li>`).join('')}</ul>
+        <div class="kv"><span>Yêu cầu: <b>${p.prompt||'(trống)'}</b></span><span>Chi phí AI: <b>~780đ</b></span><span>Thời gian dựng: <b>38 giây</b></span></div></div>
+      <div class="card"><h3>Chưa ưng? Góp ý để AI làm lại</h3>
+        <textarea id="fb" placeholder="VD: đưa giá lên đầu, cắt bớt đoạn cuối" ${p.redo?'':'disabled'}></textarea>
+        <div class="row" style="justify-content:space-between;margin-top:10px">
+          <span class="hint">${p.redo?'Bản cũ vẫn được giữ để so sánh':'Đã làm lại nhiều lần — thử tạo video mới với yêu cầu khác'}</span>
+          <button class="btn dark" ${p.redo?'':'disabled'} onclick="redo(${p.id})">Làm lại</button></div></div>
+    </div></div>`;
+}
+function redo(id){const p=P.find(x=>x.id===id);const fb=$('#fb').value.trim();if(!fb){toast('Gõ góp ý trước nhé');return}
+  p.feedback=fb;p.redo--;p.status='run';p.step=2;renderList();runP(p)}
+function renderFail(p){
+  $('#projBody').innerHTML=`<h1>${p.title}</h1><div class="sub">Clip gốc ${p.dur} · ${p.ago}</div>
+  <div class="err"><b>Không dựng được video này</b><br>File bị hỏng ở giây 1:40 (thường do gửi qua Zalo/Messenger bị nén). Hãy lấy file gốc từ điện thoại.<br><br>
+  <span style="font-size:12px;opacity:.8">Chi tiết kỹ thuật: ffmpeg — moov atom not found</span></div>
+  <div class="row" style="margin-top:16px"><button class="btn primary" onclick="show('new')">Chọn clip khác</button><button class="btn ghost" onclick="toast('Đã chép log để gửi hỗ trợ')">Chép log lỗi</button></div>`;
+}
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),1900)}
+
+P.filter(p=>p.status==='run').forEach(runP);
+show('onb1'); document.querySelector('.dev button[data-v=onb1]').classList.add('on');
+</script>
+</body>
+</html>

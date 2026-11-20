@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tiktok-autoedit — prototype UI</title>
+<style>
+  :root{
+    --bg:#f4f4f6; --card:#fff; --ink:#15151a; --muted:#6b6b76; --line:#e6e6ea;
+    --accent:#fe2c55; --accent2:#25f4ee; --ok:#16a34a; --warn:#d97706; --err:#dc2626;
+    --r:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#d9d9e0;color:var(--ink);
+       display:flex;gap:32px;justify-content:center;align-items:flex-start;padding:32px 16px;min-height:100vh}
+  .side{max-width:280px;font-size:14px;color:#333;line-height:1.5;position:sticky;top:32px}
+  .side h1{font-size:18px;margin-bottom:8px}
+  .side ol{padding-left:18px;margin:8px 0 16px}
+  .side li{margin:4px 0;cursor:pointer;text-decoration:underline;text-decoration-color:#aaa}
+  .side li.on{font-weight:700;color:var(--accent)}
+  .side .note{font-size:12px;color:#666;border-top:1px solid #bbb;padding-top:10px}
+  @media(max-width:760px){.side{display:none} body{padding:0;background:var(--bg)} .phone{border:0;border-radius:0;height:100vh;width:100%}}
+
+  .phone{width:390px;height:844px;background:var(--bg);border:10px solid #111;border-radius:44px;overflow:hidden;position:relative;
+         box-shadow:0 30px 60px rgba(0,0,0,.25);display:flex;flex-direction:column}
+  .screen{display:none;flex:1;flex-direction:column;overflow-y:auto;position:relative}
+  .screen.on{display:flex}
+  .top{display:flex;align-items:center;gap:10px;padding:18px 18px 12px;background:var(--bg);position:sticky;top:0;z-index:5}
+  .top h2{font-size:20px;flex:1}
+  .back{border:0;background:none;font-size:22px;cursor:pointer;padding:2px 6px}
+  .quota{font-size:12px;background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px 10px;color:var(--muted)}
+  .quota b{color:var(--ink)}
+  .pad{padding:0 18px 120px}
+  .btn{display:block;width:100%;border:0;border-radius:12px;padding:15px;font-size:16px;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.primary:disabled{background:#f3a5b5;cursor:not-allowed}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .btn.dark{background:var(--ink);color:#fff}
+  .label{font-size:13px;font-weight:600;margin:18px 0 8px;display:flex;justify-content:space-between}
+  .label span{font-weight:400;color:var(--muted)}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+
+  /* login */
+  .login{justify-content:center;padding:32px 24px;text-align:center;gap:14px}
+  .logo{width:72px;height:72px;border-radius:20px;margin:0 auto 6px;background:linear-gradient(135deg,var(--accent2),var(--accent));
+        display:grid;place-items:center;color:#fff;font-size:34px;font-weight:800}
+  .login h1{font-size:26px;line-height:1.2}
+  .login p{color:var(--muted);font-size:15px}
+  .or{font-size:12px;color:var(--muted);margin:4px 0}
+  input[type=email],textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:14px;font-size:16px;font-family:inherit;background:#fff}
+  textarea{resize:none;min-height:96px}
+  .free{display:inline-block;margin-top:8px;background:#fff0f3;color:var(--accent);font-size:13px;font-weight:600;padding:6px 12px;border-radius:99px}
+
+  /* list */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .proj{background:var(--card);border-radius:var(--r);overflow:hidden;cursor:pointer;border:1px solid var(--line)}
+  .thumb{aspect-ratio:9/14;position:relative;display:flex;align-items:flex-end;padding:8px}
+  .chip{font-size:11px;font-weight:600;padding:4px 8px;border-radius:99px;background:rgba(0,0,0,.6);color:#fff}
+  .chip.ok{background:var(--ok)} .chip.run{background:var(--warn)} .chip.err{background:var(--err)} .chip.exp{background:#777}
+  .proj .meta{padding:8px 10px;font-size:12px}
+  .proj .meta b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .proj .meta span{color:var(--muted)}
+  .fab{position:absolute;bottom:22px;left:18px;right:18px;z-index:6;box-shadow:0 8px 20px rgba(254,44,85,.35)}
+  .empty{text-align:center;color:var(--muted);padding:60px 20px;font-size:14px}
+
+  /* new */
+  .drop{border:2px dashed #c9c9d1;border-radius:var(--r);background:#fff;padding:28px 16px;text-align:center;cursor:pointer}
+  .drop .ic{font-size:34px}
+  .drop b{display:block;margin:6px 0 2px}
+  .drop small{color:var(--muted)}
+  .picked{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px}
+  .picked .mini{width:54px;height:84px;border-radius:8px;flex-shrink:0}
+  .picked .info{flex:1;font-size:13px}
+  .picked .info b{display:block;font-size:14px}
+  .bar{height:6px;background:#eee;border-radius:9px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+  .x{border:0;background:none;font-size:18px;color:var(--muted);cursor:pointer}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .opt{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:13px;cursor:pointer;display:flex;gap:8px;align-items:center}
+  .opt .ic{font-size:20px}
+  .opt.set{border-color:var(--ok);background:#f0fdf4}
+  .opt small{display:block;color:var(--muted);font-size:11px}
+  .sugs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .sug{font-size:12px;background:#fff;border:1px solid var(--line);border-radius:99px;padding:6px 10px;cursor:pointer}
+  .sug:hover{border-color:var(--accent);color:var(--accent)}
+  .stick{position:absolute;bottom:0;left:0;right:0;padding:12px 18px 22px;background:linear-gradient(transparent,var(--bg) 30%);z-index:6}
+  .stick .hint{text-align:center;margin:0 0 8px}
+
+  /* project */
+  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tab{font-size:12px;padding:6px 12px;border-radius:99px;background:#fff;border:1px solid var(--line);cursor:pointer}
+  .tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .video{aspect-ratio:9/16;border-radius:var(--r);position:relative;overflow:hidden;background:#222;color:#fff}
+  .video .bg{position:absolute;inset:0;background:linear-gradient(160deg,#5b4b8a,#c06c84 55%,#f8b195)}
+  .video .person{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:46%;height:72%;
+                 background:rgba(0,0,0,.25);border-radius:50% 50% 0 0/30% 30% 0 0}
+  .v-logo{position:absolute;top:14px;left:14px;width:38px;height:38px;border-radius:9px;background:#fff;color:var(--accent);
+          font-weight:800;display:grid;place-items:center;font-size:13px}
+  .v-hook{position:absolute;top:18%;left:8%;right:20%;font-weight:900;font-size:22px;line-height:1.15;
+          background:#ffe14d;color:#111;padding:6px 10px;border-radius:6px;transform:rotate(-2deg)}
+  .v-cap{position:absolute;bottom:22%;left:8%;right:18%;text-align:center;font-weight:800;font-size:18px;
+         text-shadow:0 2px 0 #000,0 -2px 0 #000,2px 0 0 #000,-2px 0 0 #000}
+  .v-cta{position:absolute;bottom:12%;left:50%;transform:translateX(-50%);background:var(--accent);padding:8px 14px;
+         border-radius:99px;font-weight:700;font-size:14px;white-space:nowrap}
+  .v-play{position:absolute;inset:0;display:grid;place-items:center;font-size:54px;opacity:.85;cursor:pointer}
+  .v-time{position:absolute;bottom:8px;right:10px;font-size:11px;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:4px}
+  .ui-zone{position:absolute;right:0;top:35%;bottom:8%;width:16%;border-left:1px dashed rgba(255,255,255,.35)}
+  .ui-zone span{position:absolute;top:4px;left:4px;font-size:8px;opacity:.6;writing-mode:vertical-rl}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:12px}
+  .card h3{font-size:14px;margin-bottom:8px}
+  .card ul{padding-left:18px;font-size:14px;line-height:1.6}
+  .prompt-q{font-size:13px;color:var(--muted);font-style:italic}
+  .steps{list-style:none;padding:0 !important}
+  .steps li{display:flex;gap:10px;align-items:center;padding:7px 0;font-size:14px;color:var(--muted)}
+  .steps li .d{width:22px;height:22px;border-radius:50%;border:2px solid #ccc;display:grid;place-items:center;font-size:12px;flex-shrink:0}
+  .steps li.done{color:var(--ink)} .steps li.done .d{background:var(--ok);border-color:var(--ok);color:#fff}
+  .steps li.cur{color:var(--ink);font-weight:600} .steps li.cur .d{border-color:var(--accent);border-top-color:transparent;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .wait{aspect-ratio:9/16;border-radius:var(--r);background:#e9e9ee;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:14px;padding:20px}
+  .wait .big{font-size:40px;font-weight:800;color:var(--ink)}
+  .redo-n{font-size:12px;color:var(--muted)}
+  .flag{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;border-radius:10px;padding:10px;margin-top:12px}
+  .toast{position:absolute;left:18px;right:18px;bottom:96px;background:var(--ink);color:#fff;font-size:14px;border-radius:12px;
+         padding:12px 14px;opacity:0;transform:translateY(10px);transition:.25s;z-index:20;pointer-events:none}
+  .toast.on{opacity:1;transform:none}
+  .err-box{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:var(--r);padding:16px;font-size:14px;line-height:1.5}
+</style>
+</head>
+<body>
+
+<aside class="side">
+  <h1>Prototype UI v1</h1>
+  <div>Bấm thử trong khung điện thoại, hoặc nhảy thẳng tới màn:</div>
+  <ol id="nav">
+    <li data-go="login">Đăng nhập</li>
+    <li data-go="list">Danh sách project</li>
+    <li data-go="new">Tạo video mới</li>
+    <li data-go="run">Project — đang dựng</li>
+    <li data-go="done">Project — đã xong</li>
+    <li data-go="fail">Project — lỗi</li>
+  </ol>
+  <div class="note">
+    Dữ liệu giả, không có backend. Video là hình minh họa.<br><br>
+    Đường nét đứt bên phải video = vùng nút của TikTok — chữ/logo luôn tránh vùng này.
+  </div>
+</aside>
+
+<div class="phone">
+
+  <!-- 1. LOGIN -->
+  <section class="screen login" id="s-login">
+    <div class="logo">▶</div>
+    <h1>Gõ một câu,<br>nhận video TikTok</h1>
+    <p>Upload clip quay bằng điện thoại. AI cắt, thêm phụ đề, hook và CTA.</p>
+    <button class="btn dark" onclick="go('list')">Tiếp tục với Google</button>
+    <div class="or">hoặc</div>
+    <input type="email" placeholder="email@cuaban.com">
+    <button class="btn ghost" onclick="toast('Đã gửi link đăng nhập vào email')">Gửi link đăng nhập</button>
+    <div><span class="free">🎁 Miễn phí 10 phút video</span></div>
+  </section>
+
+  <!-- 2. LIST -->
+  <section class="screen" id="s-list">
+    <div class="top"><h2>Video của tôi</h2><div class="quota">Còn <b id="q">7:12</b> phút</div></div>
+    <div class="pad">
+      <div class="grid" id="grid"></div>
+    </div>
+    <button class="btn primary fab" onclick="openNew()">＋ Video mới</button>
+  </section>
+
+  <!-- 3. NEW -->
+  <section class="screen" id="s-new">
+    <div class="top"><button class="back" onclick="go('list')">←</button><h2>Video mới</h2></div>
+    <div class="pad">
+      <div class="label">Clip <span>bắt buộc · tối đa 3 phút</span></div>
+      <div id="clipSlot"></div>
+
+      <div class="label">Thêm vào video <span>không bắt buộc</span></div>
+      <div class="row2">
+        <div class="opt" id="optLogo" onclick="toggleOpt(this,'logo')"><span class="ic">🏷️</span><div>Logo<small>PNG/JPG</small></div></div>
+        <div class="opt" id="optMusic" onclick="toggleOpt(this,'music')"><span class="ic">🎵</span><div>Nhạc nền<small>MP3/M4A</small></div></div>
+      </div>
+
+      <div class="label">Bạn muốn video thế nào? <span>không bắt buộc</span></div>
+      <textarea id="prompt" placeholder="VD: cắt thật gọn, nhấn mạnh giá 189K, chốt đơn mạnh"></textarea>
+      <div class="sugs">
+        <span class="sug">Cuốn, nhịp nhanh</span>
+        <span class="sug">Chốt đơn mạnh</span>
+        <span class="sug">Nhẹ nhàng, tự nhiên</span>
+        <span class="sug">Không cần CTA</span>
+        <span class="sug">Đưa giá lên đầu</span>
+      </div>
+      <div class="hint">Để trống thì AI tự dựng theo kiểu phổ biến: cắt gọn, phụ đề, hook nếu có câu hay.</div>
+    </div>
+    <div class="stick">
+      <div class="hint" id="costHint">Chọn clip để bắt đầu</div>
+      <button class="btn primary" id="buildBtn" disabled onclick="build()">Dựng video</button>
+    </div>
+  </section>
+
+  <!-- 4. PROJECT -->
+  <section class="screen" id="s-proj">
+    <div class="top"><button class="back" onclick="go('list')">←</button><h2 id="pTitle">Váy hoa nhí</h2></div>
+    <div class="pad" id="pBody"></div>
+  </section>
+  <div class="toast" id="toast"></div>
+
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const grads=['linear-gradient(160deg,#5b4b8a,#c06c84 55%,#f8b195)','linear-gradient(160deg,#355c7d,#6c5b7b 55%,#c06c84)',
+             'linear-gradient(160deg,#134e5e,#71b280)','linear-gradient(160deg,#614385,#516395)','linear-gradient(160deg,#c94b4b,#4b134f)'];
+let projects=[
+  {id:1,title:'Váy hoa nhí',status:'done',dur:'0:48',ago:'5 phút trước',g:0},
+  {id:2,title:'Son kem lì #04',status:'run',dur:'1:12',ago:'vừa xong upload',g:1,pct:62},
+  {id:3,title:'Áo khoác dạ',status:'fail',dur:'2:05',ago:'hôm qua',g:2},
+  {id:4,title:'Kem chống nắng',status:'exp',dur:'0:35',ago:'9 ngày trước',g:3},
+];
+const chip={done:['ok','Xong'],run:['run','Đang dựng'],fail:['err','Lỗi'],exp:['exp','Hết hạn']};
+
+function renderGrid(){
+  $('#grid').innerHTML=projects.map(p=>`
+    <div class="proj" onclick="openProj(${p.id})">
+      <div class="thumb" style="background:${grads[p.g]}"><span class="chip ${chip[p.status][0]}">${chip[p.status][1]}${p.status==='run'?' '+p.pct+'%':''}</span></div>
+      <div class="meta"><b>${p.title}</b><span>${p.dur} · ${p.ago}</span></div>
+    </div>`).join('');
+}
+
+function go(s){
+  document.querySelectorAll('.screen').forEach(e=>e.classList.remove('on'));
+  const map={login:'login',list:'list',new:'new'};
+  if(map[s]) $('#s-'+map[s]).classList.add('on');
+  document.querySelectorAll('#nav li').forEach(li=>li.classList.toggle('on',li.dataset.go===s));
+  if(s==='list') renderGrid();
+}
+document.querySelectorAll('#nav li').forEach(li=>li.onclick=()=>{
+  const g=li.dataset.go;
+  if(g==='new') return openNew();
+  if(g==='run') return openProj(2);
+  if(g==='done') return openProj(1);
+  if(g==='fail') return openProj(3);
+  go(g);
+});
+
+/* NEW */
+let clipPicked=false;
+function openNew(){
+  clipPicked=false; $('#prompt').value='';
+  ['optLogo','optMusic'].forEach(id=>{$('#'+id).classList.remove('set')});
+  $('#optLogo').querySelector('small').textContent='PNG/JPG';
+  $('#optMusic').querySelector('small').textContent='MP3/M4A';
+  renderClipSlot(); go('new');
+  document.querySelectorAll('#nav li').forEach(li=>li.classList.toggle('on',li.dataset.go==='new'));
+}
+function renderClipSlot(){
+  if(!clipPicked){
+    $('#clipSlot').innerHTML=`<div class="drop" onclick="pickClip()"><div class="ic">🎬</div><b>Chọn clip từ máy</b><small>Quay dọc là đẹp nhất · quay ngang vẫn được</small></div>`;
+    $('#buildBtn').disabled=true; $('#costHint').textContent='Chọn clip để bắt đầu'; return;
+  }
+  $('#clipSlot').innerHTML=`<div class="picked"><div class="mini" style="background:${grads[4]}"></div>
+     <div class="info"><b>IMG_4821.MOV</b>0:56 · 412 MB<div class="bar"><i id="upbar"></i></div><div class="hint" id="uptxt">Đang tải lên… 0%</div></div>
+     <button class="x" onclick="clipPicked=false;renderClipSlot()">✕</button></div>`;
+  let p=0; const t=setInterval(()=>{p+=Math.random()*18; if(p>=100){p=100;clearInterval(t);
+      $('#uptxt').textContent='✓ Đã tải lên'; $('#buildBtn').disabled=false;
+      $('#costHint').innerHTML='Dùng <b>0:56</b> phút · còn lại 6:16 phút'; }
+    const b=$('#upbar'); if(b){b.style.width=p+'%'; if(p<100) $('#uptxt').textContent='Đang tải lên… '+Math.floor(p)+'%';}},300);
+}
+function pickClip(){clipPicked=true;renderClipSlot()}
+function toggleOpt(el,k){
+  el.classList.toggle('set');
+  el.querySelector('small').textContent=el.classList.contains('set')?(k==='logo'?'✓ logo-shop.png':'✓ nhac-trend.mp3'):(k==='logo'?'PNG/JPG':'MP3/M4A');
+}
+document.querySelectorAll('.sug').forEach(s=>s.onclick=()=>{const t=$('#prompt');t.value=(t.value?t.value+', ':'')+s.textContent.toLowerCase()});
+function build(){
+  const np={id:Date.now(),title:'Clip mới '+new Date().toLocaleTimeString('vi',{hour:'2-digit',minute:'2-digit'}),status:'run',dur:'0:56',ago:'vừa xong',g:4,pct:0,
+            prompt:$('#prompt').value||'(để trống)'};
+  projects.unshift(np); $('#q').textContent='6:16'; openProj(np.id,true);
+}
+
+/* PROJECT */
+const STEPS=['Chuẩn bị video','Nghe lời thoại','AI lên kịch bản dựng','Dựng video','Kiểm tra chất lượng'];
+let timer=null, version=1, redoLeft=3;
+function openProj(id,live){
+  clearInterval(timer);
+  const p=projects.find(x=>x.id===id); $('#pTitle').textContent=p.title;
+  document.querySelectorAll('.screen').forEach(e=>e.classList.remove('on')); $('#s-proj').classList.add('on');
+  document.querySelectorAll('#nav li').forEach(li=>li.classList.toggle('on',
+    li.dataset.go===({done:'done',run:'run',fail:'fail'}[p.status])));
+  if(p.status==='done') return renderDone(p);
+  if(p.status==='fail') return renderFail(p);
+  if(p.status==='exp') return renderExp(p);
+  renderRun(p, live?0:3);
+}
+function renderRun(p,start){
+  let step=start;
+  const draw=()=>{
+    $('#pBody').innerHTML=`
+      <div class="wait"><div><div class="big">${Math.min(99,Math.round(step/STEPS.length*100))}%</div>Đang dựng video…<br><small>Thường mất 1–3 phút. Bạn có thể rời trang, video vẫn tiếp tục dựng.</small></div></div>
+      <div class="card"><ul class="steps">${STEPS.map((s,i)=>`<li class="${i<step?'done':i===step?'cur':''}"><span class="d">${i<step?'✓':''}</span>${s}</li>`).join('')}</ul></div>
+      <div class="card"><h3>Yêu cầu của bạn</h3><div class="prompt-q">“${p.prompt||'cuốn, chốt đơn mạnh'}”</div></div>`;
+  };
+  draw();
+  timer=setInterval(()=>{step++; p.pct=Math.round(step/STEPS.length*100);
+    if(step>=STEPS.length){clearInterval(timer); p.status='done'; p.ago='vừa xong'; version=1; redoLeft=3; renderDone(p); toast('🎉 Video đã xong'); return;}
+    draw();},1400);
+}
+function videoMock(p,v){
+  const hooks=['CHÂN NGẮN? XEM NGAY','GIÁ CHỈ 189K!'];
+  return `<div class="video"><div class="bg" style="background:${grads[p.g]}"></div><div class="person"></div>
+    <div class="ui-zone"><span>vùng nút TikTok</span></div>
+    <div class="v-logo">SHOP</div>
+    <div class="v-hook">${hooks[(v-1)%2]}</div>
+    <div class="v-cap">mặc lên tôn dáng cực kỳ</div>
+    <div class="v-cta">Bấm giỏ hàng 👇</div>
+    <div class="v-play" onclick="toast('(Prototype) phát video')">▶</div>
+    <div class="v-time">0:${v===1?'34':'31'}</div></div>`;
+}
+function renderDone(p){
+  const tabs=Array.from({length:version},(_,i)=>`<span class="tab ${i===version-1?'on':''}" onclick="toast('Đang xem lần ${i+1}')">Lần ${i+1}</span>`).join('');
+  const sums=version===1
+    ? ['Video gốc 0:56 → còn 0:34','Bỏ 14 giây im lặng và 2 câu nói vấp','Đưa câu “chân ngắn mặc vẫn đẹp” lên đầu làm hook','Sửa phụ đề: “tuyết mưu” → “tuyết mưa”']
+    : ['Làm theo góp ý: đưa giá lên đầu','Hook mới: “GIÁ CHỈ 189K!”','Video còn 0:31'];
+  $('#pBody').innerHTML=`
+    ${version>1?`<div class="tabs">${tabs}</div>`:''}
+    ${videoMock(p,version)}
+    <div style="margin-top:12px"><button class="btn primary" onclick="toast('Đang tải final.mp4…')">⬇ Tải video</button></div>
+    <div class="card"><h3>AI đã làm gì</h3><ul>${sums.map(s=>`<li>${s}</li>`).join('')}</ul></div>
+    <div class="card"><h3>Chưa ưng? Góp ý để AI làm lại</h3>
+      <textarea id="fb" placeholder="VD: đưa giá lên đầu, cắt bớt đoạn cuối" ${redoLeft?'':'disabled'}></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px">
+        <span class="redo-n">${redoLeft?`Miễn phí · còn ${redoLeft} lần`:'Đã hết lượt làm lại cho video này'}</span>
+        <button class="btn dark" style="width:auto;padding:11px 18px" ${redoLeft?'':'disabled'} onclick="redo(${p.id})">Làm lại</button>
+      </div></div>
+    <div class="hint" style="text-align:center;margin-top:14px">File được giữ 7 ngày</div>`;
+}
+function redo(id){
+  const p=projects.find(x=>x.id===id); const fb=$('#fb').value.trim();
+  if(!fb){toast('Gõ góp ý trước nhé');return}
+  redoLeft--; version++; p.status='run'; p.prompt=fb;
+  clearInterval(timer); let step=2;
+  const draw=()=>{$('#pBody').innerHTML=`
+      <div class="wait"><div><div class="big">Lần ${version}</div>Đang làm lại theo góp ý…</div></div>
+      <div class="card"><ul class="steps">${STEPS.map((s,i)=>`<li class="${i<step?'done':i===step?'cur':''}"><span class="d">${i<step?'✓':''}</span>${s}</li>`).join('')}</ul></div>
+      <div class="card"><h3>Góp ý</h3><div class="prompt-q">“${fb}”</div></div>`};
+  draw();
+  timer=setInterval(()=>{step++; if(step>=STEPS.length){clearInterval(timer);p.status='done';renderDone(p);toast('🎉 Đã làm lại xong');return}draw()},1100);
+}
+function renderFail(p){
+  $('#pBody').innerHTML=`
+    <div class="err-box"><b>Không dựng được video này</b><br>Clip dài 2:05 nhưng file bị hỏng ở giây 1:40 (có thể do gửi qua Zalo bị nén).<br><br>Hạn mức <b>đã được hoàn lại</b>.</div>
+    <div style="margin-top:14px"><button class="btn primary" onclick="openNew()">Tải clip khác</button></div>`;
+}
+function renderExp(p){
+  $('#pBody').innerHTML=`<div class="wait"><div>⏳<br><b>Video đã hết hạn</b><br><small>File chỉ được giữ 7 ngày. Hãy tạo video mới.</small></div></div>
+    <div style="margin-top:14px"><button class="btn primary" onclick="openNew()">＋ Video mới</button></div>`;
+}
+let tt; function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),1800)}
+
+go('login');
+</script>
+</body>
+</html>
