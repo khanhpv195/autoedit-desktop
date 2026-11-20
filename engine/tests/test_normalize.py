@@ -6,10 +6,25 @@ def info(w, h, hdr=False):
     return MediaInfo(duration=5, width=w, height=h, fps=30, hdr=hdr, has_audio=True)
 
 
-def test_portrait_scales_and_pads_no_upscale():
+def test_portrait_covers_frame_no_pad():
     f = build_filter(info(720, 1280))
-    assert "scale=w='min(1080,iw)'" in f and "pad=1080:1920" in f
+    assert "force_original_aspect_ratio=increase" in f and "flags=lanczos" in f
+    assert f"crop={1080}:{1920}" in f and "pad=" not in f and "min(" not in f
     assert "fps=30" in f and f.endswith("[v]")
+
+
+def test_portrait_720x1280_output_has_no_black_border(tmp_path):
+    import subprocess
+    src = tmp_path / "p.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=720x1280:r=30:d=2",
+                    "-f", "lavfi", "-i", "sine=d=2", "-pix_fmt", "yuv420p", "-shortest", str(src)], check=True)
+    out = normalize(src, tmp_path / "n.mp4", probe(src))
+    i = probe(out)
+    assert (i.width, i.height) == (1080, 1920)
+    r = subprocess.run(["ffmpeg", "-v", "info", "-i", str(out), "-vf", "cropdetect=limit=24:round=2",
+                        "-frames:v", "10", "-f", "null", "-"], capture_output=True, text=True)
+    crops = [l for l in r.stderr.splitlines() if "crop=" in l]
+    assert crops and crops[-1].rsplit("crop=", 1)[1] == "1080:1920:0:0"
 
 
 def test_landscape_gets_blur_background():

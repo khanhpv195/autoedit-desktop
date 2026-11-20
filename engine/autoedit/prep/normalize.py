@@ -11,9 +11,9 @@ TONEMAP = ("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
 def build_filter(info: MediaInfo) -> str:
     pre = f"{TONEMAP}," if info.hdr else ""
     if info.portrait:
-        # ffmpeg auto-rotates on decode. Fit inside 1080x1920 without upscaling, pad the rest.
-        return (f"[0:v]{pre}scale=w='min({W},iw)':h='min({H},ih)':force_original_aspect_ratio=decrease,"
-                f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={FPS},format=yuv420p[v]")
+        # ffmpeg auto-rotates on decode. Cover the frame (upscaling allowed), centre-crop: no black bars.
+        return (f"[0:v]{pre}scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={W}:{H},setsar=1,fps={FPS},format=yuv420p[v]")
     # Landscape: sharp copy fitted to width, centred over a blurred, cropped fill.
     return (f"[0:v]{pre}split=2[bg][fg];"
             f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=20:2[bgb];"
