@@ -4,6 +4,7 @@ import Onboarding from "./screens/Onboarding";
 import NichePicker from "./screens/NichePicker";
 import NewVideo from "./screens/NewVideo";
 import ProjectView from "./screens/ProjectView";
+import Settings from "./screens/Settings";
 
 function Screen() {
   const { state } = useStore();
@@ -13,7 +14,7 @@ function Screen() {
     case "niche": return <NichePicker />;
     case "new": return <NewVideo key={r.niche} niche={r.niche} />;
     case "project": return <ProjectView key={r.dir} dir={r.dir} />;
-    default: return <div className="view on"><h1>{r.name}</h1></div>;
+    case "settings": return <Settings />;
   }
 }
 
