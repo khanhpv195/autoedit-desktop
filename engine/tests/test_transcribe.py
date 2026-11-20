@@ -48,3 +48,41 @@ def test_transcribe_uses_cache(tmp_path, monkeypatch):
 def test_real_whisper(clip, tmp_path):
     words = tr.transcribe(clip, tmp_path)  # sine tone: expect few/no words, but no crash
     assert isinstance(words, list)
+
+
+def _line(text, t0, step=0.3):
+    return [Word(w, round(t0 + i * step, 2), round(t0 + i * step + 0.25, 2)) for i, w in enumerate(text.split())]
+
+
+REAL = _line("chị em ơi son này giá 189K thôi nha", 1.0)
+
+
+@pytest.mark.parametrize("closing", [
+    "Cảm ơn các bạn đã theo dõi",
+    "cảm ơn các bạn đã xem video",
+    "Hãy đăng ký kênh để không bỏ lỡ những video hấp dẫn",
+    "Hãy subscribe cho kênh Ghiền Mì Gõ",
+    "Subscribe nhé",
+    "Đăng ký kênh nha",
+])
+def test_closing_lines_at_end_are_dropped(closing):
+    words = REAL + _line(closing, 6.0)
+    assert tr.drop_closing_lines(words) == REAL
+
+
+def test_closing_line_glued_to_last_sentence_is_dropped_too():
+    words = _line("bấm giỏ hàng nha cảm ơn các bạn đã theo dõi", 1.0)
+    assert [w.text for w in tr.drop_closing_lines(words)] == ["bấm", "giỏ", "hàng", "nha"]
+
+
+def test_isolated_closing_line_in_a_silent_region_is_dropped():
+    tail = _line("tạm biệt nhé", 30.0)
+    words = REAL + _line("Hãy đăng ký kênh", 10.0) + tail     # 2+ s of silence on both sides
+    out = tr.drop_closing_lines(words)
+    assert out == REAL + tail
+
+
+def test_real_speech_mentioning_follow_in_the_middle_is_kept():
+    words = _line("nhớ theo dõi shop để nhận ưu đãi nha", 1.0) + _line("giá chỉ 189K thôi", 4.0)
+    assert tr.drop_closing_lines(words) == words
+    assert tr.drop_closing_lines(REAL) == REAL and tr.drop_closing_lines([]) == []
