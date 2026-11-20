@@ -72,3 +72,37 @@ async def test_finish(session):
 def test_build_server(session):
     cfg = tools.build_server(session)
     assert cfg["name"] == "autoedit"
+
+
+async def test_set_edl_accepts_json_string(session):
+    res = await tools.set_edl(session, {"edl": json.dumps(EDL)})
+    assert not res.get("is_error") and session.edl is not None
+    res = await tools.set_edl(session, {"edl": "{not json"})
+    assert res["is_error"] and "JSON" in text_of(res)
+
+
+async def test_set_edl_schema_describes_edl_fields():
+    edl = tools.SCHEMAS["set_edl"][1]["properties"]["edl"]
+    assert {"keep", "hook", "caption_fixes", "emphasis", "cta_text", "music"} <= set(edl["properties"])
+    assert edl["required"] == ["keep"] and edl["properties"]["keep"]["items"]["required"] == ["start", "end"]
+
+
+async def test_three_invalid_edls_abort_the_session(session):
+    bad = {"edl": {"keep": [{"start": 0.6, "end": 1.0}]}}
+    for _ in range(3):
+        await tools.set_edl(session, bad)
+    assert session.aborted
+    res = await tools.set_edl(session, bad)
+    assert res["is_error"]
+
+
+async def test_ffmpeg_work_runs_off_the_event_loop(session, monkeypatch):
+    import threading
+    seen = []
+    real_render, real_frame = tools.render, tools.frame_at
+    monkeypatch.setattr(tools, "render", lambda *a, **k: seen.append(threading.current_thread()) or real_render(*a, **k))
+    monkeypatch.setattr(tools, "frame_at", lambda *a, **k: seen.append(threading.current_thread()) or real_frame(*a, **k))
+    await tools.set_edl(session, {"edl": EDL})
+    await tools.render_preview(session, {})
+    await tools.view_frames(session, {"times": [1.0]})
+    assert seen and all(t is not threading.main_thread() for t in seen)

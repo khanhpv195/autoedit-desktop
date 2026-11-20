@@ -178,3 +178,18 @@ async def test_unclassified_error_before_finish_still_raises():
         raise ProcessError("weird", exit_code=1)
     with pytest.raises(ProcessError):
         await run_agent(S(), "p", None, query_fn=q)
+
+
+async def test_aborted_session_ends_run_and_closes_stream():
+    s = S(); s.aborted = False
+    closed = []
+    async def q(prompt, options):
+        try:
+            yield AssistantMessage(content=[TextBlock("x")], model="m")
+            s.aborted = True
+            yield AssistantMessage(content=[TextBlock("y")], model="m")
+            yield AssistantMessage(content=[TextBlock("z")], model="m")
+        finally:
+            closed.append(1)
+    out = await run_agent(s, "p", None, query_fn=q)
+    assert not out.finished and out.error == "aborted" and closed

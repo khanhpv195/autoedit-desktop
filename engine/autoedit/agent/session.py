@@ -15,4 +15,5 @@ class EditSession:
     edl_errors: int = 0
     previews: int = 0
     finished: bool = False
+    aborted: bool = False
     summary: list[str] = field(default_factory=list)

@@ -74,6 +74,8 @@ async def run_agent(session, prompt, options, *, query_fn=query, timeout: float 
                             raise err
                 if done():
                     break
+                if getattr(session, "aborted", False):
+                    return AgentOutcome(False, turns, "aborted")
     except TimeoutError:
         return AgentOutcome(done(), turns, None if done() else "timeout")
     except Exception as e:

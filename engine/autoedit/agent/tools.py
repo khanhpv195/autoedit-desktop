@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 from pathlib import Path
@@ -45,17 +46,27 @@ async def view_frames(s: EditSession, args: dict) -> dict:
     out_dir = s.project.work_dir / "frames"
     content = [{"type": "text", "text": "Frames at " + ", ".join(f"{t:.2f}s" for t in times)}]
     for t in times:
-        content.append(_image(frame_at(s.prepared.normalized, t, out_dir / f"view_{t:.2f}.jpg")))
+        content.append(_image(await asyncio.to_thread(frame_at, s.prepared.normalized, t,
+                                                      out_dir / f"view_{t:.2f}.jpg")))
     return {"content": content}
 
 
 async def set_edl(s: EditSession, args: dict) -> dict:
     if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
-        return _text("Too many invalid edits. Stop and call finish.", error=True)
+        s.aborted = True
+        return _text("Too many invalid edits. The app will use its automatic cut; stop now.", error=True)
     try:
-        edl, notes = validate_edl(args.get("edl") or {}, s.prepared.words, s.prepared.info.duration)
-    except (EdlError, KeyError, TypeError, ValueError) as e:
+        raw = args.get("edl") or {}
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError as e:
+                raise EdlError(f"edl is not valid JSON: {e}") from e
+        edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration)
+    except (EdlError, KeyError, TypeError, ValueError, AttributeError) as e:
         s.edl_errors += 1
+        if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
+            s.aborted = True
         return _text(f"Invalid EDL: {e}", error=True)
     s.edl = edl
     (s.project.work_dir / "edl.json").write_text(json.dumps(edl.to_dict(), ensure_ascii=False, indent=2),
@@ -70,12 +81,13 @@ async def render_preview(s: EditSession, args: dict) -> dict:
     if s.previews >= MAX_PREVIEWS:
         return _text("Preview limit reached. Call finish.", error=True)
     try:
-        res = render(s.prepared, s.project, s.edl, s.project.work_dir / "preview.mp4", preview=True)
+        res = await asyncio.to_thread(render, s.prepared, s.project, s.edl, s.project.work_dir / "preview.mp4",
+                                      preview=True)
     except AutoeditError as e:
         return _text(f"Preview failed: {e.message}", error=True)
     s.previews += 1
     s.events.preview(str(res.path), s.previews)
-    frames = preview_frames(res.path, s.edl, s.project.work_dir / "frames")
+    frames = await asyncio.to_thread(preview_frames, res.path, s.edl, s.project.work_dir / "frames")
     content = [{"type": "text", "text": f"Preview {s.previews}/{MAX_PREVIEWS}: {res.duration:.2f}s. "
                                         "Frames: start, then just after each cut."}]
     return {"content": content + [_image(p) for p in frames]}
@@ -91,6 +103,27 @@ async def finish(s: EditSession, args: dict) -> dict:
     return _text("Done. The app will render the final video.")
 
 
+_NUM = {"type": "number"}
+EDL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "keep": {"type": "array", "minItems": 1, "items": {
+            "type": "object", "properties": {"start": _NUM, "end": _NUM, "reason": {"type": "string"}},
+            "required": ["start", "end"]}},
+        "hook": {"type": ["object", "null"], "properties": {
+            "move_to_front": {"type": "array", "items": _NUM, "minItems": 2, "maxItems": 2},
+            "text": {"type": "string"}}, "required": ["move_to_front", "text"]},
+        "caption_fixes": {"type": "array", "items": {
+            "type": "object", "properties": {"at": _NUM, "wrong": {"type": "string"}, "right": {"type": "string"}},
+            "required": ["at", "wrong", "right"]}},
+        "emphasis": {"type": "array", "items": {
+            "type": "object", "properties": {"at": _NUM, "word": {"type": "string"}}, "required": ["at", "word"]}},
+        "cta_text": {"type": "string"},
+        "music": {"type": "object", "properties": {"use": {"type": "boolean"}, "duck_db": _NUM}},
+    },
+    "required": ["keep"],
+}
+
 SCHEMAS = {
     "get_transcript": ("Read the transcript as phrases with source times. Optional start/end in seconds.",
                        {"type": "object", "properties": {"start": {"type": "number"}, "end": {"type": "number"}}}),
@@ -98,8 +131,10 @@ SCHEMAS = {
                     {"type": "object", "properties": {"times": {"type": "array", "items": {"type": "number"},
                                                                 "minItems": 1, "maxItems": 6}},
                      "required": ["times"]}),
-    "set_edl": ("Submit the edit decision list. Returns the corrected EDL or an error to fix.",
-                {"type": "object", "properties": {"edl": {"type": "object"}}, "required": ["edl"]}),
+    "set_edl": ("Submit the edit decision list. Edges that fall inside a word snap to the word (padded); edges in "
+                "silence are kept as given, so silent product shots inside a range survive. Returns the corrected "
+                "EDL plus notes (dropped pieces, caption_fixes/emphasis that matched nothing) or an error to fix.",
+                {"type": "object", "properties": {"edl": EDL_SCHEMA}, "required": ["edl"]}),
     "render_preview": ("Render a 540p preview of the current EDL and return frames at the start and each cut.",
                        {"type": "object", "properties": {}}),
     "finish": ("Lock the current EDL. summary = 1-4 short customer-facing Vietnamese bullets.",
