@@ -79,7 +79,7 @@ def test_edit_options_lock_down_tools(tmp_path, monkeypatch):
     assert o.tools == ["Skill"] and o.skills == SKILLS and o.setting_sources == ["project"]
     assert o.allowed_tools == EDIT_TOOLS and o.max_turns == 15 and o.cwd == str(tmp_path)
     assert o.cli_path == tmp_path / "claude" and o.env == {"DISABLE_AUTOUPDATER": "1"}
-    assert o.strict_mcp_config is True
+    assert o.strict_mcp_config is True and o.max_buffer_size >= 16 * 1024 * 1024
 
 
 def test_plain_options_also_pin_cli(tmp_path, monkeypatch):

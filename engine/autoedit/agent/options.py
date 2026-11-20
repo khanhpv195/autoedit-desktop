@@ -8,6 +8,7 @@ from autoedit.claude_cli import find_cli
 
 DEFAULT_MODEL = "claude-opus-5-5"
 BASE_ENV = {"DISABLE_AUTOUPDATER": "1"}   # our pinned CLI must never update itself
+MAX_BUFFER = 32 * 1024 * 1024    # SDK default 1 MB overflows on a tool result with 6 base64 frames
 SKILLS = ["video-use", "edit-video", "niche-hooks"]
 EDIT_TOOLS = [f"mcp__autoedit__{n}" for n in TOOL_NAMES]
 
@@ -28,6 +29,7 @@ def edit_options(agent_dir: Path, server, model: str) -> ClaudeAgentOptions:
         model=model,
         cli_path=find_cli(),             # None only when running from source: SDK uses its own copy
         env=dict(BASE_ENV),
+        max_buffer_size=MAX_BUFFER,
         strict_mcp_config=True,          # spike: without it the account's claude.ai connectors leak in
     )
 
