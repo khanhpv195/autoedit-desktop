@@ -1,12 +1,16 @@
 import { StoreProvider, useStore } from "./state/store";
 import Sidebar from "./components/Sidebar";
 import Onboarding from "./screens/Onboarding";
+import NichePicker from "./screens/NichePicker";
+import NewVideo from "./screens/NewVideo";
 
 function Screen() {
   const { state } = useStore();
   const r = state.route;
   switch (r.name) {
     case "onboarding": return <Onboarding />;
+    case "niche": return <NichePicker />;
+    case "new": return <NewVideo key={r.niche} niche={r.niche} />;
     default: return <div className="view on"><h1>{r.name}</h1></div>;
   }
 }
