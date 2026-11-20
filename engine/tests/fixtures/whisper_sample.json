@@ -1,0 +1,208 @@
+{
+	"systeminfo": "",
+	"model": {
+		"type": "large",
+		"multilingual": true,
+		"vocab": 51866,
+		"audio": {
+			"ctx": 1500,
+			"state": 1280,
+			"head": 20,
+			"layer": 32
+		},
+		"text": {
+			"ctx": 448,
+			"state": 1280,
+			"head": 20,
+			"layer": 4
+		},
+		"mels": 128,
+		"ftype": 1
+	},
+	"params": {
+		"model": "<model path>",
+		"language": "vi",
+		"translate": false
+	},
+	"result": {
+		"language": "vi"
+	},
+	"transcription": [
+		{
+			"timestamps": {
+				"from": "00:00:00,000",
+				"to": "00:00:00,000"
+			},
+			"offsets": {
+				"from": 0,
+				"to": 0
+			},
+			"text": ""
+		},
+		{
+			"timestamps": {
+				"from": "00:00:00,000",
+				"to": "00:00:00,270"
+			},
+			"offsets": {
+				"from": 0,
+				"to": 270
+			},
+			"text": " luôn"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:00,270",
+				"to": "00:00:00,510"
+			},
+			"offsets": {
+				"from": 270,
+				"to": 510
+			},
+			"text": " đây"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:00,510",
+				"to": "00:00:00,820"
+			},
+			"offsets": {
+				"from": 510,
+				"to": 820
+			},
+			"text": " là"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:00,820",
+				"to": "00:00:00,970"
+			},
+			"offsets": {
+				"from": 820,
+				"to": 970
+			},
+			"text": " một"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:00,970",
+				"to": "00:00:01,440"
+			},
+			"offsets": {
+				"from": 970,
+				"to": 1440
+			},
+			"text": " trong"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:01,440",
+				"to": "00:00:01,780"
+			},
+			"offsets": {
+				"from": 1440,
+				"to": 1780
+			},
+			"text": " cái"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:01,780",
+				"to": "00:00:02,200"
+			},
+			"offsets": {
+				"from": 1780,
+				"to": 2200
+			},
+			"text": " outfit"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:02,200",
+				"to": "00:00:02,320"
+			},
+			"offsets": {
+				"from": 2200,
+				"to": 2320
+			},
+			"text": " em"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:02,320",
+				"to": "00:00:02,440"
+			},
+			"offsets": {
+				"from": 2320,
+				"to": 2440
+			},
+			"text": " đi"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:02,440",
+				"to": "00:00:02,550"
+			},
+			"offsets": {
+				"from": 2440,
+				"to": 2550
+			},
+			"text": " ra"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:02,550",
+				"to": "00:00:03,020"
+			},
+			"offsets": {
+				"from": 2550,
+				"to": 3020
+			},
+			"text": " ngoài"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:03,020",
+				"to": "00:00:03,030"
+			},
+			"offsets": {
+				"from": 3020,
+				"to": 3030
+			},
+			"text": " rất"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:03,030",
+				"to": "00:00:03,200"
+			},
+			"offsets": {
+				"from": 3030,
+				"to": 3200
+			},
+			"text": " đơn"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:03,200",
+				"to": "00:00:03,460"
+			},
+			"offsets": {
+				"from": 3200,
+				"to": 3460
+			},
+			"text": " giản"
+		},
+		{
+			"timestamps": {
+				"from": "00:00:03,460",
+				"to": "00:00:03,740"
+			},
+			"offsets": {
+				"from": 3460,
+				"to": 3740
+			},
+			"text": " một"
+		}
+	]
+}
