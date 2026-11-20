@@ -163,3 +163,12 @@ def test_failed_render_removes_run_dir(project, monkeypatch, capsys):
     assert cli.main(["edit", "--project", str(project)]) == 1
     assert events(capsys)[-1]["code"] == "RENDER_FAILED"
     assert not (project / "runs" / "1").exists()
+
+
+def test_cli_subprocess_stderr_goes_to_run_log(project, monkeypatch, capsys):
+    async def agent(session, prompt, options, **kw):
+        options.stderr("cli says hello")
+        return AgentOutcome(False, 0, "x")
+    monkeypatch.setattr(cli, "run_agent", agent)
+    assert cli.main(["edit", "--project", str(project)]) == 0
+    assert "[claude] cli says hello" in (project / "runs" / "1" / "run.log").read_text()

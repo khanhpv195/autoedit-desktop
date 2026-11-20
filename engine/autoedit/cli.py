@@ -78,13 +78,17 @@ async def _edit(args, events: Emitter) -> int:
                 log.write(json.dumps(serialize_message(msg), ensure_ascii=False) + "\n")
                 log.flush()
 
+            def cli_stderr(line: str) -> None:
+                runlog.write(f"[claude] {line.rstrip()}\n")
+                runlog.flush()
+
             session = EditSession(prepared=prepared, project=project, events=ev)
             usage = {"turns": 0, "fallback": False}
             ev.step("AI đang dựng…", 0.3)
             with contextlib.redirect_stderr(Tee(sys.stderr, runlog)):
                 try:
                     message = build_edit_message(project, prepared, user_prompt, args.feedback, previous, agent_dir())
-                    outcome = await run_agent(session, message, edit_options(agent_dir(), build_server(session), model()),
+                    outcome = await run_agent(session, message, edit_options(agent_dir(), build_server(session), model(), cli_stderr),
                                               on_message=on_message)
                     usage["turns"] = outcome.turns
                     ok = outcome.finished

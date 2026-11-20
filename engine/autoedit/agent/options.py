@@ -16,7 +16,7 @@ def model() -> str:
     return os.environ.get("AUTOEDIT_CLAUDE_MODEL", DEFAULT_MODEL)
 
 
-def edit_options(agent_dir: Path, server, model: str) -> ClaudeAgentOptions:
+def edit_options(agent_dir: Path, server, model: str, stderr=None) -> ClaudeAgentOptions:
     return ClaudeAgentOptions(
         cwd=str(agent_dir),
         tools=[],                        # no built-in tools at all: only our MCP tools (skills ride in the first message)
@@ -28,6 +28,7 @@ def edit_options(agent_dir: Path, server, model: str) -> ClaudeAgentOptions:
         cli_path=find_cli(),             # None only when running from source: SDK uses its own copy
         env=dict(BASE_ENV),
         max_buffer_size=MAX_BUFFER,
+        stderr=stderr,                   # CLI subprocess stderr lines (never its env), e.g. into run.log
         strict_mcp_config=True,          # spike: without it the account's claude.ai connectors leak in
     )
 

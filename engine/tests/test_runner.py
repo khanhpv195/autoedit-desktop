@@ -231,3 +231,13 @@ async def test_turns_counted_from_tool_call_messages_when_no_result_arrives():
 def test_rate_limit_classification_is_not_fooled_by_context_or_turn_limits(text, is_limit):
     from autoedit.agent.sdk_errors import classify_text
     assert isinstance(classify_text(text), RateLimited) == is_limit
+
+
+def test_edit_options_accepts_a_stderr_sink(tmp_path, monkeypatch):
+    import autoedit.agent.options as opt
+    monkeypatch.setattr(opt, "find_cli", lambda: None)
+    lines = []
+    o = edit_options(tmp_path, {"type": "sdk", "name": "autoedit"}, "m", lines.append)
+    o.stderr("boom")
+    assert lines == ["boom"]
+    assert edit_options(tmp_path, {"type": "sdk", "name": "autoedit"}, "m").stderr is None
