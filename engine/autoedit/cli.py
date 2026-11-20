@@ -70,6 +70,7 @@ async def _edit(args, events: Emitter) -> int:
     user_prompt = args.prompt if args.prompt is not None else project.prompt
     previous = _previous_edl(project) if args.feedback else None
     run_dir = project.new_run_dir()
+    saved = False
     try:
         with open(run_dir / "agent.jsonl", "a", encoding="utf-8") as log, \
                 open(run_dir / "run.log", "a", encoding="utf-8") as runlog:
@@ -111,9 +112,14 @@ async def _edit(args, events: Emitter) -> int:
                                  "prompt": user_prompt, "feedback": args.feedback, "summary": summary,
                                  "needs_review": res.needs_review, "fallback": usage["fallback"]})
             project.save()
-            ev.done(str(res.path), summary, usage, res.needs_review)
+            saved = True
+            try:
+                ev.done(str(res.path), summary, usage, res.needs_review)
+            except OSError:
+                pass    # the app quit (BrokenPipe); the run is already recorded and must stay
     except BaseException:
-        shutil.rmtree(run_dir, ignore_errors=True)    # no half-recorded runs: nothing in project.json points here
+        if not saved:   # no half-recorded runs: nothing in project.json points here
+            shutil.rmtree(run_dir, ignore_errors=True)
         raise
     return 0
 

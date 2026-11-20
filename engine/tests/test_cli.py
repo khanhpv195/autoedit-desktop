@@ -172,3 +172,18 @@ def test_cli_subprocess_stderr_goes_to_run_log(project, monkeypatch, capsys):
     monkeypatch.setattr(cli, "run_agent", agent)
     assert cli.main(["edit", "--project", str(project)]) == 0
     assert "[claude] cli says hello" in (project / "runs" / "1" / "run.log").read_text()
+
+
+def test_broken_pipe_on_done_keeps_the_saved_run(project, monkeypatch, capsys):
+    from autoedit.events import Emitter
+    async def fake_agent(session, prompt, options, **kw):
+        return AgentOutcome(False, 1, "aborted")
+    def gone(self, *a, **k):
+        raise BrokenPipeError("app quit")
+    monkeypatch.setattr(cli, "run_agent", fake_agent)
+    monkeypatch.setattr(Emitter, "done", gone)
+    assert cli.main(["edit", "--project", str(project)]) == 0
+    assert (project / "runs" / "1" / "final.mp4").exists()
+    pj = json.loads((project / "project.json").read_text())
+    assert pj["runs"][0]["n"] == 1
+
