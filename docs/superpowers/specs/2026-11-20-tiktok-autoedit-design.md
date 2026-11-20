@@ -284,7 +284,7 @@ tiktok-autoedit/
 └── docs/
 ```
 
-**Bộ cài:** `AutoEdit.dmg` cho Mac (ARM, ký và notarize), `AutoEdit-setup.exe` cho Windows (có ký). Khoảng 150–250MB (số thật đo ở cuối M1), gồm:
+**Bộ cài:** `AutoEdit.dmg` cho Mac (ARM, ký và notarize), `AutoEdit-setup.exe` cho Windows (có ký). Khoảng 200MB (ước tính: engine 55MB đo thật trên Mac ARM + ffmpeg/ffprobe bản tĩnh ~120MB ước tính + whisper-cli ~10MB ước tính + app Tauri ~15MB ước tính; bản ffmpeg Homebrew động không dùng được để đo vì cần thư viện đi kèm, cả thư mục cài khoảng 51MB), gồm:
 - app Tauri,
 - sidecar `autoedit` (không kèm Claude Code CLI), ffmpeg, ffprobe, whisper-cli,
 - `Resources/agent/`,
