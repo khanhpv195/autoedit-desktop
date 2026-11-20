@@ -69,9 +69,13 @@ async def test_finish(session):
     assert not res.get("is_error") and session.finished and session.summary == ["Bỏ đoạn lặng", "Kết bằng giá"]
 
 
-def test_build_server(session):
+async def test_build_server(session):
     cfg = tools.build_server(session)
     assert cfg["name"] == "autoedit"
+    handler = cfg["instance"]._request_handlers["tools/list"].handler
+    listed = (await handler(None, None)).tools
+    assert [t.name for t in listed] == list(tools.TOOL_NAMES) and len(listed) == 5
+    assert "keep" in next(t for t in listed if t.name == "set_edl").input_schema["properties"]["edl"]["properties"]
 
 
 async def test_set_edl_accepts_json_string(session):
