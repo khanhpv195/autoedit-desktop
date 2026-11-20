@@ -61,6 +61,7 @@ React UI ──invoke──▶ Rust (Tauri): auth · secrets · sidecar
 Lệnh:
 - `autoedit analyze --project <dir>`: ra 3 thẻ kịch bản.
 - `autoedit edit --project <dir> --prompt "<…>"`: dựng video.
+- `autoedit setup`: tải Claude Code CLI đúng phiên bản đã chốt nếu máy chưa có, in ra đường dẫn (`{"type":"setup","claude_cli":"…"}`).
 - `autoedit auth-check`: kiểm tra đăng nhập Claude.
 - v2: `autoedit social <lệnh> …`.
 
@@ -72,7 +73,7 @@ Engine in mỗi dòng stdout là một JSON:
 {"type":"done","final":".../runs/1/final.mp4","summary":["…"],"usage":{"turns":9}}
 {"type":"error","code":"RATE_LIMIT","message":"…","retry_at":"2026-11-20T14:30:00+07:00"}
 ```
-Bấm Hủy thì Rust kill process. Mã lỗi: `NO_AUTH`, `RATE_LIMIT`, `BAD_INPUT`, `RENDER_FAILED`, `AGENT_FAILED`.
+Bấm Hủy thì Rust kill process. Mã lỗi: `NO_AUTH`, `RATE_LIMIT`, `BAD_INPUT`, `RENDER_FAILED`, `AGENT_FAILED`, `SETUP_REQUIRED` (chưa tải CLI Claude).
 
 ## 3. Xác thực Claude
 
@@ -84,8 +85,14 @@ Làm theo AIEV (`apps/server/src/config.ts` → `hasClaudeAuth`). Thứ tự dò
 
 **Onboarding bước 1 "Đăng nhập Claude":**
 - Nếu dò thấy (1) hoặc (2): hiện ✓ "Đã kết nối · subscription" và đi tiếp.
-- Nếu chưa có: nút "Đăng nhập Claude" chạy `claude setup-token` bằng CLI kèm trong app. Lệnh mở trình duyệt để khách đăng nhập. Rust đọc token từ output, lưu vào Keychain, rồi chạy `autoedit auth-check` để xác nhận.
+- Nếu chưa có: nút "Đăng nhập Claude" chạy `claude setup-token` bằng CLI app đã tải về. Lệnh mở trình duyệt để khách đăng nhập. Rust đọc token từ output, lưu vào Keychain, rồi chạy `autoedit auth-check` để xác nhận.
 - Link phụ "Dùng API key thay thế".
+
+**Claude Code CLI không nằm trong bộ cài.** `claude-agent-sdk` điều khiển Claude qua chương trình `claude` (Claude Code CLI, ~350MB khi giải nén). Thay vì đóng gói, engine tải nó ở lần mở đầu:
+- Nguồn: wheel `claude-agent-sdk` trên PyPI đúng phiên bản SDK đã ghim, đúng nền tảng (Mac ARM/Intel, Windows x64), ~155–170MB. CLI trong wheel luôn khớp giao thức với SDK.
+- Kiểm sha256 (ghim trong code), giải nén riêng file `claude`/`claude.exe` vào `<app data>/claude-cli/<phiên bản SDK>/`.
+- Mọi lần gọi đều truyền `cli_path` tới file này và `DISABLE_AUTOUPDATER=1`, nên CLI không tự cập nhật. CLI Claude Code riêng của khách (nếu có) không ảnh hưởng app.
+- Nâng phiên bản là việc của mình: nâng SDK + CLI cùng nhau, chạy bộ clip chuẩn, rồi phát hành qua Tauri updater. Phiên bản SDK đổi thì app tự tải CLI mới, xóa bản cũ.
 
 Settings → AI dựng có các mục: trạng thái kết nối (subscription hay API key), nút Đăng xuất / Đổi tài khoản, và chọn model (mặc định `claude-opus-5-5`).
 
@@ -195,6 +202,7 @@ Engine dùng lại phần chuẩn bị đã cache, rồi chạy agent mới. Pro
 | Clip >3 phút hoặc file hỏng | Báo `BAD_INPUT` ngay khi thả file |
 | Máy Windows không có GPU | Whisper chạy CPU. UI báo thời gian ước tính trước khi chạy |
 | Chưa tải model Whisper | Onboarding bắt buộc tải (~1.5GB, có thể tải tiếp nếu đứt) |
+| Chưa tải CLI Claude hoặc file hỏng | Engine báo `SETUP_REQUIRED`; app đưa về bước tải. Sai sha256 thì xóa và tải lại |
 
 ## 5. Agent và skill
 
@@ -225,7 +233,7 @@ Theo prototype `docs/superpowers/prototypes/ui-v6-bundle.html` (onboarding sẽ 
 - Chân sidebar: tổng số video, nút Cài đặt.
 
 **Màn hình**
-1. **Onboarding**: (1) Đăng nhập Claude → (2) Tải model Whisper → (3) Nhập key bundle.social, bước này có thể bỏ qua (v2).
+1. **Onboarding**: (1) Tải Claude (~160MB, vài phút) → (2) Đăng nhập Claude, trong lúc đó model Whisper tải nền → (3) Nhập key bundle.social, bước này có thể bỏ qua (v2).
 2. **Chọn ngành**: 5 thẻ (thời trang, mỹ phẩm, đồ ăn, phụ kiện, khác). Ngành dùng lần trước có nhãn "Lần trước".
 3. **Màn dựng**: nút "← Đổi ngành", nhãn ngành, vùng thả clip, logo và nhạc. Khi thả clip, app tự chạy `analyze` và hiện 3 thẻ kịch bản cùng nút "↻ Gợi ý khác". Sau đó là ô mô tả và nút "Dựng video".
 4. **Đang dựng**: các bước, feed hoạt động của agent, preview từng vòng, nút Hủy.
@@ -276,13 +284,13 @@ tiktok-autoedit/
 └── docs/
 ```
 
-**Bộ cài:** `AutoEdit.dmg` cho Mac (ARM, ký và notarize), `AutoEdit-setup.exe` cho Windows (có ký). Tổng khoảng 300–400MB, gồm:
+**Bộ cài:** `AutoEdit.dmg` cho Mac (ARM, ký và notarize), `AutoEdit-setup.exe` cho Windows (có ký). Khoảng 150–250MB (số thật đo ở cuối M1), gồm:
 - app Tauri,
-- sidecar `autoedit` (có kèm Claude Code CLI), ffmpeg, ffprobe, whisper-cli,
+- sidecar `autoedit` (không kèm Claude Code CLI), ffmpeg, ffprobe, whisper-cli,
 - `Resources/agent/`,
 - `assets/` (font, PNG cho CTA).
 
-Khách không phải cài thêm gì. Tự cập nhật qua Tauri updater, lấy bản mới từ GitHub Releases.
+Khách không phải tự cài gì. Lần mở đầu app tự tải CLI Claude (~160MB) và model Whisper (~1.5GB). Tự cập nhật qua Tauri updater, lấy bản mới từ GitHub Releases.
 
 **Dữ liệu trên máy khách**
 ```
@@ -293,6 +301,7 @@ Khách không phải cài thêm gì. Tự cập nhật qua Tauri updater, lấy 
 └── runs/N/ final.mp4, run.log, agent.jsonl
 ~/Library/Application Support/AutoEdit/  # Windows: %APPDATA%\AutoEdit\
 ├── models/ggml-large-v3-turbo.bin
+├── claude-cli/0.2.186/claude          # Windows: claude.exe; tải từ wheel PyPI
 ├── settings.json
 └── logs/
 ```
@@ -318,12 +327,12 @@ Khách không phải cài thêm gì. Tự cập nhật qua Tauri updater, lấy 
 | Mốc | Nội dung | Kết quả dùng được |
 |---|---|---|
 | M1 | Engine CLI: chuẩn bị, `analyze`, agent + tool, render, QC, dự phòng; `agent/` với 5 thư viện ngành; bộ clip chuẩn | Chạy `autoedit edit` từ terminal ra `final.mp4` đạt chất lượng |
-| M2 | App Tauri: onboarding (đăng nhập Claude, tải model), chọn ngành, màn dựng, đang dựng, kết quả, lỗi, cài đặt; đóng gói sidecar Mac + Windows | Khách dùng thử trên máy dev |
+| M2 | App Tauri: onboarding (tải CLI Claude, đăng nhập Claude, tải model), chọn ngành, màn dựng, đang dựng, kết quả, lỗi, cài đặt; đóng gói sidecar Mac + Windows | Khách dùng thử trên máy dev |
 | M3 | Ký app, notarize, updater, hướng dẫn cài | **Bàn giao v1** |
 | M4 | bundle.social: key, đăng ngay, lên lịch, tab Lịch đăng, routine | **Bàn giao v2** |
 | M5 | Khách tự thêm MCP server | v3 |
 
-Ngay đầu M1 phải xác nhận: `claude-agent-sdk` Python chạy được bên trong PyInstaller với CLI đi kèm, `setup-token` hoạt động, và skill được nạp qua `setting_sources=["project"]`.
+Ngay đầu M1 phải xác nhận: `claude-agent-sdk` Python chạy được bên trong PyInstaller với CLI đặt ngoài package qua `cli_path`, `setup-token` hoạt động, và skill được nạp qua `setting_sources=["project"]`.
 
 ## 11. Rủi ro
 
@@ -332,6 +341,8 @@ Ngay đầu M1 phải xác nhận: `claude-agent-sdk` Python chạy được bê
 | Anthropic không cho app bên thứ ba dùng đăng nhập subscription; tài khoản khách có thể bị hạn chế | Khách đã chấp nhận rủi ro; giữ phương án dự phòng API key, đổi qua Cài đặt |
 | Hết lượt subscription giữa chừng | Lỗi `RATE_LIMIT` kèm giờ thử lại; project giữ nguyên |
 | Claude Code CLI hoặc SDK đổi cách đăng nhập | Ghim phiên bản SDK; cập nhật qua updater |
+| CLI ghim lâu bị Anthropic ngừng hỗ trợ | Nâng SDK + CLI định kỳ, chạy bộ clip chuẩn, phát hành qua updater; engine báo rõ "cần cập nhật app" |
+| PyPI đổi URL hoặc gỡ file wheel | URL + sha256 ghim trong code; nếu hỏng thì phát hành bản app với URL mới (có thể tự host bản sao trên GitHub Releases) |
 | Whisper sai tiếng Việt (tên sản phẩm, tiếng lóng) | `caption_fixes` từ agent; câu mô tả của khách làm ngữ cảnh |
 | Whisper chậm trên máy Windows không có GPU | Dùng CPU, báo thời gian ước tính |
 | Chất lượng agent dao động giữa các lần chạy | Luật cứng kiểm tra bằng code, render bằng code, có preview để agent tự sửa, có phương án dự phòng |
