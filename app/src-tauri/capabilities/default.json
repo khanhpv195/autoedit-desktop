@@ -11,6 +11,8 @@
     "opener:default",
     "opener:allow-reveal-item-in-dir",
     "core:event:default",
-    "core:webview:allow-internal-toggle-devtools"
+    "core:webview:allow-internal-toggle-devtools",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

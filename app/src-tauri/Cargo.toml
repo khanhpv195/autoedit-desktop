@@ -29,6 +29,8 @@ dirs = "6"
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 portable-pty = "0.9"
 uuid = { version = "1", features = ["v4"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

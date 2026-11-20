@@ -5,6 +5,7 @@ import NichePicker from "./screens/NichePicker";
 import NewVideo from "./screens/NewVideo";
 import ProjectView from "./screens/ProjectView";
 import Settings from "./screens/Settings";
+import UpdateBanner from "./components/UpdateBanner";
 
 function Screen() {
   const { state } = useStore();
@@ -23,6 +24,7 @@ function Shell() {
   if (!state.ready) return null;
   return (
     <div className="app">
+      <UpdateBanner />
       <div className="body">
         <Sidebar />
         <main className="main"><Screen /></main>

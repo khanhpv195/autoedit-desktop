@@ -1,0 +1,130 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    env:
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+      - name: Python 3.12
+        run: uv python install 3.12
+
+      - name: Build engine (PyInstaller)
+        shell: bash
+        run: |
+          cd engine
+          uv sync
+          uv run pyinstaller --noconfirm autoedit.spec
+
+      - name: Fetch ffmpeg and whisper-cli (macOS)
+        if: runner.os == 'macOS'
+        run: ./scripts/fetch-bins-mac.sh
+
+      - name: Fetch ffmpeg and whisper-cli (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/fetch-bins-win.ps1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Point the updater at this repository
+        shell: bash
+        run: |
+          sed -i.bak "s#__GITHUB_REPO__#${GITHUB_REPOSITORY}#" app/src-tauri/tauri.conf.json
+          rm -f app/src-tauri/tauri.conf.json.bak
+
+      - name: Import Apple certificate (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/build.keychain"
+          KC_PASS="$(uuidgen)"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PASS" "$KC"
+          security list-keychains -d user -s "$KC" login.keychain
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Sign bundled binaries (macOS)
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+        run: ./scripts/sign-mac-resources.sh "$APPLE_SIGNING_IDENTITY"
+
+      - name: Warn about unsigned macOS build
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY == ''
+        run: echo "::warning::APPLE_SIGNING_IDENTITY is not set, the macOS build is ad-hoc signed"
+
+      - name: Import Windows certificate
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $pw = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pw
+          Remove-Item $pfx
+          $conf = "app/src-tauri/tauri.conf.json"
+          $json = Get-Content $conf -Raw | ConvertFrom-Json
+          if (-not $json.bundle.windows) { $json.bundle | Add-Member -NotePropertyName windows -NotePropertyValue ([pscustomobject]@{}) }
+          $json.bundle.windows | Add-Member -NotePropertyName certificateThumbprint -NotePropertyValue $cert.Thumbprint -Force
+          $json.bundle.windows | Add-Member -NotePropertyName digestAlgorithm -NotePropertyValue "sha256" -Force
+          $json.bundle.windows | Add-Member -NotePropertyName timestampUrl -NotePropertyValue "http://timestamp.digicert.com" -Force
+          $json | ConvertTo-Json -Depth 20 | Set-Content $conf
+
+      - name: Warn about unsigned Windows build
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE == ''
+        shell: bash
+        run: echo "::warning::WINDOWS_CERTIFICATE is not set, the Windows build is unsigned"
+
+      - run: npm ci
+        working-directory: app
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: "AutoEdit v__VERSION__"
+          releaseBody: "Xem hướng dẫn cài trong docs/HUONG-DAN-CAI.md."
+          releaseDraft: true
+          includeUpdaterJson: true
+          args: --target ${{ matrix.target }}
