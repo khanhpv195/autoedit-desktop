@@ -105,7 +105,7 @@ Settings → AI dựng có các mục: trạng thái kết nối (subscription h
 | Bước | Công cụ | Chi tiết |
 |---|---|---|
 | Kiểm tra input | ffprobe | Clip ≤3 phút, đọc được. Logo PNG/JPG/SVG. Nhạc MP3/M4A/WAV. Sai thì báo `BAD_INPUT` |
-| Chuẩn hóa | ffmpeg | Xoay theo metadata; HDR/HLG → SDR bt709 (zscale + tonemap); fps biến thiên → 30 CFR; 1080×1920; clip ngang → cắt giữa, nền mờ trên/dưới. Không upscale |
+| Chuẩn hóa | ffmpeg | Xoay theo metadata; HDR/HLG → SDR bt709 (zscale + tonemap); fps biến thiên → 30 CFR; 1080×1920; clip dọc → phóng (lanczos) cho kín khung, cắt phần thừa ở giữa; clip ngang → cắt giữa, nền mờ trên/dưới. Không để viền đen |
 | Transcript | whisper-cli (large-v3-turbo; Metal trên Mac, Vulkan trên Windows, CPU dự phòng) | Mốc giờ từng từ; lọc câu bịa (chuỗi từ độ dài 0, câu kết kiểu "Cảm ơn các bạn đã theo dõi"); cache theo hash file |
 | Khung hình | ffmpeg | ~6 keyframe cho agent xem |
 
