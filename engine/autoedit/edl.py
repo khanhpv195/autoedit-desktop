@@ -1,7 +1,7 @@
 import math
 from dataclasses import asdict, dataclass, field
 
-from autoedit.transcript import Word, speech_duration
+from autoedit.transcript import Word, resolve_edits, speech_duration
 
 PAD_BEFORE = 0.05
 PAD_AFTER = 0.08
@@ -196,6 +196,8 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float) -> tuple[Ed
         raise EdlError("caption_fixes need non-empty wrong and right text")
     if any(not e.word for e in emph):
         raise EdlError("emphasis needs a non-empty word")
+
+    notes += resolve_edits(words, fixes, emph)[2]
 
     music = raw.get("music") or {}
     duck = float(music.get("duck_db", -14.0))

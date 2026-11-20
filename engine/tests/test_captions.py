@@ -46,3 +46,38 @@ def test_write_ass(tmp_path):
     assert "Style: Caption,Be Vietnam Pro ExtraBold,78" in text
     assert text.count("Dialogue:") == len(cues)
     assert "CHÀO CẢ NHÀ" in text and "{\\c&H0000D7FF&}189K" in text
+
+
+PHRASE = [Word("chị", 18.2, 18.4), Word("em", 18.45, 18.6), Word("ơi", 18.65, 18.8), Word("tuyết", 19.1, 19.4),
+          Word("mưu", 19.45, 19.7), Word("này", 19.75, 19.95), Word("giá", 20.0, 20.2), Word("189K", 20.3, 20.9)]
+
+
+def test_fix_with_phrase_start_time_matches_by_text():
+    """I1: the agent only saw phrase times, so `at` is the phrase start (18.2), 0.9 s before the wrong word."""
+    tw = map_words([Range(18.0, 21.0)], PHRASE, [CaptionFix(18.2, "tuyết mưu", "tuyết mưa")], [])
+    texts = [w.text for w in tw]
+    assert "tuyết mưa" in texts and "tuyết" not in texts and "mưu" not in texts
+
+
+def test_emphasis_far_from_at_falls_back_to_unique_text_match():
+    tw = map_words([Range(18.0, 21.0)], PHRASE, [], [Emphasis(18.2, "189k")])
+    assert next(w for w in tw if w.text == "189K").emph
+
+
+def test_fix_picks_nearest_occurrence_and_checks_every_word():
+    words = [Word("son", 1.0, 1.3), Word("kem", 1.4, 1.7), Word("son", 5.0, 5.3), Word("môi", 5.4, 5.7)]
+    tw = map_words([Range(0.9, 6.0)], words, [CaptionFix(5.2, "son", "SON")], [])
+    assert [w.text for w in tw] == ["son", "kem", "SON", "môi"]
+    # multi-word fix whose second word does not match is not applied
+    tw = map_words([Range(0.9, 6.0)], words, [CaptionFix(1.0, "son môi", "X")], [])
+    assert [w.text for w in tw][:2] == ["son", "kem"]
+
+
+def test_unmatched_fix_reported_in_notes():
+    from autoedit.edl import validate_edl
+    edl, notes = validate_edl({"keep": [{"start": 18.0, "end": 21.0}],
+                               "caption_fixes": [{"at": 18.2, "wrong": "không có", "right": "X"},
+                                                 {"at": 18.2, "wrong": "tuyết mưu", "right": "tuyết mưa"}],
+                               "emphasis": [{"at": 20.0, "word": "zzz"}]}, PHRASE, 25.0)
+    assert any("không có" in n for n in notes) and any("zzz" in n for n in notes)
+    assert not any("tuyết mưu" in n for n in notes)

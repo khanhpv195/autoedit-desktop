@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from autoedit.edl import CaptionFix, Emphasis, Range
-from autoedit.transcript import Word
+from autoedit.transcript import Word, resolve_edits
 
 FONT_NAME = "Be Vietnam Pro ExtraBold"
 LEAD = {"các", "cực", "rất", "như", "một", "của", "cho", "mà", "có", "nhìn", "biết", "tất", "đến", "với",
@@ -42,25 +42,12 @@ def _offsets(ranges: list[Range]) -> tuple[list[float], list[int]]:
     return offs, groups
 
 
-def _apply_fixes(words: list[Word], fixes: list[CaptionFix]) -> list[Word]:
-    out = list(words)
-    for f in fixes:
-        n = len(f.wrong.split())
-        cands = [i for i, w in enumerate(out) if abs(w.start - f.at) < 0.3
-                 and w.text.casefold().strip(PUNCT) == f.wrong.split()[0].casefold()]
-        if not cands:
-            continue
-        i = cands[0]
-        last = out[min(i + n - 1, len(out) - 1)]
-        out[i:i + n] = [Word(f.right, out[i].start, last.end)]
-    return out
-
-
 def map_words(ranges: list[Range], words: list[Word], fixes: list[CaptionFix],
               emphasis: list[Emphasis]) -> list[TimedWord]:
     offs, groups = _offsets(ranges)
     out: list[TimedWord] = []
-    for w in _apply_fixes(words, fixes):
+    fixed, emph_idx, _ = resolve_edits(words, fixes, emphasis)
+    for k, w in enumerate(fixed):
         best, best_ov = -1, 0.0
         for i, r in enumerate(ranges):
             ov = min(w.end, r.end) - max(w.start, r.start)
@@ -69,10 +56,8 @@ def map_words(ranges: list[Range], words: list[Word], fixes: list[CaptionFix],
         if best < 0:
             continue
         r = ranges[best]
-        emph = any(abs(e.at - w.start) < 0.3 and e.word.casefold() == w.text.casefold().strip(PUNCT)
-                   for e in emphasis)
         out.append(TimedWord(w.text, max(r.start, w.start) - r.start + offs[best],
-                             min(r.end, w.end) - r.start + offs[best], w.start, groups[best], emph))
+                             min(r.end, w.end) - r.start + offs[best], w.start, groups[best], k in emph_idx))
     out.sort(key=lambda t: t.start)
     return out
 
