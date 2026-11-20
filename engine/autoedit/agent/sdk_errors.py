@@ -4,7 +4,9 @@ from claude_agent_sdk import CLINotFoundError, ProcessError, ResultError, Result
 from autoedit.errors import AutoeditError, NoAuth, RateLimited, SetupRequired
 
 AUTH_WORDS = ("not logged in", "/login", "authentication", "invalid api key", "oauth token", "unauthorized")
-LIMIT_WORDS = ("rate limit", "rate_limit", "usage limit", "limit reached", "too many requests", "quota")
+# Not the bare "limit reached": the CLI also says "context limit reached" / "max turns", which are not quota problems.
+LIMIT_WORDS = ("rate limit", "rate_limit", "usage limit", "too many requests", "hour limit", "weekly limit",
+               "daily limit", "monthly limit")
 NO_AUTH_MSG = "Tài khoản Claude chưa đăng nhập hoặc không dùng được"
 RATE_MSG = "Đã hết lượt Claude của gói"
 

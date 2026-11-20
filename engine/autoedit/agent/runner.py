@@ -59,6 +59,8 @@ async def run_agent(session, prompt, options, *, query_fn=query, timeout: float 
                         raise RateLimited(RATE_MSG, reset_at)
                     if msg.error in ("authentication_failed", "billing_error") and not done():
                         raise NoAuth(NO_AUTH_MSG)
+                    if any(isinstance(b, ToolUseBlock) for b in msg.content):
+                        turns += 1      # the stream is closed before ResultMessage, so count tool-call turns ourselves
                     for b in msg.content:
                         if isinstance(b, ToolUseBlock):
                             name = b.name.removeprefix("mcp__autoedit__")

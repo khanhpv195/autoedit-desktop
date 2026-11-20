@@ -204,3 +204,30 @@ async def test_dict_prompt_is_streamed_as_one_message():
     msg = {"type": "user", "message": {"role": "user", "content": []}, "parent_tool_use_id": None, "session_id": "default"}
     await run_agent(S(), msg, None, query_fn=q)
     assert seen == [msg]
+
+
+async def test_turns_counted_from_tool_call_messages_when_no_result_arrives():
+    s = S()
+    async def q(prompt, options):
+        yield AssistantMessage(content=[ToolUseBlock("1", "mcp__autoedit__get_transcript", {})], model="m")
+        yield AssistantMessage(content=[TextBlock("hmm")], model="m")
+        yield AssistantMessage(content=[ToolUseBlock("2", "mcp__autoedit__set_edl", {})], model="m")
+        s.finished, s.edl = True, object()
+        yield AssistantMessage(content=[ToolUseBlock("3", "mcp__autoedit__finish", {})], model="m")
+    out = await run_agent(s, "p", None, query_fn=q)
+    assert out.finished and out.turns == 3
+
+
+@pytest.mark.parametrize("text,is_limit", [
+    ("Claude AI usage limit reached|1760000000", True),
+    ("You've hit your 5-hour limit", True),
+    ("weekly limit reached, resets Monday", True),
+    ("429 Too Many Requests", True),
+    ("rate limit exceeded", True),
+    ("context limit reached", False),
+    ("Prompt exceeds the context window", False),
+    ("Reached max turns (15)", False),
+])
+def test_rate_limit_classification_is_not_fooled_by_context_or_turn_limits(text, is_limit):
+    from autoedit.agent.sdk_errors import classify_text
+    assert isinstance(classify_text(text), RateLimited) == is_limit
