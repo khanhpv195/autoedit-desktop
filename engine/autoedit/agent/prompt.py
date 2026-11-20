@@ -9,7 +9,7 @@ from autoedit.transcript import format_phrases, format_words, pack_phrases
 
 
 def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
-                      previous: dict | None) -> str:
+                      previous: dict | None, user_mcp: list[str] | None = None) -> str:
     lines = [
         f"Niche: {project.niche} ({NICHE_NAMES[project.niche]}).",
         f"Clip: {prepared.info.duration:.1f}s, {'has speech' if prepared.words else 'NO speech'}.",
@@ -22,15 +22,19 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
         lines.append("This is a re-edit. Customer feedback on the previous version: " + feedback.strip())
     if previous:
         lines.append("Previous EDL: " + json.dumps(previous, ensure_ascii=False))
+    if user_mcp:
+        lines.append("Tool bổ sung của khách: " + ", ".join(f"mcp__{n}__*" for n in user_mcp)
+                     + " — dùng khi cần thông tin sản phẩm/thương hiệu; không bắt buộc, "
+                     "không thay thế quy trình set_edl → finish.")
     lines.append("Edit the clip now, following CLAUDE.md. Finish with the finish tool.")
     return "\n".join(lines)
 
 
 def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
-                       previous: dict | None, agent_dir: Path) -> dict:
+                       previous: dict | None, agent_dir: Path, user_mcp: list[str] | None = None) -> dict:
     """First (streamed) user message: request + skill text + full transcript + word times + keyframes, so a
     normal edit needs no Skill / get_transcript / view_frames turns."""
-    request = build_edit_prompt(project, prepared, user_prompt, feedback, previous)
+    request = build_edit_prompt(project, prepared, user_prompt, feedback, previous, user_mcp)
     phrases = format_phrases(pack_phrases(prepared.words)) or "(no speech)"
     words = format_words(prepared.words) or "(no speech)"
     n = len(prepared.keyframes)

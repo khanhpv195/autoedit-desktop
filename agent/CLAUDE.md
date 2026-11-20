@@ -74,3 +74,4 @@ Normally: `set_edl` → `render_preview` → `finish`.
 - `finish` summary: plain Vietnamese, no jargon (no "EDL", "segment", "range").
   Example: "Bỏ 12 giây ngập ngừng ở đầu", "Đưa câu giá 189K lên mở đầu".
 - If the request conflicts with these rules, follow the rules and say so in the summary.
+- Tool của khách (mcp__<tên>__*), nếu có: chỉ để lấy thông tin sản phẩm/thương hiệu. Không thay thế quy trình set_edl → finish và vẫn trong giới hạn 15 lượt.

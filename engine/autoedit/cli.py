@@ -17,8 +17,9 @@ from autoedit.agent.runner import run_agent
 from autoedit.agent.session import EditSession
 from autoedit.agent.tools import build_server
 from autoedit.claude_cli import find_cli, install_cli
-from autoedit.errors import AutoeditError, NoAuth, RateLimited
+from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited
 from autoedit.events import Emitter
+from autoedit import mcp_user
 from autoedit.model_dl import install_model
 from autoedit.fsutil import atomic_write_text
 from autoedit.fallback import FALLBACK_SUMMARY, silence_cut_edl
@@ -89,8 +90,11 @@ async def _edit(args, events: Emitter) -> int:
             ev.step("AI đang dựng…", 0.3)
             with contextlib.redirect_stderr(Tee(sys.stderr, runlog)):
                 try:
-                    message = build_edit_message(project, prepared, user_prompt, args.feedback, previous, agent_dir())
-                    outcome = await run_agent(session, message, edit_options(agent_dir(), build_server(session), model(), cli_stderr),
+                    user_mcp = mcp_user.load()
+                    message = build_edit_message(project, prepared, user_prompt, args.feedback, previous, agent_dir(),
+                                                 list(user_mcp))
+                    outcome = await run_agent(session, message,
+                                              edit_options(agent_dir(), build_server(session), model(), cli_stderr, user_mcp),
                                               on_message=on_message)
                     usage["turns"] = outcome.turns
                     ok = outcome.finished
@@ -155,6 +159,14 @@ async def _social(args, events: Emitter) -> int:
     return 0
 
 
+async def _mcp_check(args, events: Emitter) -> int:
+    cfg = mcp_user.load().get(args.name)
+    if cfg is None:
+        raise AgentFailed(f"Không thấy MCP {args.name} trong cấu hình")
+    events.emit_raw({"type": "mcp_tools", "name": args.name, "tools": await mcp_user.list_tools(args.name, cfg)})
+    return 0
+
+
 async def _setup(args, events: Emitter) -> int:
     events.setup(str(install_cli(events)))
     return 0
@@ -179,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("auth-check")
     sub.add_parser("setup")
     sub.add_parser("setup-model")
+    m = sub.add_parser("mcp-check"); m.add_argument("--name", required=True)
     so = sub.add_parser("social"); ss = so.add_subparsers(dest="social_cmd", required=True)
     ss.add_parser("check")
     x = ss.add_parser("portal"); x.add_argument("--team", required=True)
@@ -196,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     events = Emitter()
     handler = {"analyze": _analyze, "edit": _edit, "auth-check": _auth, "setup": _setup,
-               "setup-model": _setup_model, "social": _social}.get(args.cmd)
+               "setup-model": _setup_model, "social": _social, "mcp-check": _mcp_check}.get(args.cmd)
     if handler is None:
         p.print_help(sys.stderr)
         return 1

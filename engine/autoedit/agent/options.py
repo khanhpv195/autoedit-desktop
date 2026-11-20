@@ -16,13 +16,14 @@ def model() -> str:
     return os.environ.get("AUTOEDIT_CLAUDE_MODEL", DEFAULT_MODEL)
 
 
-def edit_options(agent_dir: Path, server, model: str, stderr=None) -> ClaudeAgentOptions:
+def edit_options(agent_dir: Path, server, model: str, stderr=None, user_mcp: dict | None = None) -> ClaudeAgentOptions:
+    user_mcp = {n: c for n, c in (user_mcp or {}).items() if n != "autoedit"}
     return ClaudeAgentOptions(
         cwd=str(agent_dir),
         tools=[],                        # no built-in tools at all: only our MCP tools (skills ride in the first message)
         setting_sources=["project"],     # agent/CLAUDE.md only, never ~/.claude
-        mcp_servers={"autoedit": server},
-        allowed_tools=EDIT_TOOLS,
+        mcp_servers={"autoedit": server, **user_mcp},
+        allowed_tools=EDIT_TOOLS + [f"mcp__{n}" for n in user_mcp],
         max_turns=15,
         model=model,
         cli_path=find_cli(),             # None only when running from source: SDK uses its own copy
