@@ -128,7 +128,7 @@ export type PublishArgs = { dir: string; run: number; team: string; channels: st
 export async function socialPublish(a: PublishArgs, onStep?: (label: string, progress: number) => void): Promise<Post> {
   const args = ["social", "publish", "--project", a.dir, "--run", String(a.run), "--team", a.team];
   for (const c of a.channels) args.push("--channel", c);
-  args.push("--caption", a.caption, "--when", a.when);
+  args.push(`--caption=${a.caption}`, "--when", a.when);
   const e = await social(args, "social_post", "Đăng bài không có kết quả", (ev) => {
     if (ev.type === "step") onStep?.(ev.label, ev.progress);
   });
