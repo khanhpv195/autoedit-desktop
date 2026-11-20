@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
@@ -16,13 +16,17 @@ export default function SocialSettings({ onConnected }: { onConnected?: (connect
   const [err, setErr] = useState<string | null>(null);
   const account = state.social;
   const settings = state.settings;
+  // Always save on top of the newest settings, never a copy captured by an older render.
+  const latest = useRef(settings);
+  latest.current = settings;
 
   const selectTeam = useCallback(async (id: string) => {
-    if (!settings) return;
-    const next = { ...settings, socialTeamId: id };
+    const cur = latest.current;
+    if (!cur) return;
+    const next = { ...cur, socialTeamId: id };
     dispatch({ type: "settings", settings: next });
     try { await api.saveSettings(next); } catch (e) { notify(toEngineError(e).message); }
-  }, [settings, dispatch, notify]);
+  }, [dispatch, notify]);
 
   const load = useCallback(async (): Promise<boolean> => {
     setBusy(true);
@@ -31,9 +35,10 @@ export default function SocialSettings({ onConnected }: { onConnected?: (connect
       const acc: SocialAccount = await engine.socialCheck();
       dispatch({ type: "social", social: acc });
       onConnected?.(true);
-      const cur = settings?.socialTeamId;
-      if (settings && acc.teams.length > 0 && !acc.teams.some((t) => t.id === cur)) {
-        const next = { ...settings, socialTeamId: acc.teams[0].id };
+      const fresh = latest.current;
+      const cur = fresh?.socialTeamId;
+      if (fresh && acc.teams.length > 0 && !acc.teams.some((t) => t.id === cur)) {
+        const next = { ...fresh, socialTeamId: acc.teams[0].id };
         dispatch({ type: "settings", settings: next });
         await api.saveSettings(next);
       }

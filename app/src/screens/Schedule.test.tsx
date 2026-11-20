@@ -109,3 +109,31 @@ test("sidebar: Lịch đăng is dim without a key and enabled with one", async (
   render(<StoreProvider><Sidebar /></StoreProvider>);
   await waitFor(() => expect(screen.getByText(/Lịch đăng/).closest(".sn")).not.toHaveAttribute("aria-disabled"));
 });
+
+test("key present but the account read failed: error panel, not the 'no key' screen", async () => {
+  e.socialCheck.mockRejectedValue({ code: "SOCIAL_AUTH", message: "401", retry_at: null });
+  a.getSettings.mockResolvedValue({ ...base, socialTeamId: null });
+  mount();
+  expect(await screen.findByText("Key bundle.social không dùng được")).toBeInTheDocument();
+  expect(screen.queryByText("Chưa bật đăng bài tự động")).toBeNull();
+  expect(screen.getByRole("button", { name: /Mở Cài đặt → Kết nối/ })).toBeInTheDocument();
+});
+
+test("key present but zero teams: says so", async () => {
+  e.socialCheck.mockResolvedValue({ ...account, teams: [] });
+  a.getSettings.mockResolvedValue({ ...base, socialTeamId: null });
+  mount();
+  expect(await screen.findByText("Chưa có team trên bundle.social")).toBeInTheDocument();
+  expect(screen.queryByText("Chưa bật đăng bài tự động")).toBeNull();
+});
+
+test("Chạy ngay shows the engine's 'skipped' text and is disabled while a sync runs", async () => {
+  let finish!: (r: any) => void;
+  e.routineSync.mockReturnValue(new Promise((res) => { finish = res; }));
+  mount();
+  await screen.findByTestId("day-T7");
+  await userEvent.click(screen.getByRole("button", { name: "Chạy ngay" }));
+  expect(await screen.findByRole("button", { name: "Đang chạy…" })).toBeDisabled();
+  finish({ created: [], skipped: "Routine đang chạy" });
+  expect(await screen.findByText("Routine đang chạy")).toBeInTheDocument();
+});

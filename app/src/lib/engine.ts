@@ -125,14 +125,20 @@ export async function socialCaption(dir: string, run: number): Promise<string> {
 }
 
 export type PublishArgs = { dir: string; run: number; team: string; channels: string[]; caption: string; when: string };
-export async function socialPublish(a: PublishArgs, onStep?: (label: string, progress: number) => void): Promise<Post> {
+export async function socialPublish(
+  a: PublishArgs, onStep?: (label: string, progress: number) => void, onJob?: (job: EngineJob) => void,
+): Promise<Post> {
   const args = ["social", "publish", "--project", a.dir, "--run", String(a.run), "--team", a.team];
   for (const c of a.channels) args.push("--channel", c);
   args.push(`--caption=${a.caption}`, "--when", a.when);
-  const e = await social(args, "social_post", "Đăng bài không có kết quả", (ev) => {
+  const job = runEngine(args, (ev) => {
     if (ev.type === "step") onStep?.(ev.label, ev.progress);
   });
-  return e.post;
+  onJob?.(job);
+  const r = await job.result;
+  if (r.error) throw r.error;
+  if (r.last?.type !== "social_post") throw new Error("Đăng bài không có kết quả");
+  return r.last.post;
 }
 
 export async function socialList(team: string, from: string, to: string): Promise<Post[]> {

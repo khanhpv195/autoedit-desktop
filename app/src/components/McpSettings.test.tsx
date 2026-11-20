@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
 import { StoreProvider } from "../state/store";
-import McpSettings, { splitArgs } from "./McpSettings";
+import McpSettings, { joinArgs, splitArgs } from "./McpSettings";
 
 vi.mock("../lib/api");
 vi.mock("../lib/engine");
@@ -123,4 +123,29 @@ test("the add button is disabled at 10 servers", async () => {
 test("splitArgs keeps quoted strings together", () => {
   expect(splitArgs(`-y "a b" 'c d' e`)).toEqual(["-y", "a b", "c d", "e"]);
   expect(splitArgs("")).toEqual([]);
+});
+
+test("a new env key without a value is blocked with an inline error; an edited saved key may stay empty", async () => {
+  a.mcpList.mockResolvedValue([shop]);
+  mount();
+  await userEvent.click(await screen.findByRole("button", { name: "Sửa shop" }));
+  await userEvent.click(screen.getByRole("button", { name: /Thêm biến môi trường/ }));
+  await userEvent.type(screen.getByLabelText("Tên biến môi trường 2"), "NEW_KEY");
+  await userEvent.click(screen.getByRole("button", { name: "Lưu" }));
+  expect(await screen.findByText("Nhập giá trị cho NEW_KEY")).toBeInTheDocument();
+  expect(a.mcpSave).not.toHaveBeenCalled();
+  await userEvent.type(screen.getByLabelText("Giá trị biến môi trường 2"), "v");
+  await userEvent.click(screen.getByRole("button", { name: "Lưu" }));
+  await waitFor(() => expect(a.mcpSave).toHaveBeenCalledWith(expect.objectContaining({ envKeys: ["TOKEN", "NEW_KEY"] }), { NEW_KEY: "v" }));
+});
+
+test("args with quotes and --opt=\"a b\" survive save -> edit -> save", async () => {
+  const args = ["-y", "--opt=a b", 'say "hi"', "C:\\dir\\x y", "", "it's", "back\\slash"];
+  expect(splitArgs(joinArgs(args))).toEqual(args);
+  expect(splitArgs('--opt="a b" x')).toEqual(["--opt=a b", "x"]);
+  a.mcpList.mockResolvedValue([{ ...shop, args, envKeys: [] }]);
+  mount();
+  await userEvent.click(await screen.findByRole("button", { name: "Sửa shop" }));
+  await userEvent.click(screen.getByRole("button", { name: "Lưu" }));
+  await waitFor(() => expect(a.mcpSave).toHaveBeenCalledWith(expect.objectContaining({ args }), {}));
 });
