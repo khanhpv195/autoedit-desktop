@@ -12,6 +12,10 @@ class Emitter:
         self.stream.write(json.dumps(obj, ensure_ascii=False) + "\n")
         self.stream.flush()
 
+    def emit_raw(self, obj: dict) -> None:
+        """Event with a caller-chosen shape (social_*, caption, mcp_tools…)."""
+        self._emit(obj)
+
     def step(self, label: str, progress: float) -> None:
         self._emit({"type": "step", "label": label, "progress": round(min(1.0, max(0.0, progress)), 3)})
 

@@ -52,3 +52,7 @@ def normalize(raw: dict) -> dict:
             "postDate": raw.get("postDate"), "channels": types, "error": _error(raw),
             "project": ref[0] if ref else None, "run": ref[1] if ref else None,
             "permalinks": _permalinks(raw)}
+
+
+def next_queue_slot(now, routines, taken):   # replaced in the routine task
+    raise NotImplementedError

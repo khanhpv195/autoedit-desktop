@@ -6,7 +6,7 @@ from autoedit.errors import BadInput
 from autoedit.fsutil import atomic_write_text
 
 NICHES = ("thoi-trang", "my-pham", "do-an", "phu-kien", "chung")
-_FIELDS = ("niche", "clip", "logo", "music", "prompt", "script_card", "runs")
+_FIELDS = ("niche", "clip", "logo", "music", "prompt", "script_card", "runs", "posts")
 
 
 @dataclass
@@ -19,6 +19,7 @@ class Project:
     prompt: str = ""
     script_card: dict | None = None
     runs: list[dict] = field(default_factory=list)
+    posts: list[dict] = field(default_factory=list)
 
     @classmethod
     def load(cls, dir: Path) -> "Project":

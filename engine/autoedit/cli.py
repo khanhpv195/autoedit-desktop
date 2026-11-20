@@ -133,6 +133,26 @@ async def _analyze(args, events: Emitter) -> int:
     return 0
 
 
+async def _social(args, events: Emitter) -> int:
+    from autoedit.social import commands as sc
+    c = args.social_cmd
+    if c == "check":
+        sc.check(events)
+    elif c == "portal":
+        sc.portal(events, args.team)
+    elif c == "caption":
+        from autoedit.social.caption import make_caption
+        project = Project.load(Path(args.project))
+        events.emit_raw({"type": "caption", "text": await make_caption(project, args.run, agent_dir())})
+    elif c == "publish":
+        sc.publish(events, Path(args.project), args.run, args.team, args.channel, args.caption, args.when)
+    elif c == "list":
+        sc.list_(events, args.team, args.from_, args.to)
+    elif c == "retry":
+        sc.retry(events, args.post)
+    return 0
+
+
 async def _setup(args, events: Emitter) -> int:
     events.setup(str(install_cli(events)))
     return 0
@@ -157,13 +177,23 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("auth-check")
     sub.add_parser("setup")
     sub.add_parser("setup-model")
+    so = sub.add_parser("social"); ss = so.add_subparsers(dest="social_cmd", required=True)
+    ss.add_parser("check")
+    x = ss.add_parser("portal"); x.add_argument("--team", required=True)
+    x = ss.add_parser("caption"); x.add_argument("--project", required=True); x.add_argument("--run", type=int, required=True)
+    x = ss.add_parser("publish"); x.add_argument("--project", required=True); x.add_argument("--run", type=int, required=True)
+    x.add_argument("--team", required=True); x.add_argument("--channel", action="append", required=True)
+    x.add_argument("--caption", required=True); x.add_argument("--when", required=True)
+    x = ss.add_parser("list"); x.add_argument("--team", required=True)
+    x.add_argument("--from", dest="from_", required=True); x.add_argument("--to", required=True)
+    x = ss.add_parser("retry"); x.add_argument("--post", required=True)
     args = p.parse_args(argv)
     if args.version:
         print(__version__)
         return 0
     events = Emitter()
     handler = {"analyze": _analyze, "edit": _edit, "auth-check": _auth, "setup": _setup,
-               "setup-model": _setup_model}.get(args.cmd)
+               "setup-model": _setup_model, "social": _social}.get(args.cmd)
     if handler is None:
         p.print_help(sys.stderr)
         return 1
