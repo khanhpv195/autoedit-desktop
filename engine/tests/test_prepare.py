@@ -15,7 +15,8 @@ def test_keyframes(clip, tmp_path):
 def test_frame_at_width(clip, tmp_path):
     from PIL import Image
     p = frame_at(clip, 1.0, tmp_path / "x.jpg", width=270)
-    assert Image.open(p).size[0] == 270
+    with Image.open(p) as im:
+        assert im.size[0] == 270
 
 
 def test_prepare_caches_normalize(clip, tmp_path, monkeypatch):

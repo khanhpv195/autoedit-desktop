@@ -98,7 +98,8 @@ def text_card(text: str, out: Path, size: int = 84, bg: tuple = (254, 44, 85, 23
 
 
 def prepare_logo(src: Path, out: Path, max_w: int = 200) -> Path:
-    im = Image.open(src).convert("RGBA")
+    with Image.open(src) as opened:
+        im = opened.convert("RGBA")
     h = max(1, round(im.height * max_w / im.width))
     im.resize((max_w, h), Image.LANCZOS).save(out)
     return out
