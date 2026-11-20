@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -10,11 +11,28 @@ use crate::projects::{self, FeedItem, ProjectDetail, ProjectSummary};
 use crate::settings::{self, Settings};
 use crate::sidecar::{self, JobMsg, Jobs};
 
+pub type LoginSlot = Arc<Mutex<Option<(u64, Arc<LoginSession>)>>>;
+
 pub struct AppState {
     pub secrets: Arc<dyn SecretStore + Send + Sync>,
     pub data_dir: PathBuf,
     pub jobs: Arc<Jobs>,
-    pub login: Arc<Mutex<Option<Arc<LoginSession>>>>,
+    pub login: LoginSlot,
+}
+
+static LOGIN_GEN: AtomicU64 = AtomicU64::new(1);
+
+/// App is quitting or relaunching: stop every engine job and the login PTY.
+pub fn shutdown(state: &AppState) {
+    if let Some((_, s)) = state.login.lock().ok().and_then(|s| s.clone()) {
+        s.cancel();
+    }
+    sidecar::kill_all(&state.jobs);
+}
+
+#[tauri::command(async)]
+pub fn kill_all_jobs(state: State<'_, AppState>) {
+    shutdown(&state);
 }
 
 #[tauri::command]
@@ -47,7 +65,7 @@ pub fn clear_api_key(state: State<'_, AppState>) -> Result<(), String> {
     state.secrets.delete(API_KEY_ACCOUNT)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn engine_run(app: AppHandle, state: State<'_, AppState>, args: Vec<String>) -> Result<String, String> {
     let resource_dir = app.path().resource_dir().ok();
     let repo_root = cfg!(debug_assertions).then(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(".."));
@@ -80,7 +98,7 @@ fn projects_root(state: &AppState) -> PathBuf {
 }
 
 #[tauri::command]
-pub fn create_project(
+pub async fn create_project(
     state: State<'_, AppState>,
     niche: String,
     clip: String,
@@ -88,24 +106,29 @@ pub fn create_project(
     music: Option<String>,
 ) -> Result<ProjectSummary, String> {
     let root = projects_root(&state);
-    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    projects::create(
-        &root,
-        &niche,
-        Path::new(&clip),
-        logo.as_deref().map(Path::new),
-        music.as_deref().map(Path::new),
-        &today,
-    )
+    // Copying a multi-GB clip must not block the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        projects::create(
+            &root,
+            &niche,
+            Path::new(&clip),
+            logo.as_deref().map(Path::new),
+            music.as_deref().map(Path::new),
+            &today,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_projects(state: State<'_, AppState>) -> Vec<ProjectSummary> {
     projects::list(&projects_root(&state))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_project(dir: String) -> Result<ProjectDetail, String> {
     projects::detail(Path::new(&dir))
 }
@@ -115,7 +138,7 @@ pub fn update_project(dir: String, patch: serde_json::Value) -> Result<(), Strin
     projects::update(Path::new(&dir), &patch)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_project_asset(dir: String, kind: String, path: Option<String>) -> Result<ProjectDetail, String> {
     projects::set_asset(Path::new(&dir), &kind, path.as_deref().map(Path::new))
 }
@@ -130,7 +153,7 @@ fn has_claude_code_here() -> bool {
     auth::has_claude_code(&home, auth::mac_keychain_has_claude)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn auth_status(state: State<'_, AppState>) -> serde_json::Value {
     serde_json::json!({ "source": auth::status(state.secrets.as_ref(), has_claude_code_here()) })
 }
@@ -138,9 +161,11 @@ pub fn auth_status(state: State<'_, AppState>) -> serde_json::Value {
 #[tauri::command]
 pub fn login_start(app: AppHandle, state: State<'_, AppState>, cli_path: String) -> Result<(), String> {
     let mut slot = state.login.lock().map_err(|e| e.to_string())?;
-    if slot.is_some() {
-        return Err("Đang có một phiên đăng nhập".into());
+    // A stale session (for example one whose screen unmounted) is replaced, not an error.
+    if let Some((_, old)) = slot.take() {
+        old.cancel();
     }
+    let sess_id = LOGIN_GEN.fetch_add(1, Ordering::SeqCst);
     let (out, done, active) = (app.clone(), app.clone(), state.login.clone());
     let session = LoginSession::start(
         Path::new(&cli_path),
@@ -150,7 +175,10 @@ pub fn login_start(app: AppHandle, state: State<'_, AppState>, cli_path: String)
         },
         move |r| {
             if let Ok(mut s) = active.lock() {
-                *s = None;
+                match s.as_ref() {
+                    Some((g, _)) if *g != sess_id => return, // replaced by a newer session: stay silent
+                    _ => *s = None,
+                }
             }
             let payload = match r {
                 Ok(()) => serde_json::json!({ "ok": true, "error": null }),
@@ -159,19 +187,19 @@ pub fn login_start(app: AppHandle, state: State<'_, AppState>, cli_path: String)
             let _ = done.emit("login-done", payload);
         },
     )?;
-    *slot = Some(Arc::new(session));
+    *slot = Some((sess_id, Arc::new(session)));
     Ok(())
 }
 
 #[tauri::command]
 pub fn login_input(state: State<'_, AppState>, text: String) -> Result<(), String> {
-    let session = state.login.lock().map_err(|e| e.to_string())?.clone();
+    let session = state.login.lock().map_err(|e| e.to_string())?.clone().map(|(_, s)| s);
     session.ok_or_else(|| "Chưa bắt đầu đăng nhập".to_string())?.write_input(&text)
 }
 
 #[tauri::command]
 pub fn login_cancel(state: State<'_, AppState>) {
-    let session = state.login.lock().ok().and_then(|s| s.clone());
+    let session = state.login.lock().ok().and_then(|s| s.clone()).map(|(_, s)| s);
     if let Some(s) = session {
         s.cancel();
     }

@@ -159,7 +159,12 @@ fn summary(dir: &Path, m: &Map<String, Value>) -> Result<ProjectSummary, String>
 pub fn list(root: &Path) -> Vec<ProjectSummary> {
     let Ok(rd) = std::fs::read_dir(root) else { return vec![] };
     let mut dirs: Vec<PathBuf> = rd.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect();
-    dirs.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+    // Newest first: date prefix, then creation time (falls back to mtime) within the same day.
+    let born = |p: &Path| {
+        std::fs::metadata(p).ok().and_then(|m| m.created().or_else(|_| m.modified()).ok())
+    };
+    let day = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().chars().take(10).collect::<String>());
+    dirs.sort_by(|a, b| day(b).cmp(&day(a)).then_with(|| born(b).cmp(&born(a))).then_with(|| b.file_name().cmp(&a.file_name())));
     dirs.iter().filter_map(|d| read_json(d).ok().and_then(|m| summary(d, &m).ok())).collect()
 }
 
@@ -278,6 +283,23 @@ mod tests {
         assert!(Path::new(&s.dir).join("input/Váy đỏ.mp4").exists());
         let s2 = create(root.path(), "thoi-trang", &clip, None, None, "2026-11-20").unwrap();
         assert!(s2.dir.ends_with("2026-11-20_vay-do-2"));
+    }
+    #[test]
+    fn list_orders_same_day_newest_first_not_by_slug() {
+        let root = tempfile::tempdir().unwrap();
+        let clip = root.path().join("c.mp4");
+        touch(&clip);
+        let projects = root.path().join("p");
+        std::fs::create_dir_all(&projects).unwrap();
+        create(&projects, "chung", &clip, None, None, "2026-11-20").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        let second = root.path().join("a.mp4");
+        touch(&second);
+        create(&projects, "chung", &second, None, None, "2026-11-20").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        create(&projects, "chung", &clip, None, None, "2026-11-19").unwrap();
+        let titles: Vec<String> = list(&projects).into_iter().map(|p| p.dir.rsplit('/').next().unwrap().to_string()).collect();
+        assert_eq!(titles, vec!["2026-11-20_a", "2026-11-20_c", "2026-11-19_c"]);
     }
     #[test]
     fn create_rejects_bad_niche() {

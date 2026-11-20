@@ -75,6 +75,24 @@ impl Jobs {
     fn pid(&self, id: &str) -> Option<u32> {
         self.0.lock().unwrap().get(id).copied()
     }
+    fn all(&self) -> Vec<(String, u32)> {
+        self.0.lock().unwrap().iter().map(|(k, v)| (k.clone(), *v)).collect()
+    }
+}
+
+/// Read one line at a time, replacing invalid UTF-8 instead of ending the loop
+/// (an undrained pipe would block the engine once its buffer fills).
+fn lossy_lines<R: BufRead>(mut r: R) -> impl Iterator<Item = String> {
+    std::iter::from_fn(move || {
+        let mut buf = Vec::new();
+        match r.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => {
+                let line = String::from_utf8_lossy(&buf);
+                Some(line.trim_end_matches(['\n', '\r']).to_string())
+            }
+        }
+    })
 }
 
 #[derive(Debug)]
@@ -132,7 +150,7 @@ where
     let out_log = append_log(log_file);
     let out_thread = std::thread::spawn(move || {
         let mut log = out_log;
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        for line in lossy_lines(BufReader::new(stdout)) {
             match serde_json::from_str::<serde_json::Value>(&line) {
                 Ok(v) if v.is_object() && v.get("type").is_some() => {
                     on(JobMsg::Event { job: job.clone(), event: v });
@@ -150,7 +168,7 @@ where
     let err_log = append_log(log_file);
     let err_thread = std::thread::spawn(move || {
         let mut log = err_log;
-        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+        for line in lossy_lines(BufReader::new(stderr)) {
             if let Some(f) = log.as_mut() {
                 let _ = writeln!(f, "{line}");
             }
@@ -195,6 +213,34 @@ pub fn cancel(jobs: &Jobs, job: &str) {
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .creation_flags(0x0800_0000)
             .status();
+    }
+}
+
+/// Stop every running job (app exit, updater relaunch). Parallel: TERM all, then KILL stragglers.
+pub fn kill_all(jobs: &Jobs) {
+    let all = jobs.all();
+    if all.is_empty() {
+        return;
+    }
+    #[cfg(unix)]
+    {
+        for (_, pid) in &all {
+            // SAFETY: signal to the process group we created with process_group(0).
+            unsafe { libc::killpg(*pid as i32, libc::SIGTERM) };
+        }
+        let until = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < until && all.iter().any(|(id, _)| jobs.pid(id).is_some()) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        for (id, pid) in &all {
+            if jobs.pid(id).is_some() {
+                unsafe { libc::killpg(*pid as i32, libc::SIGKILL) };
+            }
+        }
+    }
+    #[cfg(windows)]
+    for (id, _) in &all {
+        cancel(jobs, id);
     }
 }
 
@@ -285,5 +331,33 @@ mod tests {
         cancel(&jobs, &id);
         let exit = rx.iter().find(|m| matches!(m, JobMsg::Exit { .. })).unwrap();
         assert!(matches!(exit, JobMsg::Exit { code, .. } if code != Some(0)));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn kill_all_stops_every_running_job() {
+        let d = tempfile::tempdir().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let jobs = Arc::new(Jobs::default());
+        for _ in 0..2 {
+            let tx = tx.clone();
+            spawn_job(&fake(), &["sleep".into()], &[], &d.path().join("e.log"), jobs.clone(), move |m| {
+                tx.send(m).unwrap();
+            })
+            .unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        kill_all(&jobs);
+        let exits = rx.iter().filter(|m| matches!(m, JobMsg::Exit { .. })).take(2).count();
+        assert_eq!(exits, 2);
+        assert!(jobs.all().is_empty());
+    }
+    #[test]
+    fn lossy_lines_survive_invalid_utf8() {
+        let data: &[u8] = b"one\n\xff\xfe bad\r\nthree";
+        let lines: Vec<String> = lossy_lines(BufReader::new(data)).collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "one");
+        assert!(lines[1].contains("bad"));
+        assert_eq!(lines[2], "three");
     }
 }
