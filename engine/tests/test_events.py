@@ -28,3 +28,14 @@ def test_progress_is_clamped():
     buf = io.StringIO()
     Emitter(buf).step("x", 1.7)
     assert lines(buf)[0]["progress"] == 1.0
+
+
+def test_cards_auth_setup_events():
+    buf = io.StringIO()
+    e = Emitter(buf)
+    e.cards([{"title": "a"}])
+    e.auth("subscription-token")
+    e.setup("/x/claude")
+    out = lines(buf)
+    assert out == [{"type": "cards", "cards": [{"title": "a"}]}, {"type": "auth", "source": "subscription-token"},
+                   {"type": "setup", "claude_cli": "/x/claude"}]
