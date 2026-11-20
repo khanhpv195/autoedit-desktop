@@ -110,3 +110,56 @@ def test_auth_check(monkeypatch, capsys):
     monkeypatch.setattr(cli, "auth_check", ok)
     assert cli.main(["auth-check"]) == 0
     assert events(capsys)[-1] == {"type": "auth", "source": "claude-code"}
+
+
+def test_edit_logs_sdk_messages_and_stderr(project, monkeypatch, capsys):
+    import sys
+    from claude_agent_sdk import AssistantMessage, TextBlock, ToolResultBlock, UserMessage
+    async def fake_agent(session, prompt, options, on_message=None, **kw):
+        on_message(AssistantMessage(content=[TextBlock("xin chào")], model="m"))
+        on_message(UserMessage(content=[ToolResultBlock("1", [{"type": "image", "data": "B" * 999}])]))
+        print("some stderr line", file=sys.stderr)
+        session.edl, _ = validate_edl({"keep": [{"start": 0.6, "end": 1.8}, {"start": 3.2, "end": 4.4}]},
+                                      WORDS, session.prepared.info.duration)
+        session.summary, session.finished = ["ok"], True
+        return AgentOutcome(True, 3, None)
+    monkeypatch.setattr(cli, "run_agent", fake_agent)
+    assert cli.main(["edit", "--project", str(project)]) == 0
+    log = (project / "runs" / "1" / "agent.jsonl").read_text(encoding="utf-8")
+    assert "xin chào" in log and "B" * 50 not in log and "image omitted" in log and '"type": "step"' in log
+    assert "some stderr line" in (project / "runs" / "1" / "run.log").read_text(encoding="utf-8")
+
+
+def test_render_failure_of_agent_edl_retries_with_fallback(project, monkeypatch, capsys):
+    from autoedit.errors import RenderFailed
+    real_render = cli.render
+    async def fake_agent(session, prompt, options, **kw):
+        session.edl, _ = validate_edl({"keep": [{"start": 0.6, "end": 1.8}, {"start": 3.2, "end": 4.4}]},
+                                      WORDS, session.prepared.info.duration)
+        session.summary, session.finished = ["agent edit"], True
+        return AgentOutcome(True, 3, None)
+    calls = []
+    def flaky(prepared, proj, edl, out, preview):
+        calls.append(edl)
+        if len(calls) == 1:
+            raise RenderFailed("boom")
+        return real_render(prepared, proj, edl, out, preview)
+    monkeypatch.setattr(cli, "run_agent", fake_agent)
+    monkeypatch.setattr(cli, "render", flaky)
+    assert cli.main(["edit", "--project", str(project)]) == 0
+    done = events(capsys)[-1]
+    assert done["type"] == "done" and done["summary"] == [FALLBACK_SUMMARY] and done["usage"]["fallback"] is True
+    assert len(calls) == 2
+
+
+def test_failed_render_removes_run_dir(project, monkeypatch, capsys):
+    from autoedit.errors import RenderFailed
+    async def fake_agent(session, prompt, options, **kw):
+        return AgentOutcome(False, 1, "aborted")
+    def broken(*a, **k):
+        raise RenderFailed("boom")
+    monkeypatch.setattr(cli, "run_agent", fake_agent)
+    monkeypatch.setattr(cli, "render", broken)
+    assert cli.main(["edit", "--project", str(project)]) == 1
+    assert events(capsys)[-1]["code"] == "RENDER_FAILED"
+    assert not (project / "runs" / "1").exists()

@@ -181,6 +181,8 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float) -> tuple[Ed
     if raw.get("hook"):
         h = raw["hook"]
         text = str(h.get("text", "")).strip()
+        if not text:
+            raise EdlError("hook text must not be empty (use hook: null for no hook)")
         if len(text.split()) > HOOK_MAX_WORDS:
             raise EdlError(f"hook text must be at most {HOOK_MAX_WORDS} words")
         a, b = (float(x) for x in h["move_to_front"])

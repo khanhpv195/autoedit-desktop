@@ -143,3 +143,8 @@ def test_all_edges_on_frame_grid_when_there_is_room():
 def test_rejects_empty_fix_text(bad):
     with pytest.raises(EdlError):
         v(bad)
+
+
+def test_rejects_empty_hook_text():
+    with pytest.raises(EdlError, match="empty"):
+        v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"move_to_front": [4.0, 5.2], "text": "  "}})

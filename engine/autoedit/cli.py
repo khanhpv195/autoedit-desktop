@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import contextlib
 import json
 import shutil
 import sys
@@ -9,6 +10,7 @@ from pathlib import Path
 from autoedit import __version__
 from autoedit.agent.analyze import run_analyze
 from autoedit.agent.auth import auth_check
+from autoedit.agent.log import serialize_message
 from autoedit.agent.options import edit_options, model
 from autoedit.agent.prompt import build_edit_message
 from autoedit.agent.runner import run_agent
@@ -46,6 +48,20 @@ def _previous_edl(project: Project) -> dict | None:
     return None
 
 
+def _render_with_retry(prepared, project, edl, summary, run_dir, ev, usage):
+    """Render the agent's EDL; if that fails, try once with the silence-cut EDL. Returns (result, edl, summary)."""
+    try:
+        return render(prepared, project, edl, run_dir / "final.mp4", preview=False), edl, summary
+    except Exception:
+        if usage["fallback"]:
+            raise
+        traceback.print_exc(file=sys.stderr)
+    usage["fallback"] = True
+    fb = silence_cut_edl(prepared.words, prepared.info.duration)
+    ev.step("Đang xuất video…", 0.92)
+    return render(prepared, project, fb, run_dir / "final.mp4", preview=False), fb, [FALLBACK_SUMMARY]
+
+
 async def _edit(args, events: Emitter) -> int:
     find_cli()  # fail fast with SETUP_REQUIRED, before transcribing
     project = Project.load(Path(args.project))
@@ -53,38 +69,47 @@ async def _edit(args, events: Emitter) -> int:
     user_prompt = args.prompt if args.prompt is not None else project.prompt
     previous = _previous_edl(project) if args.feedback else None
     run_dir = project.new_run_dir()
-    with open(run_dir / "agent.jsonl", "a", encoding="utf-8") as log:
-        ev = Emitter(Tee(events.stream, log))
-        session = EditSession(prepared=prepared, project=project, events=ev)
-        usage = {"turns": 0, "fallback": False}
-        ev.step("AI đang dựng…", 0.3)
-        try:
-            outcome = await run_agent(session, build_edit_message(project, prepared, user_prompt, args.feedback, previous,
-                                                                agent_dir()),
-                                      edit_options(agent_dir(), build_server(session), model()))
-            usage["turns"] = outcome.turns
-            ok = outcome.finished
-        except (RateLimited, NoAuth):
-            log.close()
-            shutil.rmtree(run_dir, ignore_errors=True)
-            raise
-        except Exception:
-            traceback.print_exc(file=sys.stderr)
-            ok = False
-        if ok:
-            edl, summary = session.edl, session.summary
-        else:
-            edl, summary = silence_cut_edl(prepared.words, prepared.info.duration), [FALLBACK_SUMMARY]
-            usage["fallback"] = True
-        ev.step("Đang xuất video…", 0.9)
-        res = render(prepared, project, edl, run_dir / "final.mp4", preview=False)
-        atomic_write_text(run_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
-        project.prompt = user_prompt
-        project.runs.append({"n": int(run_dir.name), "final": f"runs/{run_dir.name}/final.mp4",
-                             "prompt": user_prompt, "feedback": args.feedback, "summary": summary,
-                             "needs_review": res.needs_review, "fallback": usage["fallback"]})
-        project.save()
-        ev.done(str(res.path), summary, usage, res.needs_review)
+    try:
+        with open(run_dir / "agent.jsonl", "a", encoding="utf-8") as log, \
+                open(run_dir / "run.log", "a", encoding="utf-8") as runlog:
+            ev = Emitter(Tee(events.stream, log))
+
+            def on_message(msg) -> None:
+                log.write(json.dumps(serialize_message(msg), ensure_ascii=False) + "\n")
+                log.flush()
+
+            session = EditSession(prepared=prepared, project=project, events=ev)
+            usage = {"turns": 0, "fallback": False}
+            ev.step("AI đang dựng…", 0.3)
+            with contextlib.redirect_stderr(Tee(sys.stderr, runlog)):
+                try:
+                    message = build_edit_message(project, prepared, user_prompt, args.feedback, previous, agent_dir())
+                    outcome = await run_agent(session, message, edit_options(agent_dir(), build_server(session), model()),
+                                              on_message=on_message)
+                    usage["turns"] = outcome.turns
+                    ok = outcome.finished
+                except (RateLimited, NoAuth):
+                    raise
+                except Exception:
+                    traceback.print_exc(file=sys.stderr)
+                    ok = False
+                if ok:
+                    edl, summary = session.edl, session.summary
+                else:
+                    edl, summary = silence_cut_edl(prepared.words, prepared.info.duration), [FALLBACK_SUMMARY]
+                    usage["fallback"] = True
+                ev.step("Đang xuất video…", 0.9)
+                res, edl, summary = _render_with_retry(prepared, project, edl, summary, run_dir, ev, usage)
+            atomic_write_text(run_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
+            project.prompt = user_prompt
+            project.runs.append({"n": int(run_dir.name), "final": f"runs/{run_dir.name}/final.mp4",
+                                 "prompt": user_prompt, "feedback": args.feedback, "summary": summary,
+                                 "needs_review": res.needs_review, "fallback": usage["fallback"]})
+            project.save()
+            ev.done(str(res.path), summary, usage, res.needs_review)
+    except BaseException:
+        shutil.rmtree(run_dir, ignore_errors=True)    # no half-recorded runs: nothing in project.json points here
+        raise
     return 0
 
 
