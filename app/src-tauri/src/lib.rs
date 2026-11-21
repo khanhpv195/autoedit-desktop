@@ -1,5 +1,6 @@
 mod auth;
 mod commands;
+mod license;
 mod login;
 mod mcp;
 mod paths;
