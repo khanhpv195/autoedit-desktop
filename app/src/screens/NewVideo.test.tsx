@@ -114,6 +114,7 @@ test("changing media clears shown suggestions", async () => {
   await addFirst();
   await userEvent.click(screen.getByRole("button", { name: AI }));
   await screen.findByText("Ý 1");
+  a.pickMedia.mockResolvedValue(["/v/b.mov"]);
   await userEvent.click(screen.getByText("+ Thêm file"));
   await waitFor(() => expect(screen.queryByText("Ý 1")).toBeNull());
   expect(screen.getByRole("button", { name: AI })).toBeEnabled();
@@ -199,4 +200,113 @@ test("existing project without a saved card does not auto-analyze", async () => 
   expect(await screen.findByText("1. a.mp4")).toBeInTheDocument();
   expect(e.analyze).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: AI })).toBeEnabled();
+});
+
+function deferred<T>() {
+  let resolve!: (v: T) => void, reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+const summary = { dir: "/proj/1", title: "a", niche: "my-pham", created: "2026-11-20", status: "new" as const, runCount: 0 };
+
+test("build and AI are disabled while a media sync is pending", async () => {
+  mount();
+  await addFirst();
+  await waitFor(() => expect(screen.getByRole("button", { name: AI })).toBeEnabled());
+  const slow = deferred<ProjectDetail>();
+  a.setProjectMedia.mockReturnValueOnce(slow.promise);
+  a.pickMedia.mockResolvedValue(["/v/big.mov"]);
+  await userEvent.type(screen.getByRole("textbox"), "ngắn thôi");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dựng video" })).toBeEnabled());
+  await userEvent.click(screen.getByText("+ Thêm file"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dựng video" })).toBeDisabled());
+  expect(screen.getByRole("button", { name: AI })).toBeDisabled();
+  expect(screen.getAllByText("Đang chép file…").length).toBeGreaterThan(0);
+  await act(async () => { slow.resolve(detail([inp("a.mp4"), inp("big.mov")], [])); });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dựng video" })).toBeEnabled());
+  expect(screen.getByRole("button", { name: AI })).toBeEnabled();
+});
+
+test("a failed media sync blocks build and does not start the engine", async () => {
+  mount();
+  await addFirst();
+  a.setProjectMedia.mockRejectedValueOnce({ code: "UNKNOWN", message: "đầy ổ đĩa", retry_at: null });
+  a.pickMedia.mockResolvedValue(["/v/big.mov"]);
+  await userEvent.type(screen.getByRole("textbox"), "ngắn thôi");
+  await userEvent.click(screen.getByText("+ Thêm file"));
+  await waitFor(() => expect(a.setProjectMedia).toHaveBeenCalled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Dựng video" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Dựng video" }));
+  expect(a.updateProject).not.toHaveBeenCalled();
+  expect(JSON.parse(screen.getByTestId("r").textContent!)[0]).not.toMatchObject({ name: "project" });
+  await userEvent.click(screen.getByRole("button", { name: AI }));
+  expect(e.analyze).not.toHaveBeenCalled();
+});
+
+test("analyze results for old media are dropped when media changes mid-run", async () => {
+  const run = deferred<typeof cards>();
+  const cancel = vi.fn(async () => {});
+  e.analyze.mockImplementation((async (_d: string, _x: string[], _ev: unknown, onJob?: (j: unknown) => void) => {
+    onJob?.({ cancel, result: run.promise });
+    return run.promise;
+  }) as never);
+  mount();
+  await addFirst();
+  await waitFor(() => expect(screen.getByRole("button", { name: AI })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: AI }));
+  await screen.findByText(/AI đang xem clip/);
+  a.pickMedia.mockResolvedValue(["/v/b.mov"]);
+  await userEvent.click(screen.getByText("+ Thêm file"));
+  expect(cancel).toHaveBeenCalled();
+  await act(async () => { run.resolve(cards); });
+  expect(screen.queryByText("Ý 1")).toBeNull();
+  await waitFor(() => expect(screen.getByRole("button", { name: AI })).toBeEnabled());
+});
+
+test("analyze errors for old media are dropped too", async () => {
+  const run = deferred<typeof cards>();
+  e.analyze.mockImplementation((async () => run.promise) as never);
+  mount();
+  await addFirst();
+  await waitFor(() => expect(screen.getByRole("button", { name: AI })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: AI }));
+  await screen.findByText(/AI đang xem clip/);
+  a.pickMedia.mockResolvedValue(["/v/b.mov"]);
+  await userEvent.click(screen.getByText("+ Thêm file"));
+  await act(async () => { run.reject({ code: "AGENT_FAILED", message: "hỏng", retry_at: null }); });
+  expect(screen.queryByText("Dựng lại")).toBeNull();
+});
+
+test("sources added while create is in flight are mapped to input copies, and re-adding is deduped", async () => {
+  const create = deferred<typeof summary>();
+  a.createProject.mockReturnValueOnce(create.promise);
+  mount();
+  await addFirst();
+  a.pickMedia.mockResolvedValue(["/v/b.mov"]);
+  await userEvent.click(screen.getByText("+ Thêm file"));
+  await screen.findByText("2. b.mov");
+  await act(async () => { create.resolve(summary); });
+  await waitFor(() => expect(a.setProjectMedia).toHaveBeenCalled());
+  expect(a.setProjectMedia).toHaveBeenLastCalledWith("/proj/1", [inp("a.mp4"), "/v/b.mov"], []);
+  a.pickMedia.mockResolvedValue(["/v/a.mp4"]);
+  const before = a.setProjectMedia.mock.calls.length;
+  await userEvent.click(screen.getByText("+ Thêm file"));
+  expect(a.setProjectMedia.mock.calls.length).toBe(before);
+  expect(screen.queryByText("3. a.mp4")).toBeNull();
+});
+
+test("a logo picked while the project is being created is sent after create", async () => {
+  const create = deferred<typeof summary>();
+  a.createProject.mockReturnValueOnce(create.promise);
+  a.pickFile.mockResolvedValue("/v/logo.png");
+  a.setProjectAsset.mockResolvedValue(detail([inp("a.mp4")], [], { logo: inp("logo.png") }));
+  mount();
+  await addFirst();
+  await userEvent.click(screen.getByText("Logo (tùy chọn)"));
+  await waitFor(() => expect(a.pickFile).toHaveBeenCalled());
+  expect(a.setProjectAsset).not.toHaveBeenCalled();
+  await act(async () => { create.resolve(summary); });
+  await waitFor(() => expect(a.setProjectAsset).toHaveBeenCalledTimes(1));
+  expect(a.setProjectAsset).toHaveBeenCalledWith("/proj/1", "logo", "/v/logo.png");
+  expect(a.createProject).toHaveBeenCalledWith("my-pham", ["/v/a.mp4"], [], null, null);
 });

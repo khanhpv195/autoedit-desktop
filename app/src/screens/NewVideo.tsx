@@ -19,8 +19,14 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   const mediaRef = useRef<Media>(media);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const dirRef = useRef<string | null>(existingDir ?? null);
-  const [logo, setLogo] = useState<string | null>(null);
-  const [music, setMusic] = useState<string | null>(null);
+  const [logo, setLogoState] = useState<string | null>(null);
+  const [music, setMusicState] = useState<string | null>(null);
+  const logoRef = useRef<string | null>(null);
+  const musicRef = useRef<string | null>(null);
+  const [pending, setPending] = useState(0);
+  const syncFailed = useRef(false);
+  const gen = useRef(0);
+  const srcToInput = useRef(new Map<string, string>());
   const [dir, setDir] = useState<string | null>(existingDir ?? null);
   const [cards, setCards] = useState<Card[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
@@ -34,18 +40,33 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   // Leaving the screen must not leave an analyze job burning a Claude turn.
   useEffect(() => () => { void job.current?.cancel(); }, []);
 
-  async function runAnalyze(d: string, exclude: string[]) {
+  function setAsset(kind: "logo" | "music", v: string | null) {
+    if (kind === "logo") { logoRef.current = v; setLogoState(v); } else { musicRef.current = v; setMusicState(v); }
+  }
+
+  /** Wait until every queued project sync has finished; returns the project dir (null when none exists yet). */
+  async function settle(): Promise<string | null> {
+    let q: Promise<void>;
+    do { q = queue.current; await q; } while (q !== queue.current);
+    return dirRef.current;
+  }
+
+  async function runAnalyze(exclude: string[]) {
+    const d = await settle();
+    if (!d) return;
+    if (syncFailed.current) { notify("Chép file chưa xong, hãy thêm lại clip rồi thử lại"); return; }
+    const g = ++gen.current;
     setAnalyzing(true); setErr(null); setPicked(null); setStepLabel("");
     try {
-      const got = await engine.analyze(d, exclude, (e) => { if (e.type === "step") setStepLabel(e.label); },
+      const got = await engine.analyze(d, exclude, (e) => { if (g === gen.current && e.type === "step") setStepLabel(e.label); },
         (j) => { job.current = j; });
+      if (g !== gen.current) return; // the media changed while this ran: these cards describe the old media
       shown.current = [...shown.current, ...got.map((c) => c.title)];
       setCards(got);
     } catch (e) {
-      setErr(toEngineError(e));
+      if (g === gen.current) setErr(toEngineError(e));
     } finally {
-      job.current = null;
-      setAnalyzing(false);
+      if (g === gen.current) { job.current = null; setAnalyzing(false); }
     }
   }
 
@@ -57,7 +78,7 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
       try {
         const d = await api.getProject(existingDir);
         if (!alive) return;
-        setMedia({ clips: d.clips, images: d.images }); setLogo(d.logo); setMusic(d.music);
+        setMedia({ clips: d.clips, images: d.images }); setAsset("logo", d.logo); setAsset("music", d.music);
         if (d.scriptCard) {
           shown.current = [d.scriptCard.title];
           setCards([d.scriptCard]); setPicked(0);
@@ -73,27 +94,53 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
 
   function setMedia(m: Media) { mediaRef.current = m; setMediaState(m); }
 
+  /** Serialize a project sync behind the earlier ones; `pending` drives the "copying" state of the UI. */
+  function enqueue(task: () => Promise<void>) {
+    setPending((n) => n + 1);
+    queue.current = queue.current.then(task).finally(() => setPending((n) => n - 1));
+  }
+
+  /** Replace each sent source path by the project's own copy in the CURRENT state (match by the sent path). */
+  function adoptCopies(sent: Media, got: { clips: string[]; images: string[] }) {
+    const local = new Map<string, string>();
+    sent.clips.forEach((p, i) => { if (got.clips[i]) local.set(p, got.clips[i]); });
+    sent.images.forEach((p, i) => { if (got.images[i]) local.set(p, got.images[i]); });
+    local.forEach((v, k) => srcToInput.current.set(k, v));
+    const cur = mediaRef.current;
+    setMedia({ clips: cur.clips.map((p) => local.get(p) ?? p), images: cur.images.map((p) => local.get(p) ?? p) });
+  }
+
   /** Apply a media change: update the UI now, then sync to the project (serialized, latest state wins). */
   function changeMedia(next: Media) {
     setMedia(next);
+    gen.current++; // drops the result of any analyze that is still running on the old media
+    void job.current?.cancel(); job.current = null; setAnalyzing(false);
     setCards([]); setPicked(null); setErr(null); shown.current = [];
-    queue.current = queue.current.then(async () => {
+    enqueue(async () => {
       const sent = mediaRef.current;
       try {
         let d = dirRef.current;
         let detail;
         if (!d) {
           if (sent.clips.length === 0) return; // images wait for the first clip
-          const p = await api.createProject(niche, sent.clips, sent.images, logo, music);
+          const sentAssets = { logo: logoRef.current, music: musicRef.current };
+          const p = await api.createProject(niche, sent.clips, sent.images, sentAssets.logo, sentAssets.music);
+          // Assets picked while the project was being created: decide now, before any await, so none is sent twice.
+          const late = (["logo", "music"] as const).filter((k) => {
+            const cur = k === "logo" ? logoRef.current : musicRef.current;
+            return cur && cur !== sentAssets[k];
+          });
           d = p.dir; dirRef.current = d; setDir(d);
+          for (const k of late) await api.setProjectAsset(d, k, (k === "logo" ? logoRef : musicRef).current);
           await refreshProjects();
           detail = await api.getProject(d);
         } else {
           detail = await api.setProjectMedia(d, sent.clips, sent.images);
         }
-        // Switch to the project's own copies, unless the user changed things meanwhile.
-        if (mediaRef.current === sent) setMedia({ clips: detail.clips, images: detail.images });
+        syncFailed.current = false;
+        adoptCopies(sent, detail);
       } catch (e) {
+        syncFailed.current = true;
         if (!dirRef.current) setMedia({ clips: [], images: mediaRef.current.images });
         setErr(toEngineError(e));
       }
@@ -102,8 +149,9 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
 
   function addMedia(c: Classified) {
     const cur = mediaRef.current;
-    const clips = [...cur.clips, ...c.clips.filter((p) => !cur.clips.includes(p))];
-    const images = [...cur.images, ...c.images.filter((p) => !cur.images.includes(p))];
+    const has = (list: string[], p: string) => list.includes(p) || list.includes(srcToInput.current.get(p) ?? "\0");
+    const clips = [...cur.clips, ...c.clips.filter((p, i, all) => !has(cur.clips, p) && all.indexOf(p) === i)];
+    const images = [...cur.images, ...c.images.filter((p, i, all) => !has(cur.images, p) && all.indexOf(p) === i)];
     if (clips.length > MAX_CLIPS) notify(`Tối đa ${MAX_CLIPS} clip, đã bỏ bớt phần dư`);
     if (images.length > MAX_IMAGES) notify(`Tối đa ${MAX_IMAGES} ảnh, đã bỏ bớt phần dư`);
     const next = { clips: clips.slice(0, MAX_CLIPS), images: images.slice(0, MAX_IMAGES) };
@@ -125,11 +173,13 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   const removeImage = (i: number) =>
     changeMedia({ ...mediaRef.current, images: mediaRef.current.images.filter((_, k) => k !== i) });
 
-  async function onAsset(kind: "logo" | "music", path: string) {
-    (kind === "logo" ? setLogo : setMusic)(path);
-    if (dir) {
-      try { await api.setProjectAsset(dir, kind, path); } catch (e) { notify(toEngineError(e).message); }
-    }
+  function onAsset(kind: "logo" | "music", path: string) {
+    setAsset(kind, path);
+    // No project yet: createProject (or the check right after it) picks the latest value up from the ref.
+    if (!dirRef.current) return;
+    enqueue(async () => {
+      try { await api.setProjectAsset(dirRef.current!, kind, path); } catch (e) { notify(toEngineError(e).message); }
+    });
   }
 
   async function pick(i: number) {
@@ -138,10 +188,12 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
     if (dir) { try { await api.updateProject(dir, { script_card: cards[i] }); } catch { /* non-fatal */ } }
   }
 
-  const canBuild = !!dir && !analyzing && (prompt.trim() !== "" || picked !== null);
+  const canBuild = !!dir && pending === 0 && !analyzing && (prompt.trim() !== "" || picked !== null);
 
   async function build() {
+    const dir = await settle();
     if (!dir) return;
+    if (syncFailed.current) { notify("Chép file chưa xong, hãy thêm lại clip rồi thử lại"); return; }
     const text = prompt.trim();
     try {
       await api.updateProject(dir, { prompt: text });
@@ -202,8 +254,8 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
           </div>
           <div className="scbar">
             <div className="label" style={{ margin: 0 }}>Kịch bản AI gợi ý</div>
-            {cards.length > 0 && !analyzing && dir && (
-              <button className="linkbtn" onClick={() => runAnalyze(dir, shown.current)}>↻ Gợi ý khác</button>
+            {cards.length > 0 && !analyzing && dir && pending === 0 && (
+              <button className="linkbtn" onClick={() => void runAnalyze(shown.current)}>↻ Gợi ý khác</button>
             )}
           </div>
           {analyzing && (
@@ -211,12 +263,13 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
           )}
           {!analyzing && cards.length === 0 && (
             <div className="sc-empty">
-              <button className="btn" disabled={!dir} onClick={() => dir && void runAnalyze(dir, [])}>✨ AI gợi ý kịch bản</button>
+              <button className="btn" disabled={!dir || pending > 0} onClick={() => void runAnalyze([])}>✨ AI gợi ý kịch bản</button>
               {!dir && <div className="hint">Thêm clip để AI gợi ý</div>}
+              {dir && pending > 0 && <div className="hint">Đang chép file…</div>}
             </div>
           )}
           {err && <div style={{ marginBottom: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
-            onSetup={() => go({ name: "onboarding" })} onRetry={dir ? () => void runAnalyze(dir, shown.current) : undefined} /></div>}
+            onSetup={() => go({ name: "onboarding" })} onRetry={dir ? () => void runAnalyze(shown.current) : undefined} /></div>}
           <div className="scripts">
             {cards.map((c, i) => (
               <div key={c.title + i} className={"sc" + (picked === i ? " on" : "")} role="button" tabIndex={0}
@@ -234,7 +287,7 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
             placeholder="Ví dụ: làm ngắn gọn, mở đầu bằng câu chốt giá" />
           <div className="buildrow">
             <button className="btn primary big" disabled={!canBuild} onClick={build}>Dựng video</button>
-            <span className="hint">{dir ? "" : "Thêm clip để bắt đầu"}</span>
+            <span className="hint">{!dir ? "Thêm clip để bắt đầu" : pending > 0 ? "Đang chép file…" : ""}</span>
           </div>
         </div>
       </div>
