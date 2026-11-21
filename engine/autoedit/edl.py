@@ -256,6 +256,39 @@ def _validate_broll(raw: list, kept: list[Range], hook: Hook | None, image_names
     return out
 
 
+def _merge_and_check(ranges: list[Range], keep_raw: list) -> list[tuple[int, Range]]:
+    """Free shot order: the list order is the play order. Works on the agent's RAW numbers (before snap/pad) so a
+    take split mid-word is not mistaken for an overlap. A list neighbour that starts inside (or within TOUCH of the
+    end of) the previous range continues it and merges; any other overlap beyond TOUCH means the same footage
+    would play twice: reject it, quoting the agent's own numbers."""
+    merged: list[tuple[int, Range]] = []
+    for i, r in enumerate(ranges):
+        prev = merged[-1][1] if merged else None
+        if prev is not None and prev.start - 1e-9 <= r.start <= prev.end + TOUCH:
+            prev.end = max(prev.end, r.end)
+        else:
+            merged.append((i, Range(r.start, r.end, r.reason)))
+
+    def raw(i: int) -> str:
+        return f"{float(keep_raw[i]['start']):g}–{float(keep_raw[i]['end']):g}"
+
+    for x, (i, a) in enumerate(merged):
+        for j, b in merged[:x]:
+            if min(a.end, b.end) - max(a.start, b.start) > TOUCH:
+                raise EdlError(f"keep[{i}] ({raw(i)}) chồng lên keep[{j}] ({raw(j)}); mỗi đoạn chỉ dùng một lần")
+    return merged
+
+
+def _clamp_padding_overlaps(ranges: list[Range]) -> None:
+    """After snap/pad, two ranges that did not overlap as given may touch into each other's padding: the one
+    later in the source starts where the earlier one ends (no footage plays twice, no error)."""
+    for x, a in enumerate(ranges):
+        for b in ranges[:x]:
+            early, late = (a, b) if a.start <= b.start else (b, a)
+            if late.start < early.end:
+                late.start = early.end
+
+
 def validate_edl(raw: dict, words: list[Word], clip_duration: float,
                  image_names: tuple[str, ...] | list[str] = (), *,
                  default_cta: str = DEFAULT_CTA, voiceover_on: bool = False,
@@ -269,22 +302,11 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         a, b = float(k["start"]), float(k["end"])
         if not (0 <= a < b <= clip_duration + 0.01):
             raise EdlError(f"range {a}-{b} is outside 0-{clip_duration:.2f} or inverted")
-        a, b = _snap_pad(a, min(b, clip_duration), words, clip_duration)
-        ranges.append(Range(a, b, str(k.get("reason", ""))))
-
-    # free shot order: the list order is the play order. Neighbours in the list that touch in the source merge;
-    # any other overlap means the same footage would play twice: reject it.
-    merged: list[tuple[int, Range]] = []
-    for i, r in enumerate(ranges):
-        if merged and abs(r.start - merged[-1][1].end) <= TOUCH:
-            merged[-1][1].end = max(merged[-1][1].end, r.end)
-        else:
-            merged.append((i, r))
-    for x, (i, a) in enumerate(merged):
-        for j, b in merged[:x]:
-            if min(a.end, b.end) - max(a.start, b.start) > TOUCH:
-                raise EdlError(f"keep[{i}] ({a.start:.1f}–{a.end:.1f}) chồng lên keep[{j}] ({b.start:.1f}–{b.end:.1f}); "
-                               "mỗi đoạn chỉ dùng một lần")
+        ranges.append(Range(a, min(b, clip_duration), str(k.get("reason", ""))))
+    merged = _merge_and_check(ranges, keep_raw)
+    for _, r in merged:
+        r.start, r.end = _snap_pad(r.start, r.end, words, clip_duration)
+    _clamp_padding_overlaps([r for _, r in merged])
     kept = []
     for _, r in merged:
         if r.duration < MIN_SEGMENT:
