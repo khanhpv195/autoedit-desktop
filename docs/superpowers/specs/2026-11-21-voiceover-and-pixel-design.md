@@ -1,6 +1,6 @@
 # Voiceover (ElevenLabs) and Pixel edit-quality upgrades: design
 
-Approved direction 2026-11-21. One release, two parts:
+Approved direction 2026-11-21. One release, three parts:
 
 - **A. AI voiceover.** The customer turns it on per video. The engine calls the ElevenLabs API directly; there is no MCP and no `uvx`.
 - **B. Edit quality from the `pixel-video-edit` skill:**
@@ -8,6 +8,7 @@ Approved direction 2026-11-21. One release, two parts:
   - free shot order;
   - freeze and pop checks;
   - suggestions that follow the editor's real rules.
+- **C. Basic settings and a cheaper default model.**
 
 ## Goals and non-goals
 Goals:
@@ -160,6 +161,38 @@ Non-goals:
 
 ---
 
+## C. Basic settings and model
+
+### C1. Model
+- The Settings model list becomes three options:
+  - Sonnet 5.5 (`claude-sonnet-5-5`), the **new default**;
+  - Opus 5.5 ("tốt nhất, tốn nhiều lượt nhất");
+  - Haiku 5.5 (`claude-haiku-5-5`, "rẻ nhất, dựng kém hơn với clip khó").
+- The same model is used for editing and for the suggestion cards.
+- The default changes to Sonnet 5.5 in `settings.rs` and in the engine's `DEFAULT_MODEL`.
+- A saved `model` value in an existing `settings.json` is kept as is. Only the 0.2.x test installs have one.
+
+### C2. "Mặc định cho video mới" (card in Settings → Chung)
+`settings.json` gains `defaultLogo`, `defaultCta` and `defaultLength`.
+
+- **Logo mặc định:**
+  - The customer picks a PNG or JPG, which goes through the existing logo checks.
+  - It is copied to `<data_dir>/defaults/logo.<ext>`, so the default survives if the original file is moved.
+  - The card shows a thumbnail and a "Bỏ logo" button.
+  - New Video pre-fills the logo slot with it. The customer can still remove or change it for one video, and the project gets its own copy as today.
+- **Chữ kêu gọi mặc định:**
+  - A text input, 1–30 characters, default "BẤM GIỎ HÀNG 👇".
+  - It is stored per project as `project.json` `cta_text`, set at creation.
+  - The prompt tells the agent to use it unless the customer's request asks for another CTA.
+  - The EDL's `cta_text` defaults to the project value.
+- **Độ dài video:**
+  - Three options: Ngắn 15–20 s, Vừa 20–35 s (default), Dài 35–60 s.
+  - New Video shows the same three chips, pre-filled from the setting, so it can change per video.
+  - `project.json` gains `length: "short" | "medium" | "long"` (default `"medium"`).
+  - The edit prompt and the suggestion prompt state the target range, replacing "Typical result: 15–45 s".
+  - `set_edl` returns a note when the output falls outside the range by more than 20%, so the agent adjusts. It is not an error.
+- Older projects without `cta_text` or `length` load with the defaults.
+
 ## Data flow (voiceover on)
 1. The customer turns on the toggle, picks a voice, types the product info and presses Dựng.
 2. The engine runs prep, then the quota pre-flight.
@@ -177,7 +210,8 @@ Non-goals:
   - render: muted original, the voiceover mixed at the right offset (probe the audio energy), captions from the voiceover;
   - QC: a synthetic clip with a frozen tail gets flagged, and a b-roll window is not flagged; pop score on a synthetic click.
 - **Rust:** the key commands use a fake secret store; the subscription check uses a local mock server; `set_project_voiceover` takes the lock.
-- **UI:** the Settings section (key, voices, preview, default), the New Video toggle states, and the outline list.
+- **UI:** the Settings section (key, voices, preview, default), the New Video toggle states, the outline list, the model options and their default, the defaults card (logo copy and removal, CTA validation, length) and the length chips pre-filled on New Video.
+- **Engine (C):** the prompt contains the length range and CTA; the length note from `set_edl`; legacy projects load with defaults.
 - **No real ElevenLabs or Claude calls without asking the user.** A final manual test on the user's 2 fashion clips, with consent.
 
 ## Rollout
