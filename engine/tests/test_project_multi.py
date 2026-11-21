@@ -56,3 +56,33 @@ def test_missing_image_and_limits(tmp_path):
     with pytest.raises(BadInput, match="20"):
         Project.load(_many(tmp_path, "three", 1, 21))
     Project.load(_many(tmp_path, "ok", 10, 20))
+
+
+@pytest.mark.parametrize("bad", ["../x.mp4", "/etc/passwd", "a/b.mp4", "..", ".", ""])
+def test_names_must_be_plain_file_names(tmp_path, bad):
+    d = tmp_path / "c"
+    d.mkdir()
+    make(d, clips=[bad])
+    with pytest.raises(BadInput):
+        Project.load(d, require_media=False)
+    d = tmp_path / "i"
+    d.mkdir()
+    make(d, images=[bad])
+    with pytest.raises(BadInput):
+        Project.load(d, require_media=False)
+    if bad:
+        d = tmp_path / "l"
+        d.mkdir()
+        make(d)
+        data = json.loads((d / "project.json").read_text())
+        for key in ("logo", "music"):
+            (d / "project.json").write_text(json.dumps({**data, key: bad}))
+            with pytest.raises(BadInput):
+                Project.load(d, require_media=False)
+
+
+def test_require_media_false_tolerates_missing_files(tmp_path):
+    d = make(tmp_path, images=["gone.png"])
+    with pytest.raises(BadInput, match="ảnh"):
+        Project.load(d)
+    assert Project.load(d, require_media=False).images == ["gone.png"]

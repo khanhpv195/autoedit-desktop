@@ -71,6 +71,12 @@ MAX_CLIPS, MAX_IMAGES = 10, 20
 _FIELDS = ("niche", "clips", "images", "logo", "music", "prompt", "script_card", "runs", "posts")
 
 
+def _check_name(name) -> None:
+    """File names in project.json live directly in input/: no separators, no '..', no absolute paths."""
+    if not isinstance(name, str) or name in ("", ".", "..") or Path(name).name != name or "\\" in name:
+        raise BadInput(f"Tên file không hợp lệ: {name!r}")
+
+
 @dataclass
 class Project:
     dir: Path
@@ -85,7 +91,9 @@ class Project:
     posts: list[dict] = field(default_factory=list)
 
     @classmethod
-    def load(cls, dir: Path) -> "Project":
+    def load(cls, dir: Path, require_media: bool = True) -> "Project":
+        """require_media: clips and images must exist on disk (commands that prepare media). Captions / publishing
+        pass False: a deleted image must not break them."""
         dir = Path(dir)
         f = dir / "project.json"
         if not f.exists():
@@ -104,12 +112,15 @@ class Project:
             raise BadInput(f"Tối đa {MAX_CLIPS} clip, project có {len(p.clips)}")
         if len(p.images) > MAX_IMAGES:
             raise BadInput(f"Tối đa {MAX_IMAGES} ảnh, project có {len(p.images)}")
-        for name in p.clips:
-            if not (p.input_dir / name).is_file():
-                raise BadInput(f"Không thấy file clip {name} trong project")
-        for name in p.images:
-            if not (p.input_dir / name).is_file():
-                raise BadInput(f"Không thấy file ảnh {name} trong project")
+        for name in [*p.clips, *p.images, *(n for n in (p.logo, p.music) if n)]:
+            _check_name(name)
+        if require_media:
+            for name in p.clips:
+                if not (p.input_dir / name).is_file():
+                    raise BadInput(f"Không thấy file clip {name} trong project")
+            for name in p.images:
+                if not (p.input_dir / name).is_file():
+                    raise BadInput(f"Không thấy file ảnh {name} trong project")
         p.work_dir.mkdir(parents=True, exist_ok=True)
         return p
 

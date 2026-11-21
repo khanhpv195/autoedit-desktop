@@ -88,10 +88,15 @@ def check_image(path: Path) -> tuple[int, int]:
     from PIL import Image, UnidentifiedImageError
     if path.suffix.lower() not in IMAGE_EXT or not path.exists():
         raise BadInput(f"Ảnh {path.name} phải là PNG, JPG hoặc WebP")
+    import warnings
     try:
-        with Image.open(path) as im:
-            im.verify()
-        with Image.open(path) as im:
-            return im.size
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(path) as im:
+                im.verify()
+            with Image.open(path) as im:
+                return im.size
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as e:
+        raise BadInput(f"Ảnh {path.name} quá lớn") from e
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as e:
         raise BadInput(f"Không đọc được ảnh {path.name}") from e

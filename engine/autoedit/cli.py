@@ -151,7 +151,7 @@ async def _social(args, events: Emitter) -> int:
         sc.portal(events, args.team)
     elif c == "caption":
         from autoedit.social.caption import make_caption
-        project = Project.load(Path(args.project))
+        project = Project.load(Path(args.project), require_media=False)
         events.emit_raw({"type": "caption", "text": await make_caption(project, args.run, agent_dir())})
     elif c == "publish":
         sc.publish(events, Path(args.project), args.run, args.team, args.channel, args.caption, args.when)

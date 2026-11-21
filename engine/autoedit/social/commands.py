@@ -127,7 +127,7 @@ def create_post(project_dir: Path, run: int, team: str, channels: list[str], cap
     """Validate, upload final.mp4, create the post, record it in project.json. Returns the normalized Post.
     `now` is for tests; normally each check reads the clock itself. The post date is computed (and a picked
     time re-validated) after the upload, which can take minutes."""
-    project = Project.load(project_dir)
+    project = Project.load(project_dir, require_media=False)
     if not any(r.get("n") == run for r in project.runs):
         raise BadInput(f"Không thấy bản dựng {run}")
     final = project.dir / "runs" / str(run) / "final.mp4"
@@ -192,7 +192,7 @@ FALLBACK_TAGS = {"thoi-trang": "#thoitrang #outfit", "my-pham": "#mypham #skinca
 
 def fallback_caption(project_dir: Path, run: int, niche: str) -> str:
     from autoedit.social.caption import _hook
-    hook = _hook(Project.load(project_dir), run) or "Xem ngay"
+    hook = _hook(Project.load(project_dir, require_media=False), run) or "Xem ngay"
     return f"{hook}\n{FALLBACK_TAGS.get(niche, FALLBACK_TAGS['chung'])}"
 
 
@@ -259,7 +259,7 @@ async def _routine_sync(events: Emitter, team: str, routines: list[dict], root: 
             if read_project_json(pdir).get("posts"):    # posted (by hand or another run) since the plan
                 continue
             try:
-                text = await make_caption(Project.load(pdir), it["run"], agent_dir(), **kw)
+                text = await make_caption(Project.load(pdir, require_media=False), it["run"], agent_dir(), **kw)
             except (RateLimited, NoAuth, AgentFailed):
                 text = fallback_caption(pdir, it["run"], niches.get(it["project"]) or "chung")
             created.append(create_post(pdir, it["run"], team, channels, text, it["slot"], injected, None, c,
