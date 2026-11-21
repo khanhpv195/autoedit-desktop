@@ -30,6 +30,9 @@ from autoedit.resources import agent_dir
 from autoedit.voice import eleven
 
 
+VOICE_AGENT_FAILED = "AI chưa dựng xong bản lồng tiếng lần này, hãy thử lại"
+
+
 class Tee:
     def __init__(self, *streams):
         self.streams = streams
@@ -56,7 +59,7 @@ def _render_with_retry(prepared, project, edl, summary, run_dir, ev, usage):
     try:
         return render(prepared, project, edl, run_dir / "final.mp4", preview=False), edl, summary
     except Exception:
-        if usage["fallback"]:
+        if usage["fallback"] or project.voiceover_on:     # never fall back to a video without the voiceover
             raise
         traceback.print_exc(file=sys.stderr)
     usage["fallback"] = True
@@ -110,9 +113,13 @@ async def _edit(args, events: Emitter) -> int:
                     raise
                 except Exception:
                     traceback.print_exc(file=sys.stderr)
+                    if project.voiceover_on:    # the silence-cut fallback has no voiceover: fail with the error
+                        raise
                     ok = False
                 if ok:
                     edl, summary = session.edl, session.summary
+                elif project.voiceover_on:
+                    raise AgentFailed(VOICE_AGENT_FAILED)
                 else:
                     edl, summary = silence_cut_edl(prepared.words, prepared.info.duration), [FALLBACK_SUMMARY]
                     usage["fallback"] = True

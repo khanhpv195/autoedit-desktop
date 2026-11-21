@@ -216,3 +216,50 @@ def test_voice_auth_from_tool_fails_run(cli_project, monkeypatch, capsys):
     last = events(capsys)[-1]
     assert last["code"] == "VOICE_AUTH" and last["message"] == eleven.MSG_AUTH
     assert not (cli_project / "runs" / "1").exists()
+
+
+def test_agent_failure_with_voiceover_fails_instead_of_fallback(cli_project, monkeypatch, capsys):
+    monkeypatch.setattr(eleven, "quota", lambda: 5000)
+
+    async def broken(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(cli, "run_agent", broken)
+    assert cli.main(["edit", "--project", str(cli_project)]) == 1
+    last = events(capsys)[-1]
+    assert last["type"] == "error" and "boom" in last["message"]
+    assert not (cli_project / "runs" / "1").exists()
+
+
+def test_unfinished_agent_with_voiceover_fails(cli_project, monkeypatch, capsys):
+    monkeypatch.setattr(eleven, "quota", lambda: 5000)
+
+    async def lazy(*a, **k):
+        return AgentOutcome(False, 3, "timeout")
+    monkeypatch.setattr(cli, "run_agent", lazy)
+    assert cli.main(["edit", "--project", str(cli_project)]) == 1
+    last = events(capsys)[-1]
+    assert last["code"] == "AGENT_FAILED" and last["message"] == cli.VOICE_AGENT_FAILED
+
+
+def test_final_render_voice_error_is_not_swallowed(cli_project, monkeypatch, capsys):
+    monkeypatch.setattr(eleven, "quota", lambda: 5000)
+    lines = {(0.7, "chào"): VoiceLine(0.7, "chào", None, 0.5, [("chào", 0.0, 0.4)])}
+
+    async def agent(session, prompt, options, **k):
+        session.edl, _ = validate_edl({"keep": [{"start": 0.0, "end": 5.0}], "voiceover": [{"at": 0.7, "text": "chào"}]},
+                                      WORDS, session.prepared.info.duration, voiceover_on=True, voice_lines=lines)
+        session.summary, session.finished = ["x"], True
+        return AgentOutcome(True, 3, None)
+    monkeypatch.setattr(cli, "run_agent", agent)
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)     # cache is empty: re-synthesis needs the key
+    assert cli.main(["edit", "--project", str(cli_project)]) == 1
+    assert events(capsys)[-1]["code"] == "VOICE_AUTH"
+    assert not (cli_project / "runs" / "1").exists()
+
+
+def test_voiceover_skips_transcript_fix_notes():
+    lines = {(0.7, "áo len"): VoiceLine(0.7, "áo len", None, 0.5, [])}
+    _, notes = validate_edl({"keep": [{"start": 0.0, "end": 5.0}], "voiceover": [{"at": 0.7, "text": "áo len"}],
+                             "emphasis": [{"at": 0.9, "word": "len"}]}, WORDS, 6.0, voiceover_on=True,
+                            voice_lines=lines)
+    assert not any("emphasis" in n for n in notes)

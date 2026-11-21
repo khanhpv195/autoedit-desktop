@@ -325,7 +325,8 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
     if any(not e.word for e in emph):
         raise EdlError("emphasis needs a non-empty word")
 
-    notes += resolve_edits(words, fixes, emph)[2]
+    if not voiceover_on:    # with voiceover, fixes/emphasis apply to the voiceover words (matched at render)
+        notes += resolve_edits(words, fixes, emph)[2]
 
     broll = _validate_broll(raw.get("broll") or [], kept, hook, list(image_names), notes)
 
