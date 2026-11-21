@@ -13,7 +13,19 @@ export function newKey(): string {
   return `AE-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}`;
 }
 
-const normKey = (k: unknown) => (typeof k === "string" ? k.trim().toUpperCase() : "");
+const KEY_BODY = /^[0-9A-HJKMNP-TV-Z]{16}$/;
+
+/** Shared with the CLI (`norm`) and the app: same vectors in all three test suites. */
+export function normKey(k: unknown): string {
+  if (typeof k !== "string") return "";
+  const s = k.normalize("NFKC").replace(/[\s\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-").toUpperCase();
+  if (!s.startsWith("AE")) return s;
+  const body = s.slice(2).replace(/^-/, "").replace(/O/g, "0").replace(/[IL]/g, "1");
+  const flat = body.replace(/-/g, "");
+  if (KEY_BODY.test(flat)) return `AE-${flat.slice(0, 4)}-${flat.slice(4, 8)}-${flat.slice(8, 12)}-${flat.slice(12)}`;
+  return `AE-${body}`;
+}
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -83,8 +95,10 @@ export async function handle(req: Request, env: CoreEnv, db: Db, now: () => Date
       return json(200, { status: "active" });
     }
     const version = typeof b?.app_version === "string" ? b.app_version.slice(0, 32) : null;
-    if (!row!.machine) await db.update(key, { machine, activated_at: t, last_seen_at: t, app_version: version });
-    else await db.update(key, { last_seen_at: t, app_version: version });
+    // One conditional UPDATE decides the winner; never sign before it succeeds.
+    if ((await db.claim(key, machine, t, version)) === 0) {
+      return stateError(await db.get(key), machine) ?? json(503, { error: "retry" });
+    }
     return json(200, { license: await signLicense(env, row!, machine, now()) });
   }
 

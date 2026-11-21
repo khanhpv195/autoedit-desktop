@@ -126,3 +126,13 @@ def test_unknown_key_and_bad_token_exit_nonzero(cfg, capsys):
 def test_missing_config(cfg, capsys):
     assert cli.main(["list"]) == 1
     assert "license-admin setup" in capsys.readouterr().err
+
+
+def test_norm_matches_shared_vectors():
+    import json
+    from pathlib import Path
+    from license_admin.cli import norm
+    vectors = json.loads((Path(__file__).parents[2] / "license-server" / "test" / "key-vectors.json").read_text(encoding="utf-8"))
+    assert len(vectors) >= 8
+    for raw, want in vectors:
+        assert norm(raw) == want, raw

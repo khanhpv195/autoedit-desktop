@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll } from "vitest";
-import { handle, newKey, type CoreEnv } from "../src/core";
+import { handle, newKey, normKey, type CoreEnv } from "../src/core";
 import { MemoryDb } from "../src/db";
+import vectors from "./key-vectors.json";
 
 let env: CoreEnv;
 let pub: CryptoKey;
@@ -121,5 +122,55 @@ describe("check and reset", () => {
   });
   it("unknown routes are 404", async () => {
     expect((await handle(get("/nope"), env, new MemoryDb())).status).toBe(404);
+  });
+});
+
+describe("normKey", () => {
+  it.each(vectors as [string, string][])("normalises %j", (input, want) => {
+    expect(normKey(input)).toBe(want);
+  });
+  it("activates with a sloppy key", async () => {
+    const db = new MemoryDb();
+    const key = await create(db);
+    const sloppy = " " + key.toLowerCase().replace(/-/g, "\u2013") + "\u200b";
+    expect((await handle(post("/v1/activate", { key: sloppy, machine: "m1" }), env, db)).status).toBe(200);
+  });
+});
+
+describe("activation race", () => {
+  it("two machines activating the same unbound key at once: exactly one 200", async () => {
+    const db = new MemoryDb();
+    const key = await create(db);
+    const rs = await Promise.all([
+      handle(post("/v1/activate", { key, machine: "m1" }), env, db),
+      handle(post("/v1/activate", { key, machine: "m2" }), env, db),
+    ]);
+    expect(rs.map((r) => r.status).sort()).toEqual([200, 409]);
+    const winner = rs.findIndex((r) => r.status === 200) === 0 ? "m1" : "m2";
+    expect((await db.get(key))!.machine).toBe(winner);
+  });
+
+  it("a revoke between the read and the update yields 410 and no token", async () => {
+    class RevokingDb extends MemoryDb {
+      armed = false;
+      async get(key: string) { const r = await super.get(key); if (this.armed) { this.armed = false; this.rows.get(key)!.status = "revoked"; } return r; }
+    }
+    const db = new RevokingDb();
+    const key = await create(db);
+    db.armed = true;
+    const r = await handle(post("/v1/activate", { key, machine: "m1" }), env, db);
+    expect(r.status).toBe(410);
+    expect(await r.json()).toEqual({ error: "revoked" });
+    expect((await db.get(key))!.machine).toBeNull();
+  });
+
+  it("re-activation on the bound machine keeps activated_at", async () => {
+    const db = new MemoryDb();
+    const key = await create(db);
+    await handle(post("/v1/activate", { key, machine: "m1" }), env, db, () => new Date("2026-01-01T00:00:00Z"));
+    await handle(post("/v1/activate", { key, machine: "m1" }), env, db, () => new Date("2026-02-01T00:00:00Z"));
+    const row = (await db.get(key))!;
+    expect(row.activated_at).toBe("2026-01-01T00:00:00.000Z");
+    expect(row.last_seen_at).toBe("2026-02-01T00:00:00.000Z");
   });
 });

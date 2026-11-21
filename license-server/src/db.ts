@@ -9,6 +9,8 @@ export interface Db {
   insert(row: KeyRow): Promise<void>;
   update(key: string, patch: Partial<KeyRow>): Promise<void>;
   list(): Promise<KeyRow[]>;
+  /** Atomic bind/refresh for activation. Returns the number of rows changed (0 = lost the race, revoked, or bound elsewhere). */
+  claim(key: string, machine: string, now: string, version: string | null): Promise<number>;
 }
 
 const COLS = ["name", "note", "machine", "activated_at", "last_seen_at", "app_version", "status"] as const;
@@ -28,6 +30,12 @@ export class D1Db implements Db {
     await this.d1.prepare(`UPDATE keys SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE key = ?`)
       .bind(...cols.map((c) => patch[c] ?? null), key).run();
   }
+  async claim(key: string, machine: string, now: string, version: string | null) {
+    const r = await this.d1.prepare(
+      "UPDATE keys SET machine = ?, activated_at = COALESCE(activated_at, ?), last_seen_at = ?, app_version = ? WHERE key = ? AND status = 'active' AND (machine IS NULL OR machine = ?)")
+      .bind(machine, now, now, version, key, machine).run();
+    return r.meta.changes ?? 0;
+  }
   async list() {
     return (await this.d1.prepare("SELECT * FROM keys ORDER BY created_at DESC").all<KeyRow>()).results;
   }
@@ -39,4 +47,10 @@ export class MemoryDb implements Db {
   async insert(r: KeyRow) { this.rows.set(r.key, { ...r }); }
   async update(key: string, patch: Partial<KeyRow>) { const r = this.rows.get(key); if (r) Object.assign(r, patch); }
   async list() { return [...this.rows.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)); }
+  async claim(key: string, machine: string, now: string, version: string | null) {
+    const r = this.rows.get(key);
+    if (!r || r.status !== "active" || (r.machine !== null && r.machine !== machine)) return 0;
+    r.machine = machine; r.activated_at = r.activated_at ?? now; r.last_seen_at = now; r.app_version = version;
+    return 1;
+  }
 }

@@ -2,7 +2,9 @@ import argparse
 import getpass
 import json
 import os
+import re
 import sys
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -46,8 +48,24 @@ def call(cfg: dict, method: str, path: str, body: dict | None = None) -> dict:
         raise ApiError(f"Không kết nối được máy chủ: {e.reason}") from None
 
 
+_KEY_BODY = re.compile(r"^[0-9A-HJKMNP-TV-Z]{16}$")
+
+
 def norm(key: str) -> str:
-    return key.strip().upper()
+    """Same rules as the Worker's normKey and the app (shared vectors in license-server/test/key-vectors.json)."""
+    s = unicodedata.normalize("NFKC", key)
+    s = re.sub(r"[\s\u200b-\u200d\ufeff]", "", s)
+    s = re.sub(r"[\u2010-\u2015\u2212]", "-", s).upper()
+    if not s.startswith("AE"):
+        return s
+    body = s[2:]
+    if body.startswith("-"):
+        body = body[1:]
+    body = body.replace("O", "0").replace("I", "1").replace("L", "1")
+    flat = body.replace("-", "")
+    if _KEY_BODY.match(flat):
+        return f"AE-{flat[:4]}-{flat[4:8]}-{flat[8:12]}-{flat[12:]}"
+    return f"AE-{body}"
 
 
 def cmd_setup(_a) -> int:
