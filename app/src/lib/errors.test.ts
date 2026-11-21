@@ -5,6 +5,7 @@ test("ElevenLabs settings codes and VOICE_* engine codes", () => {
   const d = (code: string, message = "") => describeError({ code, message, retry_at: null });
   expect(d("ELEVEN_KEY_INVALID")).toMatchObject({ title: "Key ElevenLabs không đúng", action: "settings" });
   expect(d("ELEVEN_OFFLINE")).toMatchObject({ title: "Không kết nối được ElevenLabs", action: "retry" });
+  expect(d("ELEVEN_FAILED")).toMatchObject({ title: "ElevenLabs đang lỗi hoặc bận, thử lại sau", action: "retry" });
   expect(d("VOICE_AUTH")).toMatchObject({ title: "Key ElevenLabs không đúng", action: "settings" });
   expect(d("VOICE_QUOTA")).toMatchObject({ title: "Tài khoản ElevenLabs hết ký tự", action: "none" });
   expect(d("VOICE_MISSING").title).toBe("Giọng đọc không còn trong tài khoản ElevenLabs, chọn giọng khác trong Cài đặt");
@@ -16,6 +17,7 @@ test("ElevenLabs settings codes and VOICE_* engine codes", () => {
 test("a rejected command carrying a bare known code becomes that code", () => {
   expect(toEngineError("ELEVEN_KEY_INVALID")).toMatchObject({ code: "ELEVEN_KEY_INVALID" });
   expect(toEngineError("ELEVEN_OFFLINE").code).toBe("ELEVEN_OFFLINE");
+  expect(toEngineError("ELEVEN_FAILED").code).toBe("ELEVEN_FAILED");
   expect(toEngineError("Không thấy file x")).toMatchObject({ code: "AGENT_FAILED", message: "Không thấy file x" });
 });
 

@@ -2,7 +2,7 @@ import { hhmm } from "./format";
 
 const KNOWN = new Set([
   "RATE_LIMIT", "NO_AUTH", "SETUP_REQUIRED", "BAD_INPUT", "SOCIAL_AUTH", "SOCIAL_LIMIT", "SOCIAL_FAILED",
-  "ELEVEN_KEY_INVALID", "ELEVEN_OFFLINE",
+  "ELEVEN_KEY_INVALID", "ELEVEN_OFFLINE", "ELEVEN_FAILED",
   "VOICE_AUTH", "VOICE_QUOTA", "VOICE_MISSING", "VOICE_LIMIT", "VOICE_FAILED",
 ]);
 
@@ -43,6 +43,8 @@ export function describeError(e: { code: string; message: string; retry_at: stri
       return { title: "Key ElevenLabs không đúng", detail: "Nhập lại key ở Cài đặt → Kết nối & MCP.", action: "settings" };
     case "ELEVEN_OFFLINE":
       return { title: "Không kết nối được ElevenLabs", detail: "Kiểm tra mạng rồi thử lại.", action: "retry" };
+    case "ELEVEN_FAILED":
+      return { title: "ElevenLabs đang lỗi hoặc bận, thử lại sau", detail: "", action: "retry" };
     case "VOICE_QUOTA":
       return { title: "Tài khoản ElevenLabs hết ký tự", detail: e.message || "Nạp thêm ký tự hoặc tắt lồng tiếng.", action: "none" };
     case "VOICE_MISSING":

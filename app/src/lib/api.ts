@@ -25,7 +25,7 @@ export const socialKeyStatus = () => invoke<{ hasKey: boolean }>("social_key_sta
 export const setSocialKey = (key: string) => invoke<null>("set_social_key", { key });
 export const clearSocialKey = () => invoke<null>("clear_social_key");
 export const elevenStatus = () => invoke<ElevenStatus>("eleven_status");
-/** Validates the key with ElevenLabs, then stores it in the Keychain. Rejects with ELEVEN_KEY_INVALID / ELEVEN_OFFLINE. */
+/** Validates the key with ElevenLabs, then stores it in the Keychain. Rejects with ELEVEN_KEY_INVALID / ELEVEN_OFFLINE / ELEVEN_FAILED. */
 export const setElevenKey = (key: string) => invoke<{ remaining: number }>("set_eleven_key", { key });
 export const clearElevenKey = () => invoke<null>("clear_eleven_key");
 export const elevenVoices = () => invoke<Voice[]>("eleven_voices");

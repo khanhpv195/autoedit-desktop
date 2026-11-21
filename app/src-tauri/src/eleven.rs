@@ -18,6 +18,8 @@ pub enum ElevenErr {
     KeyInvalid,
     /// Network error, timeout, or an answer that is not ElevenLabs JSON.
     Offline,
+    /// ElevenLabs answered with an error status other than 401 (429 busy, 5xx, ...).
+    Failed,
     /// The key was valid but the Keychain refused to store it.
     Store,
 }
@@ -27,6 +29,7 @@ impl ElevenErr {
         match self {
             ElevenErr::KeyInvalid => "ELEVEN_KEY_INVALID",
             ElevenErr::Offline => "ELEVEN_OFFLINE",
+            ElevenErr::Failed => "ELEVEN_FAILED",
             ElevenErr::Store => "Không lưu được key vào Keychain",
         }
     }
@@ -63,7 +66,7 @@ async fn get(base: &str, path: &str, key: &str) -> Result<serde_json::Value, Ele
     match r.status().as_u16() {
         200 => r.json::<serde_json::Value>().await.map_err(|_| ElevenErr::Offline),
         401 => Err(ElevenErr::KeyInvalid),
-        _ => Err(ElevenErr::Offline),
+        _ => Err(ElevenErr::Failed),
     }
 }
 
@@ -189,6 +192,21 @@ mod tests {
         assert_eq!(subscription(&base, "test-key").await, Err(ElevenErr::Offline));
         assert_eq!(ElevenErr::KeyInvalid.code(), "ELEVEN_KEY_INVALID");
         assert_eq!(ElevenErr::Offline.code(), "ELEVEN_OFFLINE");
+    }
+
+    #[tokio::test]
+    async fn http_429_and_5xx_are_failed_not_offline() {
+        let (base, _) = serve(429, r#"{"detail":{"status":"too_many_concurrent_requests"}}"#);
+        assert_eq!(subscription(&base, "test-key").await, Err(ElevenErr::Failed));
+        let (base, _) = serve(500, "{}");
+        assert_eq!(subscription(&base, "test-key").await, Err(ElevenErr::Failed));
+        let (base, _) = serve(503, "{}");
+        assert_eq!(voices(&base, "test-key").await.unwrap_err(), ElevenErr::Failed);
+        let (base, _) = serve(429, "{}");
+        let store = MemoryStore::default();
+        assert_eq!(set_key(&store, &base, "test-key").await, Err(ElevenErr::Failed));
+        assert_eq!(store.get(ELEVEN_ACCOUNT), None);
+        assert_eq!(ElevenErr::Failed.code(), "ELEVEN_FAILED");
     }
 
     #[tokio::test]
