@@ -81,6 +81,16 @@ pub fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Setti
     Ok(())
 }
 
+#[tauri::command]
+pub fn set_default_logo(state: State<'_, AppState>, path: String) -> Result<Settings, String> {
+    settings::set_default_logo(&state.data_dir, Path::new(&path))
+}
+
+#[tauri::command]
+pub fn clear_default_logo(state: State<'_, AppState>) -> Result<Settings, String> {
+    settings::clear_default_logo(&state.data_dir)
+}
+
 pub fn allow_projects_root(app: &AppHandle, root: &str) {
     let _ = std::fs::create_dir_all(root);
     let _ = app.asset_protocol_scope().allow_directory(root, true);

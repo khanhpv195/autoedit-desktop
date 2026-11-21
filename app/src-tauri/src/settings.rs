@@ -80,6 +80,48 @@ pub fn save(dir: &Path, s: &Settings) -> std::io::Result<()> {
     std::fs::rename(&tmp, dir.join("settings.json"))
 }
 
+pub const LOGO_EXT: [&str; 3] = ["png", "jpg", "jpeg"];
+
+fn remove_old_logos(defaults: &Path) {
+    let Ok(rd) = std::fs::read_dir(defaults) else { return };
+    for e in rd.flatten() {
+        if e.path().file_stem().is_some_and(|s| s == "logo") {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
+/// Copy `src` to `<data_dir>/defaults/logo.<ext>` (so the default survives the original being moved),
+/// drop any older `logo.*`, and store the copy's absolute path as `defaultLogo`.
+pub fn set_default_logo(data_dir: &Path, src: &Path) -> Result<Settings, String> {
+    let ext = src.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if !LOGO_EXT.contains(&ext.as_str()) {
+        return Err("Logo phải là ảnh PNG hoặc JPG".into());
+    }
+    if !src.is_file() {
+        return Err(format!("Không thấy file {}", src.display()));
+    }
+    let defaults = data_dir.join("defaults");
+    std::fs::create_dir_all(&defaults).map_err(|e| e.to_string())?;
+    let tmp = defaults.join(format!("logo-new.{ext}"));
+    std::fs::copy(src, &tmp).map_err(|e| format!("Không chép được logo: {e}"))?;
+    remove_old_logos(&defaults);
+    let dst = defaults.join(format!("logo.{ext}"));
+    std::fs::rename(&tmp, &dst).map_err(|e| e.to_string())?;
+    let mut s = load(data_dir);
+    s.default_logo = Some(dst.to_string_lossy().into_owned());
+    save(data_dir, &s).map_err(|e| e.to_string())?;
+    Ok(s)
+}
+
+pub fn clear_default_logo(data_dir: &Path) -> Result<Settings, String> {
+    remove_old_logos(&data_dir.join("defaults"));
+    let mut s = load(data_dir);
+    s.default_logo = None;
+    save(data_dir, &s).map_err(|e| e.to_string())?;
+    Ok(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +182,49 @@ mod tests {
         let ids: Vec<_> = s.routines.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(ids, ["a", "c"]);
         assert!(s.routines[1].channels.is_empty());
+    }
+    #[test]
+    fn set_default_logo_copies_and_replaces_the_old_one() {
+        let data = tempfile::tempdir().unwrap();
+        let src = tempfile::tempdir().unwrap();
+        let jpg = src.path().join("Shop Logo.JPG");
+        std::fs::write(&jpg, b"jpg").unwrap();
+        let s = set_default_logo(data.path(), &jpg).unwrap();
+        let first = data.path().join("defaults").join("logo.jpg");
+        assert_eq!(s.default_logo.as_deref(), Some(first.to_string_lossy().as_ref()));
+        assert_eq!(std::fs::read(&first).unwrap(), b"jpg");
+        assert_eq!(load(data.path()).default_logo, s.default_logo);
+
+        let png = src.path().join("new.png");
+        std::fs::write(&png, b"png").unwrap();
+        let s = set_default_logo(data.path(), &png).unwrap();
+        let second = data.path().join("defaults").join("logo.png");
+        assert_eq!(s.default_logo.as_deref(), Some(second.to_string_lossy().as_ref()));
+        assert!(!first.exists(), "old logo.jpg must be removed");
+        assert_eq!(std::fs::read(&second).unwrap(), b"png");
+        // the original survives being moved away
+        std::fs::remove_file(&png).unwrap();
+        assert!(second.is_file());
+    }
+    #[test]
+    fn set_default_logo_rejects_gif_and_missing_files() {
+        let data = tempfile::tempdir().unwrap();
+        let gif = data.path().join("a.gif");
+        std::fs::write(&gif, b"gif").unwrap();
+        assert!(set_default_logo(data.path(), &gif).is_err());
+        assert!(set_default_logo(data.path(), &data.path().join("nope.png")).is_err());
+        assert_eq!(load(data.path()).default_logo, None);
+    }
+    #[test]
+    fn clear_default_logo_removes_file_and_setting() {
+        let data = tempfile::tempdir().unwrap();
+        let png = data.path().join("x.png");
+        std::fs::write(&png, b"png").unwrap();
+        set_default_logo(data.path(), &png).unwrap();
+        let s = clear_default_logo(data.path()).unwrap();
+        assert_eq!(s.default_logo, None);
+        assert_eq!(load(data.path()).default_logo, None);
+        assert!(!data.path().join("defaults").join("logo.png").exists());
     }
     #[test]
     fn corrupt_file_gives_default() {

@@ -100,6 +100,100 @@ test("changing the project folder refreshes the sidebar list", async () => {
   await vi.waitFor(() => expect(a.listProjects).toHaveBeenCalled());
 });
 
+const VOICES = [
+  { id: "v1", name: "Lan", labels: { gender: "female", accent: "northern" }, previewUrl: "https://storage.googleapis.com/x/v1.mp3" },
+  { id: "v2", name: "Minh", labels: {}, previewUrl: null },
+];
+
+test("ElevenLabs: saving a key calls set_eleven_key, then shows remaining and voices", async () => {
+  a.socialKeyStatus.mockResolvedValue({ hasKey: false });
+  a.mcpList.mockResolvedValue([]);
+  a.elevenStatus.mockResolvedValue({ hasKey: false });
+  a.setElevenKey.mockResolvedValue({ remaining: 28800 });
+  a.elevenVoices.mockResolvedValue(VOICES);
+  await open("Kết nối & MCP");
+  await userEvent.type(await screen.findByLabelText("API key ElevenLabs"), " test-key ");
+  await userEvent.click(screen.getByRole("button", { name: "Lưu key ElevenLabs" }));
+  expect(a.setElevenKey).toHaveBeenCalledWith("test-key");
+  expect(await screen.findByText(/Còn 28[.,]800 ký tự/)).toBeInTheDocument();
+  expect(await screen.findByText("Lan")).toBeInTheDocument();
+  expect(screen.getByText("female · northern")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Nghe thử Minh" })).toBeDisabled();
+});
+
+test("ElevenLabs: a wrong key shows the message and stores nothing", async () => {
+  a.socialKeyStatus.mockResolvedValue({ hasKey: false });
+  a.mcpList.mockResolvedValue([]);
+  a.elevenStatus.mockResolvedValue({ hasKey: false });
+  a.setElevenKey.mockRejectedValue("ELEVEN_KEY_INVALID");
+  await open("Kết nối & MCP");
+  await userEvent.type(await screen.findByLabelText("API key ElevenLabs"), "bad");
+  await userEvent.click(screen.getByRole("button", { name: "Lưu key ElevenLabs" }));
+  expect(await screen.findByText("Key ElevenLabs không đúng")).toBeInTheDocument();
+  expect(a.elevenVoices).not.toHaveBeenCalled();
+});
+
+test("ElevenLabs: preview plays, picking a default saves voiceId/voiceName, Xóa key clears", async () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  a.socialKeyStatus.mockResolvedValue({ hasKey: false });
+  a.mcpList.mockResolvedValue([]);
+  a.elevenStatus.mockResolvedValue({ hasKey: true, remaining: 500 });
+  a.elevenVoices.mockResolvedValue(VOICES);
+  a.clearElevenKey.mockResolvedValue(null);
+  await open("Kết nối & MCP");
+  expect(await screen.findByText("Còn 500 ký tự")).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "Nghe thử Lan" }));
+  expect(play).toHaveBeenCalled();
+  await userEvent.click(screen.getAllByRole("button", { name: "Chọn làm mặc định" })[0]);
+  expect(a.saveSettings).toHaveBeenCalledWith({ ...base, voiceId: "v1", voiceName: "Lan" });
+  expect(await screen.findByText("✓ Mặc định")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Xóa key" }));
+  expect(a.clearElevenKey).toHaveBeenCalled();
+  expect(await screen.findByLabelText("API key ElevenLabs")).toBeInTheDocument();
+  play.mockRestore();
+});
+
+test("defaults card: CTA must be 1–30 characters and saves on Lưu", async () => {
+  await open();
+  const cta = screen.getByLabelText("Chữ kêu gọi mặc định");
+  expect(cta).toHaveValue("BẤM GIỎ HÀNG 👇");
+  await userEvent.clear(cta);
+  await userEvent.click(screen.getByRole("button", { name: "Lưu chữ kêu gọi" }));
+  expect(screen.getByText("Chữ kêu gọi cần 1–30 ký tự")).toBeInTheDocument();
+  await userEvent.type(cta, "x".repeat(31));
+  await userEvent.click(screen.getByRole("button", { name: "Lưu chữ kêu gọi" }));
+  expect(screen.getByText("Chữ kêu gọi cần 1–30 ký tự")).toBeInTheDocument();
+  expect(a.saveSettings).not.toHaveBeenCalled();
+  await userEvent.clear(cta);
+  await userEvent.type(cta, " MUA NGAY ");
+  await userEvent.click(screen.getByRole("button", { name: "Lưu chữ kêu gọi" }));
+  expect(a.saveSettings).toHaveBeenCalledWith({ ...base, defaultCta: "MUA NGAY" });
+  expect(screen.queryByText("Chữ kêu gọi cần 1–30 ký tự")).toBeNull();
+});
+
+test("defaults card: length chips save defaultLength, Vừa is the default", async () => {
+  await open();
+  expect(screen.getByRole("button", { name: "Vừa 20–35s" })).toHaveAttribute("aria-pressed", "true");
+  await userEvent.click(screen.getByRole("button", { name: "Ngắn 15–20s" }));
+  expect(a.saveSettings).toHaveBeenCalledWith({ ...base, defaultLength: "short" });
+});
+
+test("defaults card: picking and removing the default logo call the commands", async () => {
+  a.pickFile.mockResolvedValue("/Users/x/logo.png");
+  a.fileSrc.mockImplementation((p: string) => "asset://" + p);
+  const withLogo = { ...base, defaultLogo: "/data/defaults/logo.png" };
+  a.setDefaultLogo.mockResolvedValue(withLogo);
+  a.clearDefaultLogo.mockResolvedValue({ ...base, defaultLogo: null });
+  await open();
+  await userEvent.click(screen.getByRole("button", { name: "Chọn logo" }));
+  expect(a.pickFile).toHaveBeenCalledWith("logo");
+  expect(a.setDefaultLogo).toHaveBeenCalledWith("/Users/x/logo.png");
+  expect(await screen.findByAltText("Logo mặc định")).toHaveAttribute("src", "asset:///data/defaults/logo.png");
+  await userEvent.click(screen.getByRole("button", { name: "Bỏ logo" }));
+  expect(a.clearDefaultLogo).toHaveBeenCalled();
+  expect(screen.queryByAltText("Logo mặc định")).toBeNull();
+});
+
 test("connection tab shows bundle.social and MCP blocks", async () => {
   a.socialKeyStatus.mockResolvedValue({ hasKey: false });
   a.mcpList.mockResolvedValue([]);

@@ -152,6 +152,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
   .sc{background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
   .sc:hover{border-color:#f7a1b3}
   .sc.on{border-color:var(--accent);background:#fff5f7}
+  button.chip{cursor:pointer;font:inherit;font-size:12px;color:var(--ink)}
+  button.chip:disabled{cursor:default;opacity:.5}
+  .chip.on{border-color:var(--accent);background:#fff5f7;font-weight:600}
   .sc .ic{font-size:20px;line-height:1}
   .sc b{font-size:13px;display:block}
   .sc .hk{display:inline-block;margin:4px 0 2px;background:#ffe14d;color:#111;font-weight:800;font-size:11px;padding:2px 6px;border-radius:4px}

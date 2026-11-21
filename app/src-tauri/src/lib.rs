@@ -21,6 +21,8 @@ pub fn run() {
         commands::license_activate,
         commands::get_settings,
         commands::save_settings,
+        commands::set_default_logo,
+        commands::clear_default_logo,
         commands::set_api_key,
         commands::clear_api_key,
         commands::social_key_status,
@@ -63,6 +65,8 @@ pub fn run() {
             let data_dir = paths::app_data_dir();
             let s = settings::load(&data_dir);
         commands::allow_projects_root(app.handle(), &s.projects_root);
+            // The default logo thumbnail in Settings is shown through the asset protocol.
+            commands::allow_projects_root(app.handle(), &data_dir.join("defaults").to_string_lossy());
             app.manage(commands::AppState {
                 secrets: Arc::new(secrets::KeyringStore),
                 data_dir,

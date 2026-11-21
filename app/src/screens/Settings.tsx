@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import ClaudeLogin from "../components/ClaudeLogin";
 import McpSettings from "../components/McpSettings";
 import SocialSettings from "../components/SocialSettings";
+import VoiceSettings from "../components/VoiceSettings";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
+import { DEFAULT_CTA, DEFAULT_LENGTH, LENGTHS, ctaValid } from "../lib/defaults";
 import { describeError, toEngineError } from "../lib/errors";
 import type { AuthSource, Settings as SettingsT } from "../lib/types";
 import { useStore } from "../state/store";
@@ -103,12 +105,14 @@ export default function Settings() {
                 </span>
               </div>
             </div>
+            {settings && <DefaultsCard settings={settings} save={save} />}
           </div>
         )}
 
         {tab === "conn" && (
           <div className="tabp stack">
             <SocialSettings />
+            <VoiceSettings />
             <McpSettings />
           </div>
         )}
@@ -152,6 +156,68 @@ export default function Settings() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** "Mặc định cho video mới": logo, CTA and target length that New Video starts with. */
+function DefaultsCard({ settings, save }: { settings: SettingsT; save: (s: SettingsT) => Promise<void> }) {
+  const { dispatch, notify } = useStore();
+  const [cta, setCta] = useState(settings.defaultCta ?? DEFAULT_CTA);
+  const [ctaErr, setCtaErr] = useState(false);
+  const length = settings.defaultLength ?? DEFAULT_LENGTH;
+
+  async function saveCta() {
+    if (!ctaValid(cta)) { setCtaErr(true); return; }
+    setCtaErr(false);
+    const t = cta.trim();
+    setCta(t);
+    if (t !== (settings.defaultCta ?? DEFAULT_CTA)) await save({ ...settings, defaultCta: t });
+  }
+
+  async function pickLogo() {
+    const p = await api.pickFile("logo");
+    if (!p) return;
+    try { dispatch({ type: "settings", settings: await api.setDefaultLogo(p) }); }
+    catch (e) { notify(toEngineError(e).message); }
+  }
+
+  async function removeLogo() {
+    try { dispatch({ type: "settings", settings: await api.clearDefaultLogo() }); }
+    catch (e) { notify(toEngineError(e).message); }
+  }
+
+  return (
+    <div className="card">
+      <h3>Mặc định cho video mới</h3>
+      <div className="setgrid">
+        <span className="k">Logo mặc định</span>
+        <span className="row">
+          {settings.defaultLogo && (
+            <img src={api.fileSrc(settings.defaultLogo)} alt="Logo mặc định" style={{ height: 40, maxWidth: 120, objectFit: "contain" }} />
+          )}
+          <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={pickLogo}>
+            {settings.defaultLogo ? "Đổi logo" : "Chọn logo"}
+          </button>
+          {settings.defaultLogo && <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={removeLogo}>Bỏ logo</button>}
+        </span>
+        <span className="k">Chữ kêu gọi</span>
+        <span>
+          <span className="row">
+            <input value={cta} aria-label="Chữ kêu gọi mặc định" maxLength={60} aria-invalid={ctaErr}
+              onChange={(e) => setCta(e.target.value)} onBlur={() => void saveCta()} />
+            <button className="btn ghost" aria-label="Lưu chữ kêu gọi" onClick={() => void saveCta()}>Lưu</button>
+          </span>
+          {ctaErr && <div className="errline" style={{ marginTop: 6 }}>Chữ kêu gọi cần 1–30 ký tự</div>}
+        </span>
+        <span className="k">Độ dài video</span>
+        <span className="row">
+          {LENGTHS.map(([id, label]) => (
+            <button key={id} className={"chip" + (length === id ? " on" : "")} aria-pressed={length === id}
+              onClick={() => { if (id !== length) void save({ ...settings, defaultLength: id }); }}>{label}</button>
+          ))}
+        </span>
       </div>
     </div>
   );

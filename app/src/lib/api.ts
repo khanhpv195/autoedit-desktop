@@ -3,7 +3,8 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
-  AuthSource, FeedItem, McpServer, LoginDone, LoginOutput, ProjectDetail, ProjectPatch, ProjectSummary, Settings,
+  AuthSource, ElevenStatus, FeedItem, McpServer, LoginDone, LoginOutput, ProjectDetail, ProjectPatch, ProjectSummary,
+  Settings, Voice,
 } from "./types";
 
 export const getSettings = () => invoke<Settings>("get_settings");
@@ -23,6 +24,13 @@ export const clearApiKey = () => invoke<null>("clear_api_key");
 export const socialKeyStatus = () => invoke<{ hasKey: boolean }>("social_key_status");
 export const setSocialKey = (key: string) => invoke<null>("set_social_key", { key });
 export const clearSocialKey = () => invoke<null>("clear_social_key");
+export const elevenStatus = () => invoke<ElevenStatus>("eleven_status");
+/** Validates the key with ElevenLabs, then stores it in the Keychain. Rejects with ELEVEN_KEY_INVALID / ELEVEN_OFFLINE. */
+export const setElevenKey = (key: string) => invoke<{ remaining: number }>("set_eleven_key", { key });
+export const clearElevenKey = () => invoke<null>("clear_eleven_key");
+export const elevenVoices = () => invoke<Voice[]>("eleven_voices");
+export const setDefaultLogo = (path: string) => invoke<Settings>("set_default_logo", { path });
+export const clearDefaultLogo = () => invoke<Settings>("clear_default_logo");
 export const mcpList = () => invoke<McpServer[]>("mcp_list");
 export const mcpSave = (server: McpServer, secrets: Record<string, string>) => invoke<null>("mcp_save", { server, secrets });
 export const mcpDelete = (name: string) => invoke<null>("mcp_delete", { name });

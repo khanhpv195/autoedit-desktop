@@ -6,6 +6,8 @@ export type Settings = {
   defaultLogo?: string | null; defaultCta?: string; defaultLength?: VideoLength;
 };
 export type VideoLength = "short" | "medium" | "long";
+export type ElevenStatus = { hasKey: boolean; remaining?: number };
+export type Voice = { id: string; name: string; labels: Record<string, string>; previewUrl: string | null };
 export type ProjectStatus = "new" | "done" | "needs_review";
 export type ProjectSummary = {
   dir: string;
