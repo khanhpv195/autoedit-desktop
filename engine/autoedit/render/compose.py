@@ -1,4 +1,4 @@
-"""Final pass: base -> hook -> logo -> CTA -> subtitles LAST (Hard Rule 1); music ducked under speech."""
+"""Final pass: base -> b-roll images -> hook -> logo -> CTA -> subtitles LAST (Hard Rule 1); music ducked under speech."""
 import re
 from pathlib import Path, PurePath
 
@@ -26,9 +26,24 @@ def music_volume_expr(intervals: list[tuple[float, float]], duck_db: float, base
     return f"{base:.3f}*if(gt({speech},0),{duck:.3f},1)"
 
 
+FPS = 30
+BROLL_ZOOM = 0.06
+
+
+def broll_chain(idx: int, src: str, start: float, end: float, w: int, h: int) -> list[str]:
+    """Filters turning one still (input `src`) into a w x h clip that zooms 1.0 -> 1.06 and sits on the timeline at
+    [start, end): 9:16 cover crop first (oversampled 2x so the zoom stays smooth), then zoompan, then a PTS shift."""
+    n = max(2, round((end - start) * FPS))
+    return [f"[{src}]scale={w * 2}:{h * 2}:force_original_aspect_ratio=increase,crop={w * 2}:{h * 2},setsar=1,"
+            f"zoompan=z='1+{BROLL_ZOOM}*on/{n - 1}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={n}:s={w}x{h}:fps={FPS},"
+            f"format=yuv420p,setpts=PTS-STARTPTS+{start:.3f}/TB[br{idx}]"]
+
+
 def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path | None,
             logo_png: Path | None, cta_png: Path | None, music: Path | None,
-            speech: list[tuple[float, float]], duck_db: float, preview: bool) -> Path:
+            speech: list[tuple[float, float]], duck_db: float, preview: bool,
+            broll: list[tuple[Path, float, float]] = ()) -> Path:
+    """broll: (image file, output start, output end) full-frame overlays, drawn on the base before everything else."""
     k = 0.5 if preview else 1.0
     cmd = [bins.tool_path("ffmpeg"), "-y", "-v", "error", "-i", str(base)]
     graph: list[str] = []
@@ -45,6 +60,11 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
         graph.append(f"[{cur}][{src}]overlay=x={x}:y={int(y * k)}{en}[v{idx}]")
         cur, idx = f"v{idx}", idx + 1
 
+    for path, b_start, b_end in broll:
+        cmd.extend(["-i", str(path)])
+        graph += broll_chain(idx, f"{idx}:v", b_start, b_end, int(1080 * k), int(1920 * k))
+        graph.append(f"[{cur}][br{idx}]overlay=x=0:y=0:enable='between(t,{b_start:.3f},{b_end:.3f})'[v{idx}]")
+        cur, idx = f"v{idx}", idx + 1
     if hook_png:
         add_overlay(hook_png, "(W-w)/2", 300, f"between(t,0,{HOOK_SECONDS})")
     if logo_png:

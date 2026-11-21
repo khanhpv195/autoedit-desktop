@@ -5,7 +5,7 @@ from pathlib import Path
 from autoedit.edl import Edl
 from autoedit.fsutil import part_path
 from autoedit.prep import Prepared
-from autoedit.prep.keyframes import frame_at
+from autoedit.prep.keyframes import downscale_image, frame_at
 from autoedit.project import Project
 from autoedit.render.captions import build_cues, speech_intervals, write_ass
 from autoedit.render.compose import compose
@@ -23,6 +23,19 @@ class RenderResult:
     needs_review: bool
 
 
+def _broll_inputs(prepared: Prepared, project: Project, edl: Edl, work: Path) -> list[tuple[Path, float, float]]:
+    """(image, output start, output end) per b-roll, mapped from timeline time. Images are re-saved as RGB JPEGs
+    (EXIF rotation applied, alpha flattened) so ffmpeg never has to guess the format."""
+    known = {i.name: i.path for i in prepared.images} or {n: project.input_dir / n for n in project.images}
+    out = []
+    for i, b in enumerate(edl.broll):
+        span = edl.output_span(b.at, b.dur)
+        if span is None or b.image not in known:
+            continue
+        out.append((downscale_image(known[b.image], work / f"broll_{i}.jpg", max_side=2400), span[0], span[1]))
+    return out
+
+
 def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: bool) -> RenderResult:
     work = project.work_dir / ("render_preview" if preview else "render")
     work.mkdir(parents=True, exist_ok=True)
@@ -35,10 +48,11 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
     cta = text_card(edl.cta_text, work / "cta.png", size=72, bg=(0, 0, 0, 200))
     music = project.music_path if (project.music_path and edl.music_use) else None
     speech = speech_intervals(ranges, prepared.words)
+    broll = _broll_inputs(prepared, project, edl, work)
 
     def once() -> Path:
         mixed = compose(base, work / "composite.mp4", duration=total, ass=ass, hook_png=hook, logo_png=logo,
-                        cta_png=cta, music=music, speech=speech, duck_db=edl.music_duck_db, preview=preview)
+                        cta_png=cta, music=music, speech=speech, duck_db=edl.music_duck_db, preview=preview, broll=broll)
         tmp = part_path(out)
         try:
             loudnorm(mixed, tmp, two_pass=not preview)
