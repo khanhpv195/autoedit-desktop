@@ -5,6 +5,7 @@ import * as api from "../lib/api";
 import * as engine from "../lib/engine";
 import { StoreProvider } from "../state/store";
 import Settings from "./Settings";
+import type { Voice } from "../lib/types";
 
 vi.mock("../lib/api");
 vi.mock("../lib/engine");
@@ -100,7 +101,7 @@ test("changing the project folder refreshes the sidebar list", async () => {
   await vi.waitFor(() => expect(a.listProjects).toHaveBeenCalled());
 });
 
-const VOICES = [
+const VOICES: Voice[] = [
   { id: "v1", name: "Lan", labels: { gender: "female", accent: "northern" }, previewUrl: "https://storage.googleapis.com/x/v1.mp3" },
   { id: "v2", name: "Minh", labels: {}, previewUrl: null },
 ];
