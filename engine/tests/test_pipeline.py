@@ -53,7 +53,9 @@ def test_preview_runs_freeze_and_pop_checks(tmp_path, clip, monkeypatch):
     monkeypatch.setattr(pl, "edit_checks", fake_checks)
     proj, prep, edl = setup(tmp_path, clip)
     res = render(prep, proj, edl, tmp_path / "preview.mp4", preview=True)
-    assert res.checks == ["khung đứng 1.00–2.00s"] and seen["cuts"] == pl.cut_times(edl.ordered())
+    want = pl.cut_times(edl.ordered())      # seams may move each edge by up to ~0.12 s to the quietest point
+    assert res.checks == ["khung đứng 1.00–2.00s"] and len(seen["cuts"]) == len(want)
+    assert all(abs(a - b) <= 0.25 for a, b in zip(seen["cuts"], want))
 
 
 def test_hook_text_only_and_reversed_order_preview(tmp_path, clip):

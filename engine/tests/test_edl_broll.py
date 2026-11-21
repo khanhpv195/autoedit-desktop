@@ -37,10 +37,15 @@ def test_at_outside_kept_range_dropped_with_note():
     assert edl.broll == [] and any("kept range" in n for n in notes)
 
 
-def test_dur_cut_to_range_end_or_dropped():
+def test_dur_cut_to_range_end_or_slid_back():
     edl, _ = v({"broll": [{"image": "a.png", "at": 8.0, "dur": 4}]})
     assert edl.broll[0].dur == pytest.approx(2.0)
+    # under 1.5 s left in the range: slid back so it ends at the range end
     edl, notes = v({"broll": [{"image": "a.png", "at": 9.5, "dur": 3}]})
+    assert edl.broll[0].at == pytest.approx(7.0) and edl.broll[0].dur == pytest.approx(3.0)
+    # a range shorter than 1.5 s still cannot hold one
+    edl, notes = v({"broll": [{"image": "a.png", "at": 10.5, "dur": 3}]},
+                   keep=[{"start": 0, "end": 10}, {"start": 10.2, "end": 11.2}])
     assert edl.broll == [] and notes
 
 

@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from autoedit.edl import Edl
+from autoedit.edl import Edl, Range
 from autoedit.fsutil import part_path
 from autoedit.prep import Prepared
 from autoedit.prep.keyframes import downscale_image, frame_at
@@ -13,7 +13,8 @@ from autoedit.render.compose import compose
 from autoedit.render.loudness import loudnorm
 from autoedit.render.overlays import prepare_logo, text_card
 from autoedit.render.qc import QcReport, edit_checks, run_qc
-from autoedit.render.segments import render_base
+from autoedit.render.seams import refine_edl
+from autoedit.render.segments import extract_segment, render_base
 from autoedit.voice import eleven
 from autoedit.voice.lines import audio_duration
 
@@ -27,14 +28,22 @@ class RenderResult:
     checks: list[str] = field(default_factory=list)    # preview only: freeze / pop issues for the agent
 
 
-def _broll_inputs(prepared: Prepared, project: Project, edl: Edl, work: Path) -> list[tuple[Path, float, float]]:
+def _broll_inputs(prepared: Prepared, project: Project, edl: Edl, work: Path,
+                  preview: bool = False) -> list[tuple[Path, float, float]]:
     """(image, output start, output end) per b-roll, mapped from timeline time. Images are re-saved as RGB JPEGs
     (EXIF rotation applied, alpha flattened) so ffmpeg never has to guess the format."""
     known = {i.name: i.path for i in prepared.images} or {n: project.input_dir / n for n in project.images}
     out = []
     for i, b in enumerate(edl.broll):
         span = edl.output_span(b.at, b.dur)
-        if span is None or b.image not in known:
+        if span is None:
+            continue
+        if b.shot is not None:      # video cutaway: cut the shot with the same look and size as the base
+            rng = Range(b.shot, min(prepared.info.duration, b.shot + (span[1] - span[0]) + 0.04))
+            out.append((extract_segment(prepared.normalized, rng, project.niche, work / f"cut_{i}.mov", preview),
+                        span[0], span[1]))
+            continue
+        if b.image not in known:
             continue
         out.append((downscale_image(known[b.image], work / f"broll_{i}.jpg", max_side=2400), span[0], span[1]))
     return out
@@ -69,6 +78,8 @@ def cut_times(ranges) -> list[float]:
 def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: bool) -> RenderResult:
     work = project.work_dir / ("render_preview" if preview else "render")
     work.mkdir(parents=True, exist_ok=True)
+    if not edl.voiceover:       # with voiceover the base audio is muted: nothing to protect at the seams
+        edl = refine_edl(edl, prepared.normalized, prepared.info.duration)
     ranges = edl.ordered()
     total = sum(r.duration for r in ranges)
     voice = voice_inputs(project, edl)
@@ -86,7 +97,7 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
         speech = [(max(0.0, s - 0.15), s + d + 0.15) for _, s, d, _, _ in voice]
     else:
         speech = speech_intervals(ranges, prepared.words)
-    broll = _broll_inputs(prepared, project, edl, work)
+    broll = _broll_inputs(prepared, project, edl, work, preview)
 
     def once() -> Path:
         mixed = compose(base, work / "composite.mp4", duration=total, ass=ass, hook_png=hook, logo_png=logo,

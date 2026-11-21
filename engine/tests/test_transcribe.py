@@ -109,3 +109,22 @@ def test_real_speech_mentioning_follow_in_the_middle_is_kept():
     words = _line("nhớ theo dõi shop để nhận ưu đãi nha", 1.0) + _line("giá chỉ 189K thôi", 4.0)
     assert tr.drop_closing_lines(words) == words
     assert tr.drop_closing_lines(REAL) == REAL and tr.drop_closing_lines([]) == []
+
+
+def test_stretched_outro_glued_to_speech_is_dropped():
+    # Whisper over a silent/music clip: the outro follows real speech with no gap, words stretched to ~1 s,
+    # and repeats. Packing puts it in the same phrase as the seller's last line.
+    real = _line("chất đẹp giá ngon bổ rẻ hợp lý em mời cả nhà", 1.0, step=0.25)
+    outro = "Hãy subscribe cho kênh Ghiền Mì Gõ Để không bỏ lỡ những video hấp dẫn"
+    t = real[-1].end + 0.02
+    fake = []
+    for _ in range(3):
+        part = [Word(w, round(t + i, 2), round(t + i + 0.98, 2)) for i, w in enumerate(outro.split())]
+        fake += part
+        t = part[-1].end + 0.02
+    assert tr.drop_closing_lines(real + fake) == real
+
+
+def test_single_normal_pace_outro_glued_to_speech_is_kept():
+    words = _line("bấm giỏ hàng nha hãy subscribe cho kênh", 1.0, step=0.3)
+    assert tr.drop_closing_lines(words) == words

@@ -19,6 +19,9 @@ Reorder only whole sentences. Keep the original setting, product details and col
 - It mishears brands, prices and CTAs. Example: "Linh Góc Trám Hình" is really
   "giỏ hàng góc trái màn hình". Fix them with `caption_fixes`.
 - Prices: "một trăm tám chín ka" → write the fix as "189K".
+- Read every caption line you keep as a customer would: fix words that make no sense in context
+  ("tùy tục" → "tùy thuộc", "linh góc trán" → "link góc trái").
+- Sizes: "xăng" / "phân" spoken for centimetres → write "cm"; "90 x 100" heard for "90 với 100" → "90 và 100".
 
 ## Emphasis
 

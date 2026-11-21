@@ -80,3 +80,9 @@ async def test_rate_limit_variants(tmp_path):
         raise ResultError("e", {"api_error_status": 429})
     with pytest.raises(RateLimited):
         await run_analyze(prep(tmp_path), "chung", agent_dir(), query_fn=raised)
+
+
+def test_no_images_means_no_image_broll_in_instructions(tmp_path):
+    text = build_analyze_message(prep(tmp_path), "thoi-trang", agent_dir(), exclude=[])["message"]["content"][0]["text"]
+    assert "b-roll ảnh sản phẩm" not in text
+    assert "Không có ảnh sản phẩm" in text

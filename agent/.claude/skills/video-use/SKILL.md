@@ -21,12 +21,19 @@ the `set_edl` / `render_preview` tools instead of running ffmpeg.
 - Two neighbouring lines with no gap between them are one range. Do not split them.
 - Prefer fewer, longer ranges over many tiny ones. Every range under 0.4 s is dropped anyway.
 - Never cut inside a word. The tool snaps and pads edges, but choose edges in gaps anyway.
+- Start every range at the start of a sentence. A range that opens on the tail of the previous sentence
+  (a stray number, "thì", "là") reads as a mistake in the captions. Check the first word of every range.
+- Same phrase twice in a row ("4 size 4 size", "cái này cái này"): cut so only one is heard, if a gap allows.
 
 ## Pacing for short vertical video
 
 - First 3 seconds decide everything: open on the strongest line or visual (the hook).
 - Remove dead air aggressively, but keep a breath before the price and before the CTA.
 - End on the CTA line ("giỏ hàng", "đặt ngay", "inbox"). Nothing after it.
+
+- Picture variety: a talking shot held for more than ~6 s feels static. When other clips hold silent shots
+  of the product (try-on, full body, details), lay them over the speech as video cutaways (`broll` with `shot`),
+  2–3 s each, matched to what is being said (talking about the legs → full-body shot).
 
 ## Self-check on preview frames
 

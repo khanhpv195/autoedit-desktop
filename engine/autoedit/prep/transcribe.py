@@ -44,7 +44,7 @@ def drop_hallucinations(words: list[Word]) -> list[Word]:
 CLOSING = re.compile(
     r"cảm ơn (?:các )?(?:bạn|anh chị em|mọi người|quý vị)(?: rất nhiều)?(?: đã)? (?:xem|theo dõi|lắng nghe)"
     r"|(?:(?:hãy|nhớ|các bạn hãy) )?(?:đăng ký|subscribe|theo dõi)(?: cho)? (?:kênh|channel)"
-    r"|(?:(?:hãy|nhớ) )?\bsubscribe\b|ghiền mì gõ|để không bỏ lỡ|hẹn gặp lại(?: các bạn)? trong"
+    r"|(?:(?:hãy|nhớ) )?\bsubscribe\b|ghiền mì gõ|để không bỏ lỡ(?: những video(?: hấp dẫn)?)?|hẹn gặp lại(?: các bạn)? trong"
     r"|like (?:và|&) (?:share|subscribe)|đừng quên (?:like|đăng ký)")
 SALES = re.compile(
     r"(?<!\w)(?:giỏ hàng|bấm|mua|đặt|inbox|link|mã giảm giá|shop|like|share|giá|freeship)(?!\w)")
@@ -65,11 +65,37 @@ def _is_closing(phrase_text: str) -> bool:
     return covered >= WHOLE_PHRASE * len(t)
 
 
+STRETCHED = 0.6       # mean seconds per word; real Vietnamese speech is ~0.2-0.35
+
+
+def _drop_stretched_tail(words: list[Word]) -> list[Word]:
+    """Whisper over a trailing silent or music-only clip invents outros glued to the last real words (no gap, so
+    they share a phrase). Drop the shortest-start tail that begins with a closing line, is mostly closing text,
+    has no sales term, and is either stretched (>= STRETCHED s per word) or repeats a closing line."""
+    best = None
+    for k in range(len(words) - 1, max(-1, len(words) - 120), -1):
+        tail = words[k:]
+        t = _norm(" ".join(w.text for w in tail))
+        if SALES.search(t):
+            break
+        m = list(CLOSING.finditer(t))
+        if not m or m[0].start() != 0 or not _is_closing(" ".join(w.text for w in tail)):
+            continue
+        per_word = sum(w.end - w.start for w in tail) / len(tail)    # spoken length, gaps excluded
+        texts = [x.group(0) for x in m]
+        if per_word >= STRETCHED or len(texts) != len(set(texts)):
+            best = k
+    return words[:best] if best is not None else words
+
+
 def drop_closing_lines(words: list[Word]) -> list[Word]:
     """Whisper invents YouTube-style outros ("cảm ơn các bạn đã theo dõi", "hãy đăng ký kênh") over silence or
     music, with real durations. Drop (1) trailing whole phrases at the very end of the transcript that are closing
     lines without any sales term, and (2) such a phrase alone in a silent region (>=2 s of silence on both sides).
     Words after a non-matching phrase are never deleted."""
+    if not words:
+        return words
+    words = _drop_stretched_tail(words)
     if not words:
         return words
     phrases = pack_phrases(words)
@@ -124,7 +150,7 @@ def transcribe(video: Path, work_dir: Path, language: str = "vi") -> list[Word]:
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
             if data.get("sha256") == digest:
-                return words_from_json(data["words"])
+                return drop_closing_lines(words_from_json(data["words"]))    # filters improve; caches stay
         except (ValueError, KeyError, TypeError):
             pass    # corrupt or half-written cache: transcribe again
     words = _run_whisper(video, work_dir, language)

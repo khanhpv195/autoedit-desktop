@@ -4,7 +4,7 @@ from pathlib import Path
 
 from autoedit import bins
 
-TARGET_I, TARGET_TP, TARGET_LRA = -14.0, -1.0, 11.0
+TARGET_I, TARGET_TP, TARGET_LRA = -14.0, -1.5, 11.0   # TP margin: the AAC encode overshoots ~0.2 dB
 _BASE = f"loudnorm=I={TARGET_I}:TP={TARGET_TP}:LRA={TARGET_LRA}"
 
 

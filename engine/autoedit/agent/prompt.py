@@ -16,6 +16,8 @@ def span_lines(prepared: Prepared) -> list[str]:
         lines.append(f"The customer gave {len(prepared.spans)} clips, joined in this order into one timeline "
                      "(every time below is a timeline second):")
         lines += [f'Clip {i} "{n}": {a:.2f}-{b:.2f}s' for i, (n, a, b) in enumerate(prepared.spans, 1)]
+        lines.append("Shots from any clip can also be laid over the speech as video cutaways "
+                     "(`broll` {shot: timeline second, at, dur 1.5-4 s}): picture changes, the speech goes on.")
     if prepared.images:
         lines.append("Images for b-roll (shown as full-frame overlays while the speech continues; add them with "
                      "`broll` {image, at, dur 1.5-4 s}): " + ", ".join(f'"{i.name}"' for i in prepared.images))

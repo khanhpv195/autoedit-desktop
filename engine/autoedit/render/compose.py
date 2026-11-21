@@ -28,6 +28,8 @@ def music_volume_expr(intervals: list[tuple[float, float]], duck_db: float, base
 
 FPS = 30
 BROLL_ZOOM = 0.06
+VIDEO_EXT = {".mov", ".mp4"}
+CTA_Y = 820     # well above the captions (bottom margin 540 px) so the two never stack
 
 
 def broll_chain(idx: int, src: str, start: float, end: float, w: int, h: int) -> list[str]:
@@ -64,7 +66,10 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
 
     for path, b_start, b_end in broll:
         cmd.extend(["-i", str(path)])
-        graph += broll_chain(idx, f"{idx}:v", b_start, b_end, int(1080 * k), int(1920 * k))
+        if Path(path).suffix.lower() in VIDEO_EXT:      # video cutaway: already cut, graded and sized like the base
+            graph.append(f"[{idx}:v]setpts=PTS-STARTPTS+{b_start:.3f}/TB[br{idx}]")
+        else:
+            graph += broll_chain(idx, f"{idx}:v", b_start, b_end, int(1080 * k), int(1920 * k))
         graph.append(f"[{cur}][br{idx}]overlay=x=0:y=0:enable='between(t,{b_start:.3f},{b_end:.3f})'[v{idx}]")
         cur, idx = f"v{idx}", idx + 1
     if hook_png:
@@ -72,7 +77,7 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
     if logo_png:
         add_overlay(logo_png, str(int(48 * k)), 120, None)
     if cta_png:
-        add_overlay(cta_png, "(W-w)/2", 1000, f"gte(t,{max(0.0, duration - CTA_SECONDS):.3f})")
+        add_overlay(cta_png, "(W-w)/2", CTA_Y, f"gte(t,{max(0.0, duration - CTA_SECONDS):.3f})")
     fonts = filter_path(assets_dir() / "fonts")
     graph.append(f"[{cur}]subtitles=filename={filter_path(ass)}:fontsdir={fonts}"
                  f"{':original_size=1080x1920' if preview else ''}[vout]")

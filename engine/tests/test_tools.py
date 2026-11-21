@@ -47,6 +47,13 @@ async def test_set_edl_ok_writes_file(session):
     assert saved["keep"][0]["start"] == pytest.approx(0.55, abs=0.02)
 
 
+async def test_set_edl_returns_output_map(session):
+    res = await tools.set_edl(session, {"edl": EDL})
+    m = json.loads(text_of(res))["output_map"]
+    assert len(m) == 2 and m[0]["output"][0] == 0 and m[1]["output"][0] == pytest.approx(m[0]["output"][1])
+    assert m[1]["timeline"][0] == pytest.approx(3.15, abs=0.06)
+
+
 async def test_set_edl_error_counts(session):
     res = await tools.set_edl(session, {"edl": {"keep": [{"start": 0.6, "end": 1.0}]}})
     assert res["is_error"] and "30%" in text_of(res) and session.edl_errors == 1

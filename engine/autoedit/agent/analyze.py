@@ -28,18 +28,21 @@ Each card: title (≤6 words), hook (on-screen text, ≤5 words, faithful to wha
 outline (3-5 short steps in Vietnamese), prompt (one Vietnamese instruction an editor can follow,
 mentioning which spoken line opens the video). Base every card on lines that exist in the transcript.
 Use the niche library for structure and hook style. The 3 cards must differ in hook and order.
-If several clips or images are given, say in each card how to order the clips and
-where the images work as b-roll while the speech continues.
+If several clips are given, say in each card how to order and mix their shots; only when images are given,
+say where they work as b-roll while the speech continues.
 Never promise: giảm cân, cao thêm X cm, trị mụn dứt điểm, trắng da sau N ngày, chữa bệnh.
 
 What the editor can do (suggest nothing else - no transitions, speed ramps, beat-sync or effects):
 - một video đầu ra duy nhất cho mỗi thẻ;
 - cảnh xếp theo thứ tự tùy ý; số clip chỉ dùng để chỉ nguồn của cảnh ("cảnh xoay người ở clip 2");
 - một hook text tối đa 5 từ trong 2.5 s đầu;
-- b-roll ảnh sản phẩm 1.5–4 s mỗi ảnh, tối đa 1 ảnh mỗi 3 s;
+{broll}
 - chữ kêu gọi (CTA) trong 2 s cuối;
 - không bịa thông tin sản phẩm (chất liệu, giá, size, khuyến mãi) ngoài lời thoại và thông tin khách nhập."""
 
+
+BROLL_IMAGES = "- b-roll ảnh sản phẩm 1.5–4 s mỗi ảnh, tối đa 1 ảnh mỗi 3 s;"
+BROLL_NONE = "- Không có ảnh sản phẩm: không nhắc tới ảnh hay b-roll ảnh; muốn đổi hình thì dùng cảnh khác trong clip;"
 
 VISUAL_HINT = ("No speech: suggest visual-first scripts (Dựng theo hình) - open on the clearest full-body or moving "
                "shot of the product, short shots of 1.2-3 s, product photos as b-roll after the product is seen, "
@@ -62,7 +65,8 @@ def project_lines(project: Project | None, has_speech: bool) -> list[str]:
 def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclude: list[str],
                           project: Project | None = None) -> dict:
     transcript = format_phrases(pack_phrases(prepared.words)) or "(no speech - suggest visual-first scripts)"
-    text = (f"{INSTRUCTIONS}\n\nNiche: {niche} ({NICHE_NAMES[niche]})\n"
+    broll = BROLL_IMAGES if prepared.images else BROLL_NONE
+    text = (f"{INSTRUCTIONS.format(broll=broll)}\n\nNiche: {niche} ({NICHE_NAMES[niche]})\n"
             f"Niche library:\n{niche_section(niche, agent_dir)}\n\n"
             f"Total duration: {prepared.info.duration:.1f}s\n")
     extra = project_lines(project, bool(prepared.words))

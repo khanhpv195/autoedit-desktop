@@ -103,7 +103,8 @@ async def set_edl(s: EditSession, args: dict) -> dict:
         edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration,
                                   image_names=s.prepared.image_names, default_cta=s.project.cta_text,
                                   voiceover_on=s.project.voiceover_on, voice_lines=s.voice_lines,
-                                  voice_lookup=cached_voice_lookup(s) if s.project.voiceover_on else None)
+                                  voice_lookup=cached_voice_lookup(s) if s.project.voiceover_on else None,
+                                  spans=s.prepared.spans)
     except (EdlError, KeyError, TypeError, ValueError, AttributeError) as e:
         s.edl_errors += 1
         if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
@@ -115,7 +116,11 @@ async def set_edl(s: EditSession, args: dict) -> dict:
     lo, hi = s.project.length_range
     if not (lo * 0.8 <= d <= hi * 1.2):
         notes.append(f"Lưu ý: video dài {d:.1f}s, mục tiêu {lo:.0f}–{hi:.0f}s — hãy chỉnh lại.")
-    msg = {"corrected_edl": edl.to_dict(), "notes": notes, "output_duration": round(d, 2)}
+    out_map, t = [], 0.0
+    for r in edl.ordered():
+        out_map.append({"timeline": [round(r.start, 2), round(r.end, 2)], "output": [round(t, 2), round(t + r.duration, 2)]})
+        t += r.duration
+    msg = {"corrected_edl": edl.to_dict(), "notes": notes, "output_duration": round(d, 2), "output_map": out_map}
     return _text(json.dumps(msg, ensure_ascii=False))
 
 
@@ -236,11 +241,14 @@ EDL_SCHEMA = {
             "required": ["at", "wrong", "right"]}},
         "emphasis": {"type": "array", "items": {
             "type": "object", "properties": {"at": _NUM, "word": {"type": "string"}}, "required": ["at", "word"]}},
-        "broll": {"type": "array", "items": {
+        "broll": {"type": "array", "description": "picture-only inserts while the speech goes on: an image, or a "
+                  "video cutaway (`shot` = timeline second where another shot starts, e.g. a silent product shot)",
+                  "items": {
             "type": "object",
             "properties": {"image": {"type": "string", "description": "an image file name given in the request"},
+                           "shot": {"type": "number", "description": "video cutaway: timeline second the shot starts"},
                            "at": _NUM, "dur": {"type": "number", "minimum": 1.5, "maximum": 4.0}},
-            "required": ["image", "at", "dur"]}},
+            "required": ["at", "dur"]}},
         "cta_text": {"type": "string"},
         "music": {"type": "object", "properties": {"use": {"type": "boolean"}, "duck_db": _NUM}},
         "voiceover": {"type": "array", "description": "only when voiceover is on: lines made by the voiceover tool",

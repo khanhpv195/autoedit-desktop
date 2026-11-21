@@ -81,3 +81,13 @@ def test_render_overlays_image_only_inside_window(tmp_path, clip):
 
     assert redness((start + end) / 2)
     assert not redness(max(0.1, start - 0.3)) and not redness(min(res.duration - 0.1, end + 0.3))
+
+
+def test_render_with_video_cutaway(tmp_path, clip):
+    proj, prep, _ = _setup(tmp_path, clip, [])
+    edl, notes = validate_edl({"keep": [{"start": 2.0, "end": 6.0}], "broll": [{"shot": 0.1, "at": 4.6, "dur": 1.5}]},
+                              WORDS, 6.0, image_names=["red.png"], spans=prep.spans)
+    assert edl.broll and edl.broll[0].shot == 0.1, notes
+    res = render(prep, proj, edl, tmp_path / "pv.mp4", preview=True)
+    assert abs(res.duration - edl.output_duration()) < 0.1
+    assert (proj.work_dir / "render_preview" / "cut_0.mov").exists()
