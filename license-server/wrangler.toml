@@ -1,0 +1,9 @@
+name = "autoedit-license"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "autoedit-license"
+database_id = "REPLACE_AFTER_d1_create"
+migrations_dir = "migrations"
