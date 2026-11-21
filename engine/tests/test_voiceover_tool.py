@@ -10,7 +10,7 @@ from autoedit.agent.prompt import build_edit_prompt
 from autoedit.agent.runner import AgentOutcome
 from autoedit.agent.session import EditSession
 from autoedit.edl import EdlError, VoiceLine, validate_edl
-from autoedit.errors import VoiceAuth, VoiceFailed
+from autoedit.errors import VoiceAuth, VoiceFailed, VoiceLimit
 from autoedit.events import Emitter
 from autoedit.prep import Prepared
 from autoedit.prep.probe import MediaInfo, probe
@@ -166,6 +166,13 @@ async def test_transient_voice_error_lets_agent_retry(session, monkeypatch):
     monkeypatch.setattr(eleven, "tts", busy)
     res = await tools.voiceover(session, {"lines": [{"at": 0.7, "text": "chào"}]})
     assert res["is_error"] and not session.aborted
+    assert isinstance(session.voice_error, VoiceFailed)
+
+
+async def test_successful_retry_clears_voice_error(session, fake_tts):
+    session.voice_error = VoiceLimit(eleven.MSG_LIMIT)
+    assert not (await tools.voiceover(session, {"lines": [{"at": 0.7, "text": "chào"}]})).get("is_error")
+    assert session.voice_error is None
 
 
 def test_prompt_voiceover_block(tmp_path):
@@ -239,6 +246,19 @@ def test_unfinished_agent_with_voiceover_fails(cli_project, monkeypatch, capsys)
     assert cli.main(["edit", "--project", str(cli_project)]) == 1
     last = events(capsys)[-1]
     assert last["code"] == "AGENT_FAILED" and last["message"] == cli.VOICE_AGENT_FAILED
+
+
+def test_unfinished_agent_after_retryable_voice_error_reports_it(cli_project, monkeypatch, capsys):
+    monkeypatch.setattr(eleven, "quota", lambda: 5000)
+
+    async def agent(session, prompt, options, **k):
+        session.voice_error = VoiceLimit(eleven.MSG_LIMIT)
+        return AgentOutcome(False, 3, "gave up")
+    monkeypatch.setattr(cli, "run_agent", agent)
+    assert cli.main(["edit", "--project", str(cli_project)]) == 1
+    last = events(capsys)[-1]
+    assert last["code"] == "VOICE_LIMIT" and last["message"] == eleven.MSG_LIMIT
+    assert not (cli_project / "runs" / "1").exists()
 
 
 def test_final_render_voice_error_is_not_swallowed(cli_project, monkeypatch, capsys):

@@ -164,7 +164,9 @@ async def voiceover(s: EditSession, args: dict) -> dict:
         if isinstance(e, FATAL_VOICE):
             s.aborted, s.fatal = True, e
             return _text(f"Voiceover failed: {e.message}. Stop now.", error=True)
+        s.voice_error = e     # if the run then doesn't finish, it fails with this error's own code
         return _text(f"Voiceover failed: {e.message}. You may try again.", error=True)
+    s.voice_error = None
     out, warnings = [], []
     for line in made:
         s.voice_lines[(line.at, line.text)] = line
