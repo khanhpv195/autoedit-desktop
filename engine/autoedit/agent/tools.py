@@ -36,7 +36,7 @@ async def get_transcript(s: EditSession, args: dict) -> dict:
     a, b = float(args.get("start", 0.0)), float(args.get("end", dur))
     sel = [w for w in s.prepared.words if w.end > a and w.start < b]
     body = format_phrases(pack_phrases(sel)) or "(no speech in this range)"
-    return _text(f"Clip duration {dur:.2f}s. Times are source seconds.\n{body}")
+    return _text(f"Clip duration {dur:.2f}s. Times are timeline seconds (all clips joined in order).\n{body}")
 
 
 async def view_frames(s: EditSession, args: dict) -> dict:
@@ -63,7 +63,8 @@ async def set_edl(s: EditSession, args: dict) -> dict:
                 raw = json.loads(raw)
             except json.JSONDecodeError as e:
                 raise EdlError(f"edl is not valid JSON: {e}") from e
-        edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration)
+        edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration,
+                                  image_names=s.prepared.image_names)
     except (EdlError, KeyError, TypeError, ValueError, AttributeError) as e:
         s.edl_errors += 1
         if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
@@ -118,6 +119,11 @@ EDL_SCHEMA = {
             "required": ["at", "wrong", "right"]}},
         "emphasis": {"type": "array", "items": {
             "type": "object", "properties": {"at": _NUM, "word": {"type": "string"}}, "required": ["at", "word"]}},
+        "broll": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"image": {"type": "string", "description": "an image file name given in the request"},
+                           "at": _NUM, "dur": {"type": "number", "minimum": 1.5, "maximum": 4.0}},
+            "required": ["image", "at", "dur"]}},
         "cta_text": {"type": "string"},
         "music": {"type": "object", "properties": {"use": {"type": "boolean"}, "duck_db": _NUM}},
     },
@@ -127,7 +133,7 @@ EDL_SCHEMA = {
 SCHEMAS = {
     "get_transcript": ("Read the transcript as phrases with source times. Optional start/end in seconds.",
                        {"type": "object", "properties": {"start": {"type": "number"}, "end": {"type": "number"}}}),
-    "view_frames": ("See still frames at up to 6 source times (seconds).",
+    "view_frames": ("See still frames at up to 6 timeline times (seconds).",
                     {"type": "object", "properties": {"times": {"type": "array", "items": {"type": "number"},
                                                                 "minItems": 1, "maxItems": 6}},
                      "required": ["times"]}),
