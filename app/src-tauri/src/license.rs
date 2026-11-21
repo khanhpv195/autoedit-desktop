@@ -446,7 +446,7 @@ mod tests {
         assert!(!allowed("engine_run", false));
         assert!(!allowed("create_project", false));
         assert!(allowed("engine_run", true));
-        for c in ["eleven_status", "set_eleven_key", "clear_eleven_key", "eleven_voices", "set_default_logo", "clear_default_logo"] {
+        for c in ["eleven_status", "set_eleven_key", "clear_eleven_key", "eleven_voices", "set_default_logo", "clear_default_logo", "set_project_voiceover"] {
             assert!(!allowed(c, false) && allowed(c, true), "{c}");
         }
     }
@@ -474,7 +474,7 @@ mod tests {
         let list = lib.split("generate_handler![").nth(1).unwrap().split(']').next().unwrap();
         let cmds: Vec<&str> = list.split(',').filter_map(|c| c.trim().strip_prefix("commands::")).collect();
         assert!(cmds.len() > 20, "failed to parse the command list");
-        for c in ["eleven_status", "set_eleven_key", "clear_eleven_key", "eleven_voices", "set_default_logo", "clear_default_logo"] {
+        for c in ["eleven_status", "set_eleven_key", "clear_eleven_key", "eleven_voices", "set_default_logo", "clear_default_logo", "set_project_voiceover"] {
             assert!(cmds.contains(&c), "{c} is not registered");
         }
         for c in OPEN_COMMANDS {

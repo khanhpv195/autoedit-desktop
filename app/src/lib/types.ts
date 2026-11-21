@@ -36,7 +36,12 @@ export type ProjectDetail = ProjectSummary & {
   scriptCard: Card | null;
   runs: Run[];
   posts?: ProjectPost[];
+  ctaText?: string;
+  length?: VideoLength;
+  voiceover?: ProjectVoiceover | null;
+  productInfo?: string;
 };
+export type ProjectVoiceover = { enabled: boolean; voiceId: string; voiceName: string };
 export type ProjectPost = { id: string; run: number; postDate: string; channels: string[]; status: string };
 export type ProjectPatch = { niche?: string; prompt?: string; script_card?: Card };
 export type AuthSource = "app-token" | "claude-code" | "api-key" | null;

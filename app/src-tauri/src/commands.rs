@@ -196,6 +196,7 @@ fn projects_root(state: &AppState) -> PathBuf {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_project(
     state: State<'_, AppState>,
     niche: String,
@@ -203,6 +204,8 @@ pub async fn create_project(
     images: Vec<String>,
     logo: Option<String>,
     music: Option<String>,
+    cta_text: Option<String>,
+    length: Option<String>,
 ) -> Result<ProjectSummary, String> {
     let root = projects_root(&state);
     // Copying a multi-GB clip must not block the UI thread.
@@ -216,6 +219,8 @@ pub async fn create_project(
             &images.iter().map(PathBuf::from).collect::<Vec<_>>(),
             logo.as_deref().map(Path::new),
             music.as_deref().map(Path::new),
+            cta_text.as_deref().unwrap_or(""),
+            length.as_deref().unwrap_or(""),
             &today,
         )
     })
@@ -255,6 +260,15 @@ pub async fn set_project_media(dir: String, clips: Vec<String>, images: Vec<Stri
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command(async)]
+pub fn set_project_voiceover(
+    dir: String,
+    voiceover: Option<projects::Voiceover>,
+    product_info: String,
+) -> Result<ProjectDetail, String> {
+    projects::set_voiceover(Path::new(&dir), voiceover, &product_info)
 }
 
 #[tauri::command]
