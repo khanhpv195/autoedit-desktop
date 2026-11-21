@@ -44,3 +44,28 @@ class SocialLimit(AutoeditError):
 
 class SocialFailed(AutoeditError):
     code = "SOCIAL_FAILED"
+
+
+class VoiceError(AutoeditError):
+    """Base of the voiceover errors: an edit with voiceover on fails with these, it never falls back silently."""
+    code = "VOICE_FAILED"
+
+
+class VoiceAuth(VoiceError):
+    code = "VOICE_AUTH"
+
+
+class VoiceQuota(VoiceError):
+    code = "VOICE_QUOTA"
+
+
+class VoiceMissing(VoiceError):
+    code = "VOICE_MISSING"
+
+
+class VoiceLimit(VoiceError):
+    code = "VOICE_LIMIT"
+
+
+class VoiceFailed(VoiceError):
+    code = "VOICE_FAILED"

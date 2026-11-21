@@ -119,3 +119,16 @@ async def test_view_frames_session_cap(session):
     res = await tools.view_frames(session, {"times": [1.0]})
     assert res.get("is_error") and "limit" in text_of(res)
     assert session.frames_viewed == tools.MAX_VIEWED_FRAMES
+
+
+async def test_preview_text_lists_qc_issues(session, monkeypatch):
+    from autoedit.render.pipeline import RenderResult
+    await tools.set_edl(session, {"edl": EDL})
+    real = tools.render
+
+    def fake_render(*a, **k):
+        res = real(*a, **k)
+        return RenderResult(res.path, res.duration, None, False, ["khung đứng 3.20–4.10s", "tiếng bụp ở cắt 1.20s"])
+    monkeypatch.setattr(tools, "render", fake_render)
+    t = text_of(await tools.render_preview(session, {}))
+    assert "Kiểm tra: khung đứng 3.20–4.10s; tiếng bụp ở cắt 1.20s" in t

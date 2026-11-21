@@ -1,13 +1,14 @@
 """Secrets the app hands us through the environment.
 
-The app sets BUNDLE_SOCIAL_KEY (for `social …` commands) and AUTOEDIT_MCP (for `edit` and `mcp-check`).
+The app sets BUNDLE_SOCIAL_KEY (for `social …` commands), AUTOEDIT_MCP (for `edit` and `mcp-check`) and
+ELEVENLABS_API_KEY (for `edit`, only when voiceover is used).
 `scrub()` reads them once and removes them from os.environ, so no child process we start afterwards
 (Claude CLI, customer MCP servers the CLI spawns, ffmpeg) inherits them. Code asks `get()` instead of
 os.environ; it falls back to os.environ so unit tests that monkeypatch the environment still work.
 """
 import os
 
-SECRET_NAMES = ("BUNDLE_SOCIAL_KEY", "AUTOEDIT_MCP")
+SECRET_NAMES = ("BUNDLE_SOCIAL_KEY", "AUTOEDIT_MCP", "ELEVENLABS_API_KEY")
 _stash: dict[str, str] = {}
 
 

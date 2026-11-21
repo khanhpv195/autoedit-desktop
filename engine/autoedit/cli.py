@@ -15,9 +15,9 @@ from autoedit.agent.options import edit_options, model
 from autoedit.agent.prompt import build_edit_message
 from autoedit.agent.runner import run_agent
 from autoedit.agent.session import EditSession
-from autoedit.agent.tools import build_server
+from autoedit.agent.tools import VOICE_CALL_CHARS, build_server
 from autoedit.claude_cli import find_cli, install_cli
-from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited
+from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited, VoiceError, VoiceQuota
 from autoedit.events import Emitter
 from autoedit import mcp_user, secrets_env
 from autoedit.model_dl import install_model
@@ -27,6 +27,10 @@ from autoedit.prep import prepare
 from autoedit.project import Project, update_project
 from autoedit.render.pipeline import render
 from autoedit.resources import agent_dir
+from autoedit.voice import eleven
+
+
+VOICE_AGENT_FAILED = "AI chưa dựng xong bản lồng tiếng lần này, hãy thử lại"
 
 
 class Tee:
@@ -55,7 +59,7 @@ def _render_with_retry(prepared, project, edl, summary, run_dir, ev, usage):
     try:
         return render(prepared, project, edl, run_dir / "final.mp4", preview=False), edl, summary
     except Exception:
-        if usage["fallback"]:
+        if usage["fallback"] or project.voiceover_on:     # never fall back to a video without the voiceover
             raise
         traceback.print_exc(file=sys.stderr)
     usage["fallback"] = True
@@ -68,6 +72,8 @@ async def _edit(args, events: Emitter) -> int:
     find_cli()  # fail fast with SETUP_REQUIRED, before transcribing
     project = Project.load(Path(args.project))
     prepared = prepare(project, events)
+    if project.voiceover_on and eleven.quota() < VOICE_CALL_CHARS:    # before any Claude turn is spent
+        raise VoiceQuota(eleven.MSG_QUOTA)
     user_prompt = args.prompt if args.prompt is not None else project.prompt
     previous = _previous_edl(project) if args.feedback else None
     run_dir = project.new_run_dir()
@@ -96,17 +102,24 @@ async def _edit(args, events: Emitter) -> int:
                     with mcp_user.config_file(user_mcp) as mcp_file:    # 0600 temp file, removed right after the run
                         outcome = await run_agent(
                             session, message,
-                            edit_options(agent_dir(), build_server(session), model(), cli_stderr, user_mcp, mcp_file),
+                            edit_options(agent_dir(), build_server(session), model(), cli_stderr, user_mcp, mcp_file,
+                                         voiceover=project.voiceover_on),
                             on_message=on_message)
                     usage["turns"] = outcome.turns
+                    if session.fatal is not None:
+                        raise session.fatal
                     ok = outcome.finished
-                except (RateLimited, NoAuth):
+                except (RateLimited, NoAuth, VoiceError):
                     raise
                 except Exception:
                     traceback.print_exc(file=sys.stderr)
+                    if project.voiceover_on:    # the silence-cut fallback has no voiceover: fail with the error
+                        raise
                     ok = False
                 if ok:
                     edl, summary = session.edl, session.summary
+                elif project.voiceover_on:
+                    raise AgentFailed(VOICE_AGENT_FAILED)
                 else:
                     edl, summary = silence_cut_edl(prepared.words, prepared.info.duration), [FALLBACK_SUMMARY]
                     usage["fallback"] = True
@@ -138,7 +151,7 @@ async def _analyze(args, events: Emitter) -> int:
     project = Project.load(Path(args.project))
     prepared = prepare(project, events)
     events.step("AI đang gợi ý kịch bản…", 0.6)
-    events.cards(await run_analyze(prepared, project.niche, agent_dir(), args.exclude or []))
+    events.cards(await run_analyze(prepared, project.niche, agent_dir(), args.exclude or [], project=project))
     return 0
 
 

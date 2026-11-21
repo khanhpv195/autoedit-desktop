@@ -42,8 +42,10 @@ def broll_chain(idx: int, src: str, start: float, end: float, w: int, h: int) ->
 def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path | None,
             logo_png: Path | None, cta_png: Path | None, music: Path | None,
             speech: list[tuple[float, float]], duck_db: float, preview: bool,
-            broll: list[tuple[Path, float, float]] = ()) -> Path:
-    """broll: (image file, output start, output end) full-frame overlays, drawn on the base before everything else."""
+            broll: list[tuple[Path, float, float]] = (), voice: list[tuple[Path, float]] = ()) -> Path:
+    """broll: (image file, output start, output end) full-frame overlays, drawn on the base before everything else.
+    voice: (voiceover line file, output start) mixed over the base audio; `speech` should then be the voice
+    intervals so the music ducks under them."""
     k = 0.5 if preview else 1.0
     cmd = [bins.tool_path("ffmpeg"), "-y", "-v", "error", "-i", str(base)]
     graph: list[str] = []
@@ -75,11 +77,21 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
     graph.append(f"[{cur}]subtitles=filename={filter_path(ass)}:fontsdir={fonts}"
                  f"{':original_size=1080x1920' if preview else ''}[vout]")
 
+    mix = ["[0:a]"]
     if music:
         cmd.extend(["-stream_loop", "-1", "-i", str(music)])
         graph.append(f"[{idx}:a]aresample=48000,volume='{music_volume_expr(speech, duck_db)}':eval=frame,"
                      f"afade=t=out:st={max(0.0, duration - 1):.3f}:d=1[mus]")
-        graph.append("[0:a][mus]amix=inputs=2:duration=first:normalize=0[aout]")
+        mix.append("[mus]")
+        idx += 1
+    for j, (path, start) in enumerate(voice):
+        cmd.extend(["-i", str(path)])
+        ms = max(0, round(start * 1000))
+        graph.append(f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,adelay={ms}|{ms}[vo{j}]")
+        mix.append(f"[vo{j}]")
+        idx += 1
+    if len(mix) > 1:
+        graph.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:normalize=0[aout]")
         amap = "[aout]"
     else:
         amap = "0:a"

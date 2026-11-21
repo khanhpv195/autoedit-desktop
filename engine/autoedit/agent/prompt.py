@@ -55,6 +55,20 @@ def image_blocks(prepared: Prepared, detail: bool = True) -> list[dict]:
     return out
 
 
+def voiceover_lines(project: Project) -> list[str]:
+    return [
+        "Lồng tiếng AI: BẬT. The original audio is muted; an AI voice reads the lines you write "
+        f"(voice: {(project.voiceover or {}).get('voice_name') or project.voice_id}).",
+        "Thông tin sản phẩm (khách nhập): " + (project.product_info.strip() or "(trống)"),
+        "Voiceover rules: write only what the product info says plus what is visible in the footage; no invented "
+        "material, price, size or promises. Speak about 2.5 words per second; leave 0.3 s between lines; the last "
+        "line is the cart CTA (giỏ hàng). Short Vietnamese sentences, at most 120 characters each.",
+        "Order: decide the shots, call `voiceover` with your lines ({at, text}, `at` = timeline second inside a kept "
+        "range), read back the real durations, then call `set_edl` with the same lines in `voiceover`, then "
+        "`render_preview` and `finish`. The 30% speech rule does not apply.",
+    ]
+
+
 def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
                       previous: dict | None, user_mcp: list[str] | None = None) -> str:
     lines = [
@@ -63,6 +77,8 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
         *span_lines(prepared),
         f"Logo: {'yes' if project.logo else 'no'}. Background music file: {'yes' if project.music else 'no'}.",
         "Customer request: " + (user_prompt.strip() or "(none - choose the strongest sales edit yourself)"),
+        "Target length: {:.0f}–{:.0f}s.".format(*project.length_range),
+        f"CTA text: {project.cta_text} (use it unless the customer request asks for another CTA).",
     ]
     if project.script_card:
         lines.append("Chosen script card: " + json.dumps(project.script_card, ensure_ascii=False))
@@ -70,12 +86,23 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
         lines.append("This is a re-edit. Customer feedback on the previous version: " + feedback.strip())
     if previous:
         lines.append("Previous EDL: " + json.dumps(previous, ensure_ascii=False))
+    if project.voiceover_on:
+        lines += voiceover_lines(project)
     if user_mcp:
         lines.append("Tool bổ sung của khách: " + ", ".join(f"mcp__{n}__*" for n in user_mcp)
                      + " — dùng khi cần thông tin sản phẩm/thương hiệu; không bắt buộc, "
                      "không thay thế quy trình set_edl → finish.")
     lines.append("Edit the video now, following CLAUDE.md. Finish with the finish tool.")
     return "\n".join(lines)
+
+
+def visual_first_section(project: Project, prepared: Prepared, agent_dir: Path) -> list[str]:
+    """Visual-first skill in full when there is no speech; as a short conditional section when voiceover is on."""
+    if not prepared.words:
+        return ["## Skill: visual-first\n" + skill_body("visual-first", agent_dir)]
+    if project.voiceover_on:
+        return ["## Khi lời thoại yếu hoặc bật lồng tiếng:\n" + skill_body("visual-first", agent_dir)]
+    return []
 
 
 def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
@@ -95,6 +122,7 @@ def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, f
         "## Skill: edit-video\n" + skill_body("edit-video", agent_dir),
         "## Skill: niche-hooks (" + project.niche + ")\n" + niche_intro(agent_dir) + "\n\n"
         + niche_section(project.niche, agent_dir),
+        *visual_first_section(project, prepared, agent_dir),
         f"## Transcript (phrases, source seconds; timeline {prepared.info.duration:.2f}s)\n{phrases}",
         "## Word times (source seconds; use them for caption_fixes/emphasis `at` and for cut edges)\n" + words,
         f"## Keyframes ({n} images follow, each preceded by its source time)",
