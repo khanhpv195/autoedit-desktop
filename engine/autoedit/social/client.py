@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from autoedit import secrets_env
+from autoedit import __version__, secrets_env
 from autoedit.errors import SocialAuth, SocialFailed, SocialLimit
 
 DEFAULT_BASE = "https://api.bundle.social"
@@ -16,6 +16,8 @@ TIMEOUT = 60
 UPLOAD_TIMEOUT = 15 * 60
 CHUNK = 1024 * 1024
 MIME = "video/mp4"
+# bundle.social (Cloudflare) answers 403 to the default "Python-urllib/x" agent
+USER_AGENT = f"AutoEdit/{__version__}"
 
 
 class _Body:
@@ -91,6 +93,7 @@ class Client:
 
     # -- transport ---------------------------------------------------------
     def _send(self, req: urllib.request.Request, timeout: int):
+        req.add_header("User-Agent", USER_AGENT)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read()
@@ -189,7 +192,8 @@ class Client:
         try:
             # the signed url carries its own auth: never send our key there
             req = urllib.request.Request(url, data=body, method="PUT",
-                                         headers={"Content-Type": MIME, "Content-Length": str(body.length)})
+                                         headers={"Content-Type": MIME, "Content-Length": str(body.length),
+                                                  "User-Agent": USER_AGENT})
             try:
                 with urllib.request.urlopen(req, timeout=UPLOAD_TIMEOUT):
                     pass

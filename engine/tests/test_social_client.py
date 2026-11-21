@@ -19,6 +19,16 @@ def test_sends_api_key_header():
         assert f.requests[0].headers["x-api-key"] == "k-123"
 
 
+def test_sends_own_user_agent():
+    # bundle.social answers 403 to the default Python-urllib agent
+    from autoedit import __version__
+    with FakeBundle({("GET", "/api/v1/organization/"): (200, {"id": "o"})}) as f:
+        make(f).organization()
+        ua = f.requests[0].headers["user-agent"]
+        assert ua == f"AutoEdit/{__version__}"
+        assert "python" not in ua.lower()
+
+
 def test_missing_key(monkeypatch):
     monkeypatch.delenv("BUNDLE_SOCIAL_KEY", raising=False)
     with pytest.raises(SocialAuth, match="Chưa nhập key"):
@@ -117,6 +127,7 @@ def test_large_upload_init_put_finalize(tmp_path, monkeypatch):
         assert paths == [("POST", "/api/v1/upload/init"), ("PUT", "/signed/abc"), ("POST", "/api/v1/upload/finalize")]
         assert f.requests[0].json() == {"teamId": "T", "fileName": "big.mp4", "mimeType": "video/mp4", "fileSize": 5000}
         assert "x-api-key" not in f.requests[1].headers
+        assert all(r.headers["user-agent"].startswith("AutoEdit/") for r in f.requests)
         assert f.requests[1].body == b"\x01" * 5000
         assert f.requests[2].json() == {"teamId": "T", "path": "p/abc.mp4"}
 
