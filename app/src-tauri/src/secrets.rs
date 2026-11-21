@@ -3,6 +3,7 @@ pub const OAUTH_ACCOUNT: &str = "claude-oauth-token";
 pub const SOCIAL_ACCOUNT: &str = "bundle-social-key";
 pub const API_KEY_ACCOUNT: &str = "anthropic-api-key";
 pub const LICENSE_ACCOUNT: &str = "license";
+pub const ELEVEN_ACCOUNT: &str = "elevenlabs";
 const SERVICE: &str = "AutoEdit";
 
 pub trait SecretStore {

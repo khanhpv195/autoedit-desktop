@@ -1,5 +1,6 @@
 mod auth;
 mod commands;
+mod eleven;
 mod license;
 mod login;
 mod mcp;
@@ -25,6 +26,10 @@ pub fn run() {
         commands::social_key_status,
         commands::set_social_key,
         commands::clear_social_key,
+        commands::eleven_status,
+        commands::set_eleven_key,
+        commands::clear_eleven_key,
+        commands::eleven_voices,
         commands::mcp_list,
         commands::mcp_save,
         commands::mcp_delete,

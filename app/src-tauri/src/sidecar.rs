@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::settings::Settings;
-use crate::secrets::{SecretStore, API_KEY_ACCOUNT, OAUTH_ACCOUNT, SOCIAL_ACCOUNT};
+use crate::secrets::{SecretStore, API_KEY_ACCOUNT, ELEVEN_ACCOUNT, OAUTH_ACCOUNT, SOCIAL_ACCOUNT};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EngineCmd {
@@ -83,6 +83,12 @@ pub fn engine_env(
     }
     if wants_mcp {
         env.push(("AUTOEDIT_MCP".into(), mcp_json.to_string()));
+    }
+    // Voiceover runs only inside an edit.
+    if sub == "edit"
+        && let Some(k) = secrets.get(ELEVEN_ACCOUNT)
+    {
+        env.push(("ELEVENLABS_API_KEY".into(), k));
     }
     if !cfg!(windows)
         && let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
@@ -342,6 +348,20 @@ mod tests {
         m.set(API_KEY_ACCOUNT, "key").unwrap();
         assert!(engine_env(&m, "m", false, &Settings::default(), "{}", &[]).iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
         assert!(!engine_env(&m, "m", true, &Settings::default(), "{}", &[]).iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
+    }
+    #[test]
+    fn env_eleven_key_only_for_edit() {
+        let m = MemoryStore::default();
+        m.set(ELEVEN_ACCOUNT, "test-key").unwrap();
+        let run = |sub: &str| engine_env(&m, "m", false, &Settings::default(), "{}", &[sub.to_string(), "/p".into()]);
+        assert!(run("edit").contains(&("ELEVENLABS_API_KEY".into(), "test-key".into())));
+        for sub in ["social", "analyze", "mcp-check", "auth-check", "setup"] {
+            assert!(!run(sub).iter().any(|(k, _)| k == "ELEVENLABS_API_KEY"), "{sub}");
+        }
+        assert!(!engine_env(&m, "m", false, &Settings::default(), "{}", &[]).iter().any(|(k, _)| k == "ELEVENLABS_API_KEY"));
+        let empty = MemoryStore::default();
+        let e = engine_env(&empty, "m", false, &Settings::default(), "{}", &["edit".into()]);
+        assert!(!e.iter().any(|(k, _)| k == "ELEVENLABS_API_KEY"));
     }
     #[test]
     fn env_social_key_routines_projects_root_and_mcp() {

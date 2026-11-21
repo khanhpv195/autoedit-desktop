@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::mcp::{self, McpServer};
 use crate::secrets::{SecretStore, API_KEY_ACCOUNT, OAUTH_ACCOUNT, SOCIAL_ACCOUNT};
 use crate::auth;
+use crate::eleven;
 use crate::login::{LoginLine, LoginSession};
 use crate::projects::{self, FeedItem, ProjectDetail, ProjectSummary};
 use crate::settings::{self, Settings};
@@ -108,6 +109,28 @@ pub fn set_social_key(state: State<'_, AppState>, key: String) -> Result<(), Str
 #[tauri::command]
 pub fn clear_social_key(state: State<'_, AppState>) -> Result<(), String> {
     state.secrets.delete(SOCIAL_ACCOUNT)
+}
+
+#[tauri::command]
+pub async fn eleven_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    Ok(eleven::status(state.secrets.as_ref(), eleven::BASE).await)
+}
+
+/// Validates the key with ElevenLabs before storing it. The key is never sent back to the UI.
+#[tauri::command]
+pub async fn set_eleven_key(state: State<'_, AppState>, key: String) -> Result<serde_json::Value, String> {
+    let remaining = eleven::set_key(state.secrets.as_ref(), eleven::BASE, &key).await.map_err(|e| e.code().to_string())?;
+    Ok(serde_json::json!({ "remaining": remaining }))
+}
+
+#[tauri::command]
+pub fn clear_eleven_key(state: State<'_, AppState>) -> Result<(), String> {
+    eleven::clear_key(state.secrets.as_ref(), &state.data_dir)
+}
+
+#[tauri::command]
+pub async fn eleven_voices(state: State<'_, AppState>) -> Result<Vec<eleven::Voice>, String> {
+    eleven::voices_for(state.secrets.as_ref(), eleven::BASE).await.map_err(|e| e.code().to_string())
 }
 
 #[tauri::command]
