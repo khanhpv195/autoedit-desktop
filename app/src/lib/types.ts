@@ -17,7 +17,7 @@ export type ProjectSummary = {
   status: ProjectStatus;
   runCount: number;
 };
-export type Card = { title: string; hook: string; outline: string; prompt: string };
+export type Card = { title: string; hook: string; outline: string[] | string; prompt: string };
 export type Run = {
   n: number;
   final: string;
@@ -43,7 +43,7 @@ export type ProjectDetail = ProjectSummary & {
 };
 export type ProjectVoiceover = { enabled: boolean; voiceId: string; voiceName: string };
 export type ProjectPost = { id: string; run: number; postDate: string; channels: string[]; status: string };
-export type ProjectPatch = { niche?: string; prompt?: string; script_card?: Card };
+export type ProjectPatch = { niche?: string; prompt?: string; script_card?: Card; length?: VideoLength };
 export type AuthSource = "app-token" | "claude-code" | "api-key" | null;
 export type FeedItem = { text: string; tool: string | null };
 

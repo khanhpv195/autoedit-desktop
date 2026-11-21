@@ -159,6 +159,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
   .sc b{font-size:13px;display:block}
   .sc .hk{display:inline-block;margin:4px 0 2px;background:#ffe14d;color:#111;font-weight:800;font-size:11px;padding:2px 6px;border-radius:4px}
   .sc small{display:block;font-size:12px;color:var(--muted)}
+  .sc ol.outline{margin:2px 0 0 18px;font-size:12px;color:var(--muted)}
   .sc-empty{background:#fff;border:1px dashed #c4c4ce;border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--muted);margin-bottom:8px}
   .an li{list-style:none;font-size:13px;padding:3px 0;color:var(--muted)} .an li.done{color:var(--ink)} .an li.cur{color:var(--ink);font-weight:600}
   .scbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}

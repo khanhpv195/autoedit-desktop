@@ -371,10 +371,13 @@ pub fn update(dir: &Path, patch: &Value) -> Result<(), String> {
     let Some(p) = patch.as_object() else { return Err("patch không hợp lệ".into()) };
     with_lock(dir, || {
         let mut m = read_json(dir)?;
-        for key in ["niche", "prompt", "script_card"] {
+        for key in ["niche", "prompt", "script_card", "length"] {
             let Some(v) = p.get(key) else { continue };
             if key == "niche" && !v.as_str().is_some_and(|n| NICHES.contains(&n)) {
                 return Err("Ngành không hợp lệ".into());
+            }
+            if key == "length" && !v.as_str().is_some_and(|n| LENGTHS.contains(&n)) {
+                return Err("Độ dài không hợp lệ".into());
             }
             m.insert(key.into(), v.clone());
         }
@@ -534,6 +537,15 @@ mod tests {
         let j = raw(&dir);
         assert_eq!(j["prompt"], "engine");
         assert_eq!(j["product_info"], "info");
+    }
+    #[test]
+    fn update_accepts_a_valid_length_only() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = new_project(root.path(), "", "");
+        update(&dir, &json!({"length": "long"})).unwrap();
+        assert_eq!(detail(&dir).unwrap().length, "long");
+        assert!(update(&dir, &json!({"length": "xl"})).is_err());
+        assert_eq!(raw(&dir)["length"], "long");
     }
     #[test]
     fn slug_strips_vietnamese() {
