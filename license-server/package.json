@@ -1,0 +1,17 @@
+{
+  "name": "autoedit-license-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "keygen": "node scripts/keygen.mjs",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply autoedit-license --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5",
+    "typescript": "^5",
+    "vitest": "^3",
+    "wrangler": "^4"
+  }
+}

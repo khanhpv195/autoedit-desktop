@@ -16,3 +16,5 @@ app/dist/
 app/src-tauri/target/
 app/src-tauri/gen/
 build/
+license-server/node_modules/
+license-server/.wrangler/
