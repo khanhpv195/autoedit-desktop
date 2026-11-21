@@ -174,3 +174,12 @@ describe("activation race", () => {
     expect(row.last_seen_at).toBe("2026-02-01T00:00:00.000Z");
   });
 });
+
+describe("cross-implementation vector", () => {
+  it("the committed fixture is exactly what signLicense produces (Ed25519 is deterministic)", async () => {
+    // @ts-expect-error plain .mjs helper, no types
+    const { makeVector } = await import("../scripts/gen-vector.mjs");
+    const fixture = (await import("../../app/src-tauri/tests/fixtures/license-vector.json")).default;
+    expect(await makeVector()).toEqual(fixture);
+  });
+});
