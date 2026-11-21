@@ -34,6 +34,23 @@ test("changing the model saves settings", async () => {
   expect(a.saveSettings).toHaveBeenCalledWith({ ...base, model: "claude-sonnet-5-5" });
 });
 
+test("model list has Sonnet (default, first), Opus and Haiku", async () => {
+  a.getSettings.mockResolvedValue({ ...base, model: "" });
+  await open("AI dựng");
+  const sel = screen.getByLabelText("Model") as HTMLSelectElement;
+  const opts = Array.from(sel.options).map((o) => o.value);
+  expect(opts).toEqual(["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]);
+  expect(sel.value).toBe("claude-sonnet-5-5");
+  expect(sel.options[0].textContent).toMatch(/mặc định/);
+  expect(sel.options[1].textContent).toMatch(/tốt nhất, tốn nhiều lượt nhất/);
+  expect(sel.options[2].textContent).toMatch(/rẻ nhất, dựng kém hơn với clip khó/);
+});
+
+test("a saved Opus model stays selected", async () => {
+  await open("AI dựng");
+  expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe("claude-opus-5-5");
+});
+
 test("logout only shows for app-token and calls logout", async () => {
   await open("AI dựng");
   expect(await screen.findByText("Subscription Claude · token app")).toBeInTheDocument();

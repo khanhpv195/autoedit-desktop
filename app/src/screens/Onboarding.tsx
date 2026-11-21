@@ -52,7 +52,7 @@ export default function Onboarding() {
   const connected = useCallback((s: string) => { setSource(s); dispatch({ type: "auth", auth: s }); }, [dispatch]);
 
   async function begin() {
-    const settings = { model: "claude-opus-5-5", projectsRoot: "", lastNiche: null, ...(state.settings ?? {}), onboarded: true };
+    const settings = { model: "claude-sonnet-5-5", projectsRoot: "", lastNiche: null, ...(state.settings ?? {}), onboarded: true };
     await api.saveSettings(settings);
     dispatch({ type: "settings", settings });
     await refreshProjects();

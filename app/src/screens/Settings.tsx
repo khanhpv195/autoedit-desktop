@@ -11,8 +11,9 @@ import { useStore } from "../state/store";
 type Tab = "gen" | "conn" | "agent";
 const TABS: [Tab, string][] = [["gen", "Chung"], ["conn", "Kết nối & MCP"], ["agent", "AI dựng"]];
 const MODELS: [string, string][] = [
-  ["claude-opus-5-5", "Opus 5.5 — tốt nhất (mặc định)"],
-  ["claude-sonnet-5-5", "Sonnet 5.5 — nhanh hơn, tốn ít lượt hơn"],
+  ["claude-sonnet-5-5", "Sonnet 5.5 — cân bằng (mặc định)"],
+  ["claude-opus-5-5", "Opus 5.5 — tốt nhất, tốn nhiều lượt nhất"],
+  ["claude-haiku-5-5", "Haiku 5.5 — rẻ nhất, dựng kém hơn với clip khó"],
 ];
 const SOURCE_LABEL: Record<string, string> = {
   "app-token": "Subscription Claude · token app",
@@ -144,7 +145,7 @@ export default function Settings() {
             </div>
             <div className="card">
               <h3>Model</h3>
-              <select aria-label="Model" value={settings?.model ?? MODELS[0][0]}
+              <select aria-label="Model" value={settings?.model || MODELS[0][0]}
                 onChange={(e) => settings && save({ ...settings, model: e.target.value })}>
                 {MODELS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
               </select>

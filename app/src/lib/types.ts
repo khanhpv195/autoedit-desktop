@@ -2,7 +2,10 @@ export type Routine = { id: string; time: string; channels: string[]; enabled: b
 export type Settings = {
   model: string; projectsRoot: string; lastNiche: string | null; onboarded: boolean;
   socialTeamId?: string | null; routines?: Routine[];
+  voiceId?: string | null; voiceName?: string | null;
+  defaultLogo?: string | null; defaultCta?: string; defaultLength?: VideoLength;
 };
+export type VideoLength = "short" | "medium" | "long";
 export type ProjectStatus = "new" | "done" | "needs_review";
 export type ProjectSummary = {
   dir: string;

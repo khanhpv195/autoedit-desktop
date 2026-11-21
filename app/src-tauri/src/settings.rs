@@ -34,17 +34,34 @@ pub struct Settings {
     pub social_team_id: Option<String>,
     #[serde(deserialize_with = "lenient_routines")]
     pub routines: Vec<Routine>,
+    /// Default ElevenLabs voice (not secret; the key lives in the Keychain).
+    pub voice_id: Option<String>,
+    pub voice_name: Option<String>,
+    /// Absolute path of the app's own copy of the default logo (`<data_dir>/defaults/logo.<ext>`).
+    pub default_logo: Option<String>,
+    pub default_cta: String,
+    /// "short" | "medium" | "long".
+    pub default_length: String,
 }
+
+pub const DEFAULT_MODEL: &str = "claude-sonnet-5-5";
+pub const DEFAULT_CTA: &str = "BẤM GIỎ HÀNG 👇";
+pub const DEFAULT_LENGTH: &str = "medium";
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            model: "claude-opus-5-5".into(),
+            model: DEFAULT_MODEL.into(),
             projects_root: default_projects_root().to_string_lossy().into_owned(),
             last_niche: None,
             onboarded: false,
             social_team_id: None,
             routines: Vec::new(),
+            voice_id: None,
+            voice_name: None,
+            default_logo: None,
+            default_cta: DEFAULT_CTA.into(),
+            default_length: DEFAULT_LENGTH.into(),
         }
     }
 }
@@ -71,7 +88,7 @@ mod tests {
     fn load_missing_gives_default() {
         let d = tempfile::tempdir().unwrap();
         let s = load(d.path());
-        assert_eq!(s.model, "claude-opus-5-5");
+        assert_eq!(s.model, "claude-sonnet-5-5");
         assert!(!s.onboarded);
     }
     #[test]
@@ -128,6 +145,50 @@ mod tests {
     fn corrupt_file_gives_default() {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("settings.json"), "{oops").unwrap();
-        assert_eq!(load(d.path()).model, "claude-opus-5-5");
+        assert_eq!(load(d.path()).model, "claude-sonnet-5-5");
+    }
+    #[test]
+    fn empty_json_gives_sonnet_and_new_defaults() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("settings.json"), "{}").unwrap();
+        let s = load(d.path());
+        assert_eq!(s.model, "claude-sonnet-5-5");
+        assert_eq!(s.voice_id, None);
+        assert_eq!(s.voice_name, None);
+        assert_eq!(s.default_logo, None);
+        assert_eq!(s.default_cta, "BẤM GIỎ HÀNG 👇");
+        assert_eq!(s.default_length, "medium");
+    }
+    #[test]
+    fn old_settings_keep_saved_model_and_get_new_defaults() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(
+            d.path().join("settings.json"),
+            r#"{"model":"claude-opus-5-5","projectsRoot":"/x","lastNiche":null,"onboarded":true,"routines":[]}"#,
+        )
+        .unwrap();
+        let s = load(d.path());
+        assert_eq!(s.model, "claude-opus-5-5");
+        assert_eq!(s.default_cta, "BẤM GIỎ HÀNG 👇");
+        assert_eq!(s.default_length, "medium");
+        assert_eq!(s.voice_id, None);
+    }
+    #[test]
+    fn new_fields_roundtrip_camel_case() {
+        let d = tempfile::tempdir().unwrap();
+        let s = Settings {
+            voice_id: Some("v1".into()),
+            voice_name: Some("Lan".into()),
+            default_logo: Some("/data/defaults/logo.png".into()),
+            default_cta: "MUA NGAY".into(),
+            default_length: "short".into(),
+            ..Default::default()
+        };
+        save(d.path(), &s).unwrap();
+        let raw = std::fs::read_to_string(d.path().join("settings.json")).unwrap();
+        for k in ["\"voiceId\"", "\"voiceName\"", "\"defaultLogo\"", "\"defaultCta\"", "\"defaultLength\""] {
+            assert!(raw.contains(k), "{k}");
+        }
+        assert_eq!(load(d.path()), s);
     }
 }
