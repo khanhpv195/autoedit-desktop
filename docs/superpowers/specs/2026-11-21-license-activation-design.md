@@ -44,10 +44,7 @@ Approved direction 2026-11-21. The customer only pastes a key and presses **Kíc
 - `license-admin setup`:
   - Asks for the Worker URL and the admin token.
   - Stores them in `~/.autoedit-license/config.json` with mode 0600, outside the repo.
-- `license-admin keygen`:
-  - Generates the Ed25519 pair.
-  - Prints the private key once, to paste into `wrangler secret put LICENSE_SIGNING_KEY`.
-  - Writes the public key for the app build.
+- Key pair: `npm run keygen` in `license-server/` (Node WebCrypto; stdlib Python has no Ed25519) prints the private key once, to paste into `wrangler secret put LICENSE_SIGNING_KEY`, and the public key for `app/src-tauri/license.json`.
 - Key commands:
   - `license-admin create "Tên khách" [--note ...]` prints the key.
   - `license-admin list` shows a table: key, customer, status, machine (short), activation date, last seen.
