@@ -17,9 +17,9 @@ EDL = {"keep": [{"start": 0.6, "end": 1.8}, {"start": 3.2, "end": 4.4}]}
 def session(tmp_path, clip):
     d = tmp_path / "p"; (d / "input").mkdir(parents=True)
     (d / "input" / "clip.mp4").write_bytes(clip.read_bytes())
-    (d / "project.json").write_text(json.dumps({"niche": "chung", "clip": "clip.mp4"}))
+    (d / "project.json").write_text(json.dumps({"niche": "chung", "clips": ["clip.mp4"]}))
     proj = Project.load(d)
-    prep = Prepared(info=probe(clip), normalized=proj.clip_path, words=WORDS, keyframes=[])
+    prep = Prepared(info=probe(clip), normalized=proj.clip_paths[0], words=WORDS, keyframes=[])
     return EditSession(prepared=prep, project=proj, events=Emitter(io.StringIO()))
 
 

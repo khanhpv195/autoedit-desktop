@@ -16,7 +16,7 @@ WORDS = [Word("chào", 0.6, 1.0), Word("cả", 1.05, 1.3), Word("nhà", 1.35, 1.
 def project(tmp_path, clip, monkeypatch):
     d = tmp_path / "p"; (d / "input").mkdir(parents=True)
     (d / "input" / "clip.mp4").write_bytes(clip.read_bytes())
-    (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clip": "clip.mp4"}))
+    (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clips": ["clip.mp4"]}))
     import autoedit.prep as prep
     monkeypatch.setattr(prep, "transcribe", lambda v, wd: WORDS)
     return d

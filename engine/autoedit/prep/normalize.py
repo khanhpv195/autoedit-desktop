@@ -23,6 +23,24 @@ def build_filter(info: MediaInfo) -> str:
             f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1,fps={FPS},format=yuv420p[v]")
 
 
+def concat(parts: list[Path], dst: Path) -> Path:
+    """Join normalized clips in order. They share codec, size, fps, pixel format and audio params (build_filter and
+    normalize force them), so the concat demuxer can stream-copy: no second encode, no quality loss."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = part_path(dst)
+    listing = dst.with_name(f"{dst.stem}.concat.txt")
+    try:
+        lines = ["file '" + str(p.resolve()).replace("'", "'\\''") + "'" for p in parts]
+        listing.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        bins.run([bins.tool_path("ffmpeg"), "-y", "-v", "error", "-f", "concat", "-safe", "0",
+                  "-i", str(listing), "-c", "copy", "-movflags", "+faststart", str(tmp)])
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
+        listing.unlink(missing_ok=True)
+    return dst
+
+
 def normalize(src: Path, dst: Path, info: MediaInfo) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp = part_path(dst)

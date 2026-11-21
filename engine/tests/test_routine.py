@@ -76,7 +76,7 @@ def make_root(tmp_path, names):
         (d / "input").mkdir(parents=True); (d / "input" / "clip.mp4").write_bytes(b"x")
         (d / "runs" / "1").mkdir(parents=True); (d / "runs" / "1" / "final.mp4").write_bytes(b"\x00" * 100)
         os.utime(d / "runs" / "1" / "final.mp4", (1_700_000_000 + i * 100,) * 2)
-        (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clip": "clip.mp4", "runs": [{"n": 1, "summary": []}]}))
+        (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clips": ["clip.mp4"], "runs": [{"n": 1, "summary": []}]}))
         (d / "runs" / "1" / "edl.json").write_text(json.dumps({"hook": {"text": f"HOOK {n}"}}))
     return root
 
@@ -89,7 +89,7 @@ def fake_routes():
 
 async def test_routine_sync_creates_posts_with_fallback_caption(tmp_path, monkeypatch):
     root = make_root(tmp_path, ["a", "b", "c"])
-    (root / "c" / "project.json").write_text(json.dumps({"niche": "my-pham", "clip": "clip.mp4", "runs": [{"n": 1}],
+    (root / "c" / "project.json").write_text(json.dumps({"niche": "my-pham", "clips": ["clip.mp4"], "runs": [{"n": 1}],
                                                          "posts": [{"id": "old"}]}))
     monkeypatch.setenv("AUTOEDIT_PROJECTS_ROOT", str(root))
     monkeypatch.setenv("AUTOEDIT_ROUTINES", json.dumps([R1930]))

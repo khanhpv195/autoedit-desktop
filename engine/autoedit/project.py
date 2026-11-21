@@ -67,14 +67,16 @@ def update_project(dir: Path, mutate) -> dict:
 
 
 NICHES = ("thoi-trang", "my-pham", "do-an", "phu-kien", "chung")
-_FIELDS = ("niche", "clip", "logo", "music", "prompt", "script_card", "runs", "posts")
+MAX_CLIPS, MAX_IMAGES = 10, 20
+_FIELDS = ("niche", "clips", "images", "logo", "music", "prompt", "script_card", "runs", "posts")
 
 
 @dataclass
 class Project:
     dir: Path
     niche: str
-    clip: str
+    clips: list[str]
+    images: list[str] = field(default_factory=list)
     logo: str | None = None
     music: str | None = None
     prompt: str = ""
@@ -89,11 +91,25 @@ class Project:
         if not f.exists():
             raise BadInput(f"Không thấy {f}")
         data = json.loads(f.read_text(encoding="utf-8"))
+        if "clips" not in data and data.get("clip"):
+            data["clips"] = [data["clip"]]     # legacy single-clip project
+        data.setdefault("clips", [])
+        data["images"] = data.get("images") or []
         p = cls(dir=dir, **{k: data[k] for k in _FIELDS if k in data})
         if p.niche not in NICHES:
             raise BadInput(f"Ngành không hợp lệ: {p.niche}")
-        if not p.clip_path.exists():
-            raise BadInput("Không thấy file clip trong project")
+        if not p.clips:
+            raise BadInput("Project chưa có clip nào")
+        if len(p.clips) > MAX_CLIPS:
+            raise BadInput(f"Tối đa {MAX_CLIPS} clip, project có {len(p.clips)}")
+        if len(p.images) > MAX_IMAGES:
+            raise BadInput(f"Tối đa {MAX_IMAGES} ảnh, project có {len(p.images)}")
+        for name in p.clips:
+            if not (p.input_dir / name).is_file():
+                raise BadInput(f"Không thấy file clip {name} trong project")
+        for name in p.images:
+            if not (p.input_dir / name).is_file():
+                raise BadInput(f"Không thấy file ảnh {name} trong project")
         p.work_dir.mkdir(parents=True, exist_ok=True)
         return p
 
@@ -110,8 +126,12 @@ class Project:
         return self.dir / "work"
 
     @property
-    def clip_path(self) -> Path:
-        return self.input_dir / self.clip
+    def clip_paths(self) -> list[Path]:
+        return [self.input_dir / n for n in self.clips]
+
+    @property
+    def image_paths(self) -> list[Path]:
+        return [self.input_dir / n for n in self.images]
 
     @property
     def logo_path(self) -> Path | None:

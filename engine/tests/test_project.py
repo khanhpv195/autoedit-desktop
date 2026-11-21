@@ -7,7 +7,7 @@ from autoedit.errors import BadInput
 def make(tmp_path, **over):
     (tmp_path / "input").mkdir()
     (tmp_path / "input" / "clip.mp4").write_bytes(b"x")
-    data = {"niche": "my-pham", "clip": "clip.mp4", "logo": None, "music": None,
+    data = {"niche": "my-pham", "clips": ["clip.mp4"], "logo": None, "music": None,
             "prompt": "", "script_card": None, "runs": []} | over
     (tmp_path / "project.json").write_text(json.dumps(data), encoding="utf-8")
     return tmp_path
@@ -16,7 +16,7 @@ def make(tmp_path, **over):
 def test_load_and_paths(tmp_path):
     p = Project.load(make(tmp_path))
     assert p.niche == "my-pham"
-    assert p.clip_path == tmp_path / "input" / "clip.mp4"
+    assert p.clip_paths == [tmp_path / "input" / "clip.mp4"]
     assert p.logo_path is None
     assert p.work_dir == tmp_path / "work" and p.work_dir.is_dir()
 

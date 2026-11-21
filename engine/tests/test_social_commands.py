@@ -25,7 +25,7 @@ def proj(tmp_path):
     (d / "input" / "clip.mp4").write_bytes(b"x")
     (d / "runs" / "1").mkdir(parents=True)
     (d / "runs" / "1" / "final.mp4").write_bytes(b"\x00" * 2048)
-    (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clip": "clip.mp4",
+    (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clips": ["clip.mp4"],
                                                 "runs": [{"n": 1, "summary": ["Bỏ đoạn lặng"]}]}))
     return d
 
