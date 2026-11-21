@@ -111,7 +111,7 @@ def test_prompt_mentions_user_tools(tmp_path):
     from test_prompt import _prep
     from autoedit.project import Project
     d = tmp_path / "p"; (d / "input").mkdir(parents=True); (d / "input" / "c.mp4").write_bytes(b"x")
-    proj = Project(dir=d, niche="my-pham", clip="c.mp4")
+    proj = Project(dir=d, niche="my-pham", clips=["c.mp4"])
     with_mcp = build_edit_prompt(proj, _prep(tmp_path), "", None, None, ["shop"])
     assert "mcp__shop__*" in with_mcp and "Tool bổ sung của khách" in with_mcp
     assert "Tool bổ sung" not in build_edit_prompt(proj, _prep(tmp_path), "", None, None)

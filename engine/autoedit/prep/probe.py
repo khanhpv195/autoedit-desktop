@@ -72,3 +72,26 @@ def check_logo(path: Path) -> None:
 def check_music(path: Path) -> None:
     if path.suffix.lower() not in MUSIC_EXT or not path.exists():
         raise BadInput("Nhạc phải là MP3, M4A hoặc WAV")
+
+
+MAX_TOTAL_SECONDS = 600
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def check_total_duration(total: float) -> None:
+    if total > MAX_TOTAL_SECONDS:
+        raise BadInput(f"Tổng thời lượng các clip là {total:.0f}s, tối đa {MAX_TOTAL_SECONDS}s")
+
+
+def check_image(path: Path) -> tuple[int, int]:
+    """Return (width, height) of a b-roll image; BadInput if it is not a readable PNG/JPG/WebP."""
+    from PIL import Image, UnidentifiedImageError
+    if path.suffix.lower() not in IMAGE_EXT or not path.exists():
+        raise BadInput(f"Ảnh {path.name} phải là PNG, JPG hoặc WebP")
+    try:
+        with Image.open(path) as im:
+            im.verify()
+        with Image.open(path) as im:
+            return im.size
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as e:
+        raise BadInput(f"Không đọc được ảnh {path.name}") from e

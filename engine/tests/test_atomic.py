@@ -31,7 +31,7 @@ def test_atomic_write_failure_keeps_old_file(tmp_path, monkeypatch):
 def test_project_save_is_atomic(tmp_path, monkeypatch):
     (tmp_path / "input").mkdir()
     (tmp_path / "input" / "c.mp4").write_bytes(b"x")
-    (tmp_path / "project.json").write_text(json.dumps({"niche": "chung", "clip": "c.mp4", "runs": [{"n": 1}]}))
+    (tmp_path / "project.json").write_text(json.dumps({"niche": "chung", "clips": ["c.mp4"], "runs": [{"n": 1}]}))
     p = Project.load(tmp_path)
     monkeypatch.setattr(os, "replace", lambda *a: (_ for _ in ()).throw(OSError("killed")))
     with pytest.raises(OSError):
@@ -56,7 +56,7 @@ def test_killed_normalize_leaves_no_destination(clip, tmp_path, monkeypatch):
 def _project(tmp_path, clip):
     d = tmp_path / "proj"; (d / "input").mkdir(parents=True)
     (d / "input" / "clip.mp4").write_bytes(clip.read_bytes())
-    (d / "project.json").write_text(json.dumps({"niche": "chung", "clip": "clip.mp4"}))
+    (d / "project.json").write_text(json.dumps({"niche": "chung", "clips": ["clip.mp4"]}))
     return d
 
 

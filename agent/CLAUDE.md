@@ -47,18 +47,24 @@ Normally: `set_edl` → `render_preview` → `finish`.
   "hook": {"move_to_front": [12.4, 15.1], "text": "CHÂN NGẮN? XEM NGAY"},
   "caption_fixes": [{"at": 18.2, "wrong": "tuyết mưu", "right": "tuyết mưa"}],
   "emphasis": [{"at": 21.0, "word": "189K"}],
+  "broll": [{"image": "giay-do.png", "at": 6.5, "dur": 2.5}],
   "cta_text": "BẤM GIỎ HÀNG 👇",
   "music": {"use": true, "duck_db": -14}
 }
 ```
 
-- `keep`: source ranges to keep, in source order. The video plays them in this order.
+- `keep`: timeline ranges to keep, in timeline order. With several clips, the timeline is all clips joined in
+  order (the first message lists each clip's span); a range may cross a clip boundary but usually should not. The video plays them in this order.
 - `hook`: optional. A source range moved to the very start, plus an on-screen text of at most
   5 words shown for the first 2.5 s. Use `null` when nothing strong exists.
 - `caption_fixes`: Whisper mistakes in brand names, prices, CTAs. `wrong` must be the words exactly as in
   the transcript; `at` = source time of the first wrong word (see the word times).
 - `emphasis`: 1–4 words to highlight in captions (price, product name, key number); `word` is the
   spoken word and `at` its start time.
+- `broll`: optional. Product photos the customer supplied, shown full-frame (9:16 crop, slow zoom) on top of the
+  video while the speech continues. `image` = the exact file name from the first message, `at` = timeline second
+  inside a kept range, `dur` 1.5–4 s. Use them when the speaker names or shows the product, never in the first
+  2.5 s (the hook), at most one per ~3 s of output, never two at once. Omit `broll` when there are no images.
 - `cta_text`: shown for the last 2 s. Keep it short; an emoji is fine.
 - `music.use`: false if the clip already has music or the speech is quiet.
 

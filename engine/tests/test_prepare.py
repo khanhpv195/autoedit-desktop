@@ -22,7 +22,7 @@ def test_frame_at_width(clip, tmp_path):
 def test_prepare_caches_normalize(clip, tmp_path, monkeypatch):
     d = tmp_path / "proj"; (d / "input").mkdir(parents=True)
     (d / "input" / "clip.mp4").write_bytes(clip.read_bytes())
-    (d / "project.json").write_text(json.dumps({"niche": "chung", "clip": "clip.mp4"}))
+    (d / "project.json").write_text(json.dumps({"niche": "chung", "clips": ["clip.mp4"]}))
     import autoedit.prep as prep
     monkeypatch.setattr(prep, "transcribe", lambda v, wd: [Word("a", 0.1, 0.4)])
     calls = []
@@ -32,5 +32,5 @@ def test_prepare_caches_normalize(clip, tmp_path, monkeypatch):
     p1 = prepare(Project.load(d), Emitter(buf))
     p2 = prepare(Project.load(d), Emitter(buf))
     assert len(calls) == 1
-    assert p1.normalized == d / "work" / "normalized.mp4" and len(p2.keyframes) == 6
+    assert p1.normalized == d / "work" / "norm" / "0_clip.mp4" and len(p2.keyframes) == 6
     assert '"type": "step"' in buf.getvalue()

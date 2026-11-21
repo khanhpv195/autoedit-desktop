@@ -13,9 +13,9 @@ WORDS = [Word("chào", 0.6, 1.0), Word("cả", 1.05, 1.3), Word("nhà", 1.35, 1.
 def setup(tmp_path, clip):
     d = tmp_path / "p"; (d / "input").mkdir(parents=True)
     (d / "input" / "clip.mp4").write_bytes(clip.read_bytes())
-    (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clip": "clip.mp4"}))
+    (d / "project.json").write_text(json.dumps({"niche": "my-pham", "clips": ["clip.mp4"]}))
     proj = Project.load(d)
-    prep = Prepared(info=probe(clip), normalized=proj.clip_path, words=WORDS, keyframes=[])
+    prep = Prepared(info=probe(clip), normalized=proj.clip_paths[0], words=WORDS, keyframes=[])
     edl, _ = validate_edl({"keep": [{"start": 0.6, "end": 1.8}, {"start": 3.2, "end": 4.4}],
                            "hook": {"move_to_front": [3.7, 4.4], "text": "CHỈ 189K"}}, WORDS, 6.0)
     return proj, prep, edl

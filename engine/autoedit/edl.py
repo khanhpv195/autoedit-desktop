@@ -1,6 +1,7 @@
 import math
 from dataclasses import asdict, dataclass, field
 
+from autoedit.render.compose import HOOK_SECONDS
 from autoedit.transcript import Word, resolve_edits, speech_duration
 
 PAD_BEFORE = 0.05
@@ -8,6 +9,8 @@ PAD_AFTER = 0.08
 MIN_SEGMENT = 0.4
 MIN_KEEP_RATIO = 0.30
 HOOK_MAX_WORDS = 5
+BROLL_MIN, BROLL_MAX = 1.5, 4.0
+BROLL_PER_SECONDS = 3.0     # soft rule: at most one b-roll per 3 s of output
 DEFAULT_CTA = "BẤM GIỎ HÀNG 👇"
 
 
@@ -47,11 +50,19 @@ class Emphasis:
 
 
 @dataclass
+class Broll:
+    image: str      # file name from the project's images
+    at: float       # timeline seconds, inside a kept range
+    dur: float
+
+
+@dataclass
 class Edl:
     keep: list[Range]
     hook: Hook | None = None
     caption_fixes: list[CaptionFix] = field(default_factory=list)
     emphasis: list[Emphasis] = field(default_factory=list)
+    broll: list[Broll] = field(default_factory=list)
     cta_text: str = DEFAULT_CTA
     music_use: bool = True
     music_duck_db: float = -14.0
@@ -62,6 +73,7 @@ class Edl:
             "hook": {"move_to_front": [self.hook.start, self.hook.end], "text": self.hook.text} if self.hook else None,
             "caption_fixes": [asdict(c) for c in self.caption_fixes],
             "emphasis": [asdict(e) for e in self.emphasis],
+            "broll": [asdict(b) for b in self.broll],
             "cta_text": self.cta_text,
             "music": {"use": self.music_use, "duck_db": self.music_duck_db},
         }
@@ -79,6 +91,21 @@ class Edl:
                 if b - a >= MIN_SEGMENT:
                     rest.append(Range(a, b, r.reason))
         return [h] + rest
+
+    def output_span(self, at: float, dur: float) -> tuple[float, float] | None:
+        """Map a timeline moment to output time through the ordered ranges. Returns (start, end) in output seconds,
+        or None if `at` is in no kept range. The window is cut at the end of the range it starts in."""
+        offset = 0.0
+        for r in self.ordered():
+            if r.start - 1e-9 <= at < r.end - 1e-9:
+                start = offset + (at - r.start)
+                return start, min(start + dur, offset + r.duration)
+            offset += r.duration
+        return None
+
+    def output_time(self, t: float) -> float | None:
+        span = self.output_span(t, 0.0)
+        return span[0] if span else None
 
     def output_duration(self) -> float:
         return sum(r.duration for r in self.ordered())
@@ -142,7 +169,52 @@ def _speech_in(ranges: list[Range], words: list[Word]) -> float:
     return total
 
 
-def validate_edl(raw: dict, words: list[Word], clip_duration: float) -> tuple[Edl, list[str]]:
+def _validate_broll(raw: list, kept: list[Range], hook: Hook | None, image_names: list[str],
+                    notes: list[str]) -> list[Broll]:
+    """Image must be a project image (error: the agent can fix it). Everything else is corrected or dropped with a
+    note: dur clamped to 1.5-4 s, `at` must be inside a kept range, never over the hook's first seconds, no two
+    overlapping, at most one per 3 s of output."""
+    if not raw:
+        return []
+    probe_edl = Edl(keep=kept, hook=hook)
+    total = probe_edl.output_duration()
+    out: list[Broll] = []
+    windows: list[tuple[float, float]] = []
+    for b in sorted((x for x in raw), key=lambda x: float(x["at"])):
+        image, at = str(b["image"]).strip(), float(b["at"])
+        if image not in image_names:
+            names = ", ".join(image_names) or "(no images in this project)"
+            raise EdlError(f"broll image {image!r} is not one of the project images: {names}")
+        dur = min(BROLL_MAX, max(BROLL_MIN, float(b.get("dur", 2.5))))
+        span = probe_edl.output_span(at, dur)
+        if span is None:
+            notes.append(f"dropped broll {image} at {at:.2f}: not inside a kept range")
+            continue
+        o_start, o_end = span
+        if o_start < HOOK_SECONDS:
+            shift = HOOK_SECONDS - o_start
+            o_start, at = HOOK_SECONDS, at + shift
+            span = probe_edl.output_span(at, dur)
+            if span is None or span[0] < HOOK_SECONDS - 1e-6:
+                notes.append(f"dropped broll {image}: it would cover the hook's first {HOOK_SECONDS}s")
+                continue
+            o_start, o_end = span
+        if o_end - o_start < BROLL_MIN - 1e-6:
+            notes.append(f"dropped broll {image} at {at:.2f}: less than {BROLL_MIN}s fits before the next cut")
+            continue
+        if any(o_start < e and o_end > s for s, e in windows):
+            notes.append(f"dropped broll {image} at {at:.2f}: overlaps another broll")
+            continue
+        if len(out) >= max(1, int(total / BROLL_PER_SECONDS)):
+            notes.append(f"dropped broll {image} at {at:.2f}: more than 1 per {BROLL_PER_SECONDS:.0f}s of output")
+            continue
+        out.append(Broll(image, round(at, 3), round(o_end - o_start, 3)))
+        windows.append((o_start, o_end))
+    return out
+
+
+def validate_edl(raw: dict, words: list[Word], clip_duration: float,
+                 image_names: tuple[str, ...] | list[str] = ()) -> tuple[Edl, list[str]]:
     notes: list[str] = []
     keep_raw = raw.get("keep") or []
     if not keep_raw:
@@ -201,6 +273,8 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float) -> tuple[Ed
 
     notes += resolve_edits(words, fixes, emph)[2]
 
+    broll = _validate_broll(raw.get("broll") or [], kept, hook, list(image_names), notes)
+
     music = raw.get("music") or {}
     duck = float(music.get("duck_db", -14.0))
     edl = Edl(
@@ -208,6 +282,7 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float) -> tuple[Ed
         hook=hook,
         caption_fixes=fixes,
         emphasis=emph,
+        broll=broll,
         cta_text=(raw.get("cta_text") or "").strip() or DEFAULT_CTA,
         music_use=bool(music.get("use", True)),
         music_duck_db=min(-6.0, max(-24.0, duck)),

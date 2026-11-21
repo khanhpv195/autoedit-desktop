@@ -8,7 +8,7 @@ from autoedit.transcript import Word
 
 
 def test_prompt_contents(tmp_path):
-    proj = Project(dir=tmp_path, niche="thoi-trang", clip="c.mp4", logo="l.png",
+    proj = Project(dir=tmp_path, niche="thoi-trang", clips=["c.mp4"], logo="l.png",
                    script_card={"title": "x"})
     prep = Prepared(info=MediaInfo(duration=20, width=1080, height=1920, fps=30, hdr=False, has_audio=True),
                     normalized=tmp_path / "n.mp4", words=[Word("a", 0, 1)], keyframes=[])
@@ -29,7 +29,7 @@ def _prep(tmp_path, n_frames=6):
 
 
 def test_first_message_has_transcript_skills_words_and_frames(tmp_path):
-    proj = Project(dir=tmp_path, niche="my-pham", clip="c.mp4")
+    proj = Project(dir=tmp_path, niche="my-pham", clips=["c.mp4"])
     m = build_edit_message(proj, _prep(tmp_path), "gọn", None, None, agent_dir())
     assert m["type"] == "user" and m["parent_tool_use_id"] is None and m["session_id"] == "default"
     content = m["message"]["content"]
@@ -49,7 +49,7 @@ def test_first_message_has_transcript_skills_words_and_frames(tmp_path):
 
 
 def test_message_without_keyframes_or_speech(tmp_path):
-    proj = Project(dir=tmp_path, niche="chung", clip="c.mp4")
+    proj = Project(dir=tmp_path, niche="chung", clips=["c.mp4"])
     prep = _prep(tmp_path, 0)
     prep.words = []
     m = build_edit_message(proj, prep, "", None, None, agent_dir())

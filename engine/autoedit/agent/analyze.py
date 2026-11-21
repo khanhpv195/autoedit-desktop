@@ -5,6 +5,7 @@ from claude_agent_sdk import AssistantMessage, RateLimitEvent, ResultMessage, qu
 
 from autoedit.agent.library import NICHE_NAMES, niche_section
 from autoedit.agent.options import model, plain_options
+from autoedit.agent.prompt import span_lines
 from autoedit.agent.runner import _iso
 from autoedit.agent.sdk_errors import NO_AUTH_MSG, RATE_MSG, classify_result, classify_sdk_error
 from autoedit.errors import AgentFailed, NoAuth, RateLimited
@@ -26,6 +27,8 @@ Each card: title (≤6 words), hook (on-screen text, ≤5 words, faithful to wha
 outline (3-5 short steps in Vietnamese), prompt (one Vietnamese instruction an editor can follow,
 mentioning which spoken line opens the video). Base every card on lines that exist in the transcript.
 Use the niche library for structure and hook style. The 3 cards must differ in hook and order.
+If several clips or images are given, say in each card how to order the clips and
+where the images work as b-roll while the speech continues.
 Never promise: giảm cân, cao thêm X cm, trị mụn dứt điểm, trắng da sau N ngày, chữa bệnh."""
 
 
@@ -33,13 +36,21 @@ def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclu
     transcript = format_phrases(pack_phrases(prepared.words)) or "(no speech - suggest visual-first scripts)"
     text = (f"{INSTRUCTIONS}\n\nNiche: {niche} ({NICHE_NAMES[niche]})\n"
             f"Niche library:\n{niche_section(niche, agent_dir)}\n\n"
-            f"Clip duration: {prepared.info.duration:.1f}s\nTranscript:\n{transcript}\n")
+            f"Total duration: {prepared.info.duration:.1f}s\n")
+    spans = span_lines(prepared)
+    if spans:
+        text += "\n".join(spans) + "\n"
+    text += f"Transcript (timeline seconds):\n{transcript}\n"
     if exclude:
         text += "\nDo not repeat these earlier cards: " + "; ".join(exclude) + "\n"
     content = [{"type": "text", "text": text}]
     for kf in prepared.keyframes[:3]:
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                     "data": base64.b64encode(kf.read_bytes()).decode()}})
+    for img in prepared.images:
+        content.append({"type": "text", "text": f'Image "{img.name}"'})
+        content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                    "data": base64.b64encode(img.small.read_bytes()).decode()}})
     return {"type": "user", "message": {"role": "user", "content": content},
             "parent_tool_use_id": None, "session_id": "default"}
 
