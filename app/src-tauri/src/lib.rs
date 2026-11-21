@@ -64,12 +64,14 @@ pub fn run() {
                 jobs: Arc::new(sidecar::Jobs::default()),
                 login: Arc::new(std::sync::Mutex::new(None)),
                 gate: Arc::new(license::Gate::load(&secrets::KeyringStore, license::PUBKEY)),
+                license_wake: Arc::new(tokio::sync::Notify::new()),
             });
             spawn_license_check(app.handle().clone());
             Ok(())
         })
         .invoke_handler(move |invoke| {
-            // Central gate: every command (app and user-facing plugin) is refused until licensed.
+            // Central gate: every app command is refused until licensed. Plugin commands never reach this
+            // handler (Tauri routes `plugin:*|*` to the plugins) and cannot unlock editing.
             let licensed = invoke
                 .message
                 .webview()
@@ -93,20 +95,34 @@ pub fn run() {
         });
 }
 
-/// At startup, then every 6 h: if the server says the key is revoked, used elsewhere or unknown,
-/// lock the app and tell the UI. Network errors and 5xx are ignored (no offline limit).
+/// Background revocation check. Polls every 15 min and runs the check when 6 h of wall-clock time
+/// have passed since the last attempt (so it also fires right after a laptop wakes), at startup,
+/// and immediately after a successful activation. Network errors and 5xx never lock (no offline limit).
 fn spawn_license_check(handle: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
+        let wake = handle.state::<commands::AppState>().license_wake.clone();
+        let mut last: Option<std::time::SystemTime> = None;
+        let mut verdicts = license::Verdicts::default();
+        let mut forced = false;
         loop {
-            let st = handle.state::<commands::AppState>();
-            if let Some(key) = st.gate.key() {
-                let r = license::check(license::URL, &key, st.gate.machine()).await;
-                if matches!(r, license::Remote::Revoked | license::Remote::Used | license::Remote::Invalid) {
-                    st.gate.revoke(&*st.secrets);
-                    let _ = handle.emit("license-revoked", serde_json::json!({ "reason": license::code(&r) }));
+            let now = std::time::SystemTime::now();
+            if forced || license::check_due(last, now) {
+                forced = false;
+                let st = handle.state::<commands::AppState>();
+                if let Some(key) = st.gate.key() {
+                    last = Some(now);
+                    let r = license::check(license::URL, &key, st.gate.machine()).await;
+                    if let Some(reason) = verdicts.apply(&r, std::time::SystemTime::now()) {
+                        st.gate.revoke(&*st.secrets);
+                        commands::shutdown(&st); // stop running engine jobs and the login PTY
+                        let _ = handle.emit("license-revoked", serde_json::json!({ "reason": reason }));
+                    }
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(license::POLL_EVERY) => {}
+                _ = wake.notified() => { forced = true; }
+            }
         }
     });
 }

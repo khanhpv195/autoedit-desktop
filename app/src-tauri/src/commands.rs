@@ -20,6 +20,8 @@ pub struct AppState {
     pub jobs: Arc<Jobs>,
     pub login: LoginSlot,
     pub gate: Arc<crate::license::Gate>,
+    /// Wakes the background license check (after a successful activation).
+    pub license_wake: Arc<tokio::sync::Notify>,
 }
 
 static LOGIN_GEN: AtomicU64 = AtomicU64::new(1);
@@ -47,14 +49,16 @@ pub async fn license_activate(state: State<'_, AppState>, key: String) -> Result
     use crate::license;
     let machine = state.gate.machine().to_string();
     if machine.is_empty() {
-        return Err("LICENSE_OFFLINE".into());
+        return Err("LICENSE_MACHINE".into());
     }
     match license::activate(license::URL, &key, &machine, env!("CARGO_PKG_VERSION")).await {
         license::Remote::Ok(token) => {
-            let l = state
-                .gate
-                .set(&*state.secrets, &token, license::PUBKEY)
-                .map_err(|_| "LICENSE_INVALID".to_string())?;
+            let l = state.gate.set(&*state.secrets, &token, license::PUBKEY).map_err(|e| match e {
+                license::SetError::Store => "LICENSE_STORE",
+                // The server signed it, so a failure here means the bundled pubkey/url is wrong.
+                license::SetError::Verify => "LICENSE_CONFIG",
+            })?;
+            state.license_wake.notify_one();
             Ok(serde_json::json!({ "licensed": true, "name": l.name }))
         }
         other => Err(license::code(&other).into()),

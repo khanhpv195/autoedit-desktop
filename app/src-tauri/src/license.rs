@@ -52,12 +52,6 @@ fn parse_ioreg(out: &str) -> Option<String> {
     (!v.is_empty()).then(|| v.to_string())
 }
 
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))] // only called on Windows; tested everywhere
-fn parse_reg(out: &str) -> Option<String> {
-    let line = out.lines().find(|l| l.contains("MachineGuid"))?;
-    line.split("REG_SZ").nth(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
-}
-
 pub fn machine_hash() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     let id = {
@@ -69,13 +63,14 @@ pub fn machine_hash() -> Result<String, String> {
     };
     #[cfg(target_os = "windows")]
     let id = {
-        use std::os::windows::process::CommandExt;
-        let o = std::process::Command::new("reg")
-            .args(["query", r"HKLM\SOFTWARE\Microsoft\Cryptography", "/v", "MachineGuid"])
-            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
-            .output()
-            .map_err(|e| e.to_string())?;
-        parse_reg(&String::from_utf8_lossy(&o.stdout))
+        // Registry API, not `reg.exe`: no child process, nothing to hijack through PATH.
+        use winreg::RegKey;
+        use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
+        RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey_with_flags(r"SOFTWARE\Microsoft\Cryptography", KEY_READ | KEY_WOW64_64KEY)
+            .and_then(|k| k.get_value::<String, _>("MachineGuid"))
+            .ok()
+            .filter(|g| !g.trim().is_empty())
     };
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let id = std::fs::read_to_string("/etc/machine-id").ok();
@@ -100,23 +95,28 @@ pub fn code(r: &Remote) -> &'static str {
     }
 }
 
-fn from_status(status: u16, body: &str) -> Remote {
-    match status {
-        200 => {
-            let v: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
-            match v["license"].as_str().or(v["status"].as_str()) {
-                Some(s) => Remote::Ok(s.to_string()),
-                None => Remote::Offline,
-            }
-        }
-        404 => Remote::Invalid,
-        409 => Remote::Used,
-        410 => Remote::Revoked,
+/// Only a JSON body from our Worker with the exact `error` code is a verdict. Anything else
+/// (an HTML 404 from a proxy, a wrong path answering `not_found`, a captive portal) is Offline:
+/// it must never lock a paying customer out. `field` is the success field for a 200
+/// (`license` for activation, `status` for a check).
+fn from_status(status: u16, body: &str, field: &str) -> Remote {
+    let v: serde_json::Value = match serde_json::from_str(body) {
+        Ok(v) => v,
+        Err(_) => return Remote::Offline,
+    };
+    match (status, v["error"].as_str()) {
+        (200, _) => match v[field].as_str() {
+            Some(s) if !s.is_empty() && (field != "status" || s == "active") => Remote::Ok(s.to_string()),
+            _ => Remote::Offline,
+        },
+        (404, Some("invalid")) => Remote::Invalid,
+        (409, Some("used_elsewhere")) => Remote::Used,
+        (410, Some("revoked")) => Remote::Revoked,
         _ => Remote::Offline,
     }
 }
 
-async fn post(url: &str, path: &str, body: serde_json::Value) -> Remote {
+async fn post(url: &str, path: &str, field: &str, body: serde_json::Value) -> Remote {
     if url.is_empty() {
         return Remote::Offline;
     }
@@ -131,33 +131,86 @@ async fn post(url: &str, path: &str, body: serde_json::Value) -> Remote {
     match client.post(format!("{url}{path}")).json(&body).send().await {
         Ok(r) => {
             let s = r.status().as_u16();
-            from_status(s, &r.text().await.unwrap_or_default())
+            from_status(s, &r.text().await.unwrap_or_default(), field)
         }
         Err(_) => Remote::Offline,
     }
 }
 
 pub async fn activate(url: &str, key: &str, machine: &str, version: &str) -> Remote {
-    post(url, "/v1/activate", serde_json::json!({"key": key.trim(), "machine": machine, "app_version": version})).await
+    post(url, "/v1/activate", "license", serde_json::json!({"key": key.trim(), "machine": machine, "app_version": version})).await
 }
 
 pub async fn check(url: &str, key: &str, machine: &str) -> Remote {
-    post(url, "/v1/check", serde_json::json!({"key": key, "machine": machine})).await
+    post(url, "/v1/check", "status", serde_json::json!({"key": key, "machine": machine})).await
 }
 
 /// Commands that work while the app is locked.
 pub const OPEN_COMMANDS: &[&str] = &["license_status", "license_activate", "kill_all_jobs"];
 
-/// Plugin commands that do something for the user (files, links, relaunch, updates) are gated like
-/// app commands. The rest (event listen/emit, window and webview plumbing) must keep working so
-/// the activation screen can load and hear `license-revoked`.
-const GATED_PLUGINS: &[&str] = &["plugin:dialog|", "plugin:opener|", "plugin:process|", "plugin:updater|"];
-
+/// App commands (everything in `generate_handler!`) are refused until licensed, except OPEN_COMMANDS.
+/// Plugin commands (`plugin:*|*`: dialog, opener, process, updater, event) are routed by Tauri to
+/// the plugin handlers and never reach the app's invoke handler, so they are NOT gated here. They
+/// cannot unlock editing: every action that produces or changes a project goes through an app command.
 pub fn allowed(cmd: &str, licensed: bool) -> bool {
-    if licensed || OPEN_COMMANDS.contains(&cmd) {
-        return true;
+    licensed || OPEN_COMMANDS.contains(&cmd)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SetError {
+    /// The token the server issued does not verify against the bundled public key / this machine.
+    Verify,
+    /// Keychain write failed.
+    Store,
+}
+
+/// Background-check bookkeeping, kept pure so it can be tested without a clock or a network.
+pub const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
+pub const POLL_EVERY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+pub const INVALID_CONFIRM_GAP: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Wall-clock based so a laptop that slept for a day checks right after waking. A clock that
+/// moved backwards counts as due.
+pub fn check_due(last: Option<std::time::SystemTime>, now: std::time::SystemTime) -> bool {
+    match last {
+        None => true,
+        Some(t) => now.duration_since(t).map_or(true, |d| d >= CHECK_EVERY),
     }
-    cmd.starts_with("plugin:") && !GATED_PLUGINS.iter().any(|p| cmd.starts_with(p))
+}
+
+#[derive(Default)]
+pub struct Verdicts {
+    first_invalid: Option<std::time::SystemTime>,
+}
+
+impl Verdicts {
+    /// Some(code) = lock the app (and delete the token) with this reason.
+    /// Revoked/Used lock at once. Invalid locks only on a second definitive `invalid` at least
+    /// INVALID_CONFIRM_GAP after the first. Offline changes nothing; a good answer resets.
+    pub fn apply(&mut self, r: &Remote, now: std::time::SystemTime) -> Option<&'static str> {
+        match r {
+            Remote::Revoked | Remote::Used => {
+                self.first_invalid = None;
+                Some(code(r))
+            }
+            Remote::Invalid => match self.first_invalid {
+                Some(t) if now.duration_since(t).is_ok_and(|d| d >= INVALID_CONFIRM_GAP) => {
+                    self.first_invalid = None;
+                    Some(code(r))
+                }
+                Some(_) => None,
+                None => {
+                    self.first_invalid = Some(now);
+                    None
+                }
+            },
+            Remote::Ok(_) => {
+                self.first_invalid = None;
+                None
+            }
+            Remote::Offline => None,
+        }
+    }
 }
 
 pub struct Gate {
@@ -190,9 +243,9 @@ impl Gate {
         self.license.lock().unwrap().as_ref().map(|l| l.name.clone())
     }
 
-    pub fn set(&self, store: &dyn SecretStore, token: &str, pubkey: &str) -> Result<License, String> {
-        let l = verify_token(token, pubkey, &self.machine)?;
-        store.set(LICENSE_ACCOUNT, token)?;
+    pub fn set(&self, store: &dyn SecretStore, token: &str, pubkey: &str) -> Result<License, SetError> {
+        let l = verify_token(token, pubkey, &self.machine).map_err(|_| SetError::Verify)?;
+        store.set(LICENSE_ACCOUNT, token).map_err(|_| SetError::Store)?;
         *self.license.lock().unwrap() = Some(l.clone());
         self.licensed.store(true, Ordering::SeqCst);
         Ok(l)
@@ -257,11 +310,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_ioreg_and_reg_output() {
+    fn parses_ioreg_output() {
         let ioreg = "  |   \"IOPlatformUUID\" = \"1234ABCD-0000-1111-2222-333344445555\"\n";
         assert_eq!(parse_ioreg(ioreg).as_deref(), Some("1234ABCD-0000-1111-2222-333344445555"));
-        let reg = "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography\r\n    MachineGuid    REG_SZ    9f1c-aa\r\n";
-        assert_eq!(parse_reg(reg).as_deref(), Some("9f1c-aa"));
         assert_eq!(parse_ioreg("nothing"), None);
     }
 
@@ -270,15 +321,68 @@ mod tests {
         assert_eq!(machine_hash().unwrap().len(), 32);
     }
 
+    const NOT_FOUND: &str = r#"{"error":"not_found"}"#;
+
     #[test]
-    fn status_mapping() {
-        assert!(matches!(from_status(404, ""), Remote::Invalid));
-        assert!(matches!(from_status(409, ""), Remote::Used));
-        assert!(matches!(from_status(410, ""), Remote::Revoked));
-        assert!(matches!(from_status(500, ""), Remote::Offline));
-        assert!(matches!(from_status(200, r#"{"license":"t.s"}"#), Remote::Ok(ref t) if t == "t.s"));
-        assert!(matches!(from_status(200, r#"{"status":"active"}"#), Remote::Ok(ref s) if s == "active"));
+    fn only_exact_json_error_codes_are_verdicts() {
+        let act = |st, b| from_status(st, b, "license");
+        assert!(matches!(act(404, r#"{"error":"invalid"}"#), Remote::Invalid));
+        assert!(matches!(act(409, r#"{"error":"used_elsewhere"}"#), Remote::Used));
+        assert!(matches!(act(410, r#"{"error":"revoked"}"#), Remote::Revoked));
+        // wrong path on the Worker, HTML from a proxy, empty bodies, mismatched code/status: never a lock-out
+        assert!(matches!(act(404, NOT_FOUND), Remote::Offline));
+        assert!(matches!(act(404, "<html>Not Found</html>"), Remote::Offline));
+        assert!(matches!(act(404, ""), Remote::Offline));
+        assert!(matches!(act(410, "<html>Gone</html>"), Remote::Offline));
+        assert!(matches!(act(409, r#"{"error":"revoked"}"#), Remote::Offline));
+        assert!(matches!(act(410, r#"{"error":"invalid"}"#), Remote::Offline));
+        assert!(matches!(act(500, r#"{"error":"invalid"}"#), Remote::Offline));
+        assert!(matches!(act(503, r#"{"error":"retry"}"#), Remote::Offline));
         assert_eq!(code(&Remote::Used), "LICENSE_USED");
+    }
+
+    #[test]
+    fn ok_bodies_need_the_expected_field() {
+        assert!(matches!(from_status(200, r#"{"license":"t.s"}"#, "license"), Remote::Ok(ref t) if t == "t.s"));
+        assert!(matches!(from_status(200, r#"{"status":"active"}"#, "status"), Remote::Ok(ref s) if s == "active"));
+        assert!(matches!(from_status(200, "<html>captive portal</html>", "license"), Remote::Offline));
+        assert!(matches!(from_status(200, "{}", "license"), Remote::Offline));
+        assert!(matches!(from_status(200, r#"{"status":"active"}"#, "license"), Remote::Offline));
+        assert!(matches!(from_status(200, r#"{"license":"t.s"}"#, "status"), Remote::Offline));
+        assert!(matches!(from_status(200, r#"{"status":"weird"}"#, "status"), Remote::Offline));
+    }
+
+    #[test]
+    fn revoked_and_used_lock_at_once_invalid_needs_two_checks_an_hour_apart() {
+        use std::time::{Duration, SystemTime};
+        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let h = Duration::from_secs(3600);
+        let mut v = Verdicts::default();
+        assert_eq!(v.apply(&Remote::Revoked, t0), Some("LICENSE_REVOKED"));
+        assert_eq!(v.apply(&Remote::Used, t0), Some("LICENSE_USED"));
+        assert_eq!(v.apply(&Remote::Offline, t0), None);
+
+        assert_eq!(v.apply(&Remote::Invalid, t0), None); // first: keep
+        assert_eq!(v.apply(&Remote::Invalid, t0 + h / 2), None); // too soon: still keep
+        assert_eq!(v.apply(&Remote::Offline, t0 + h), None); // offline neither counts nor resets
+        assert_eq!(v.apply(&Remote::Invalid, t0 + h), Some("LICENSE_INVALID"));
+
+        let mut v = Verdicts::default();
+        assert_eq!(v.apply(&Remote::Invalid, t0), None);
+        assert_eq!(v.apply(&Remote::Ok("active".into()), t0 + h), None); // a good answer resets
+        assert_eq!(v.apply(&Remote::Invalid, t0 + 2 * h), None);
+    }
+
+    #[test]
+    fn check_is_due_by_wall_clock() {
+        use std::time::{Duration, SystemTime};
+        let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let h = Duration::from_secs(3600);
+        assert!(check_due(None, t0));
+        assert!(!check_due(Some(t0), t0 + 5 * h));
+        assert!(check_due(Some(t0), t0 + 6 * h));
+        assert!(check_due(Some(t0), t0 + 30 * h)); // woke from a long sleep
+        assert!(check_due(Some(t0 + h), t0)); // clock went backwards
     }
 
     #[tokio::test]
@@ -306,11 +410,27 @@ mod tests {
     }
 
     #[test]
+    fn gate_set_distinguishes_verify_failure_from_keychain_failure() {
+        struct FailingStore;
+        impl SecretStore for FailingStore {
+            fn get(&self, _: &str) -> Option<String> { None }
+            fn set(&self, _: &str, _: &str) -> Result<(), String> { Err("denied".into()) }
+            fn delete(&self, _: &str) -> Result<(), String> { Ok(()) }
+        }
+        let (sk, pk) = keypair();
+        let g = Gate::load_for(&FailingStore, &pk, "m1".into());
+        assert_eq!(g.set(&FailingStore, &token(&sk, PAYLOAD), &pk).unwrap_err(), SetError::Store);
+        assert!(!g.is_licensed());
+        assert_eq!(g.set(&FailingStore, "garbage", &pk).unwrap_err(), SetError::Verify);
+        assert_eq!(g.set(&FailingStore, &token(&sk, PAYLOAD), "").unwrap_err(), SetError::Verify);
+    }
+
+    #[test]
     fn gate_set_rejects_token_for_other_machine_and_revoke_clears() {
         let (sk, pk) = keypair();
         let store = MemoryStore::default();
         let g = gate_with(&store, &pk, "m2");
-        assert!(g.set(&store, &token(&sk, PAYLOAD), &pk).is_err());
+        assert_eq!(g.set(&store, &token(&sk, PAYLOAD), &pk).unwrap_err(), SetError::Verify);
         assert!(store.get(LICENSE_ACCOUNT).is_none());
         let g1 = gate_with(&store, &pk, "m1");
         g1.set(&store, &token(&sk, PAYLOAD), &pk).unwrap();
@@ -328,14 +448,18 @@ mod tests {
         assert!(allowed("engine_run", true));
     }
 
+    /// Fixture produced by license-server/scripts/gen-vector.mjs with the Worker's own signLicense().
     #[test]
-    fn plugin_commands_that_touch_the_user_are_gated_but_event_plumbing_is_not() {
-        assert!(allowed("plugin:event|listen", false)); // the activation screen listens for license-revoked
-        assert!(!allowed("plugin:dialog|open", false));
-        assert!(!allowed("plugin:opener|open_url", false));
-        assert!(!allowed("plugin:process|restart", false));
-        assert!(!allowed("plugin:updater|check", false));
-        assert!(allowed("plugin:dialog|open", true));
+    fn token_signed_by_the_worker_verifies_here() {
+        let v: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/license-vector.json")).unwrap();
+        let (pk, token, machine) = (v["pubkey"].as_str().unwrap(), v["token"].as_str().unwrap(), v["machine"].as_str().unwrap());
+        let l = verify_token(token, pk, machine).unwrap();
+        assert_eq!(l.key, v["key"].as_str().unwrap());
+        assert_eq!(l.name, v["name"].as_str().unwrap());
+        assert!(verify_token(token, pk, "other-machine").is_err());
+        let mut bad = token.to_string();
+        bad.replace_range(5..6, if &bad[5..6] == "A" { "B" } else { "A" });
+        assert!(verify_token(&bad, pk, machine).is_err());
     }
 
     /// Every command in generate_handler! goes through the central gate in lib.rs; the only
