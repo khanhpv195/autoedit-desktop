@@ -65,7 +65,8 @@ Normally: `set_edl` → `render_preview` → `finish`.
   video while the speech continues. `image` = the exact file name from the first message, `at` = timeline second
   inside a kept range, `dur` 1.5–4 s. Use them when the speaker names or shows the product, never in the first
   2.5 s (the hook), at most one per ~3 s of output, never two at once. Omit `broll` when there are no images.
-- `cta_text`: shown for the last 2 s. Keep it short; an emoji is fine.
+- `cta_text`: shown for the last 2 s. Use the `CTA text` from the request unless the customer asks for another
+  CTA; omit it to use that default. Keep it short; an emoji is fine.
 - `music.use`: false if the clip already has music or the speech is quiet.
 
 ## Hard rules
@@ -75,7 +76,8 @@ Normally: `set_edl` → `render_preview` → `finish`.
 - Forbidden promises, even if spoken: giảm cân, cao thêm X cm, trị mụn dứt điểm, trắng da sau N ngày,
   chữa bệnh, an toàn tuyệt đối. Cut those lines out.
 - Never change product details, prices or colours. Keep the price line and the spoken CTA if present.
-- Typical result: 15–45 s. Keep at least 30% of the speech.
+- Length: aim for the target length given in the request (`Target length: …`). `set_edl` adds a note when the
+  output is far outside it; adjust then. Keep at least 30% of the speech.
 - If the clip has no speech: choose the best visual moments with `view_frames`, `hook: null`.
 - `finish` summary: plain Vietnamese, no jargon (no "EDL", "segment", "range").
   Example: "Bỏ 12 giây ngập ngừng ở đầu", "Đưa câu giá 189K lên mở đầu".

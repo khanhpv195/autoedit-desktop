@@ -6,7 +6,7 @@ from claude_agent_sdk import ClaudeAgentOptions
 from autoedit.agent.tools import TOOL_NAMES
 from autoedit.claude_cli import find_cli
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "claude-sonnet-5-5"
 BASE_ENV = {"DISABLE_AUTOUPDATER": "1"}   # our pinned CLI must never update itself
 MAX_BUFFER = 32 * 1024 * 1024    # SDK default 1 MB overflows on a tool result with 6 base64 frames
 EDIT_TOOLS = [f"mcp__autoedit__{n}" for n in TOOL_NAMES]

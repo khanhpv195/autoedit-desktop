@@ -68,7 +68,25 @@ def update_project(dir: Path, mutate) -> dict:
 
 NICHES = ("thoi-trang", "my-pham", "do-an", "phu-kien", "chung")
 MAX_CLIPS, MAX_IMAGES = 10, 20
-_FIELDS = ("niche", "clips", "images", "logo", "music", "prompt", "script_card", "runs", "posts")
+_FIELDS = ("niche", "clips", "images", "logo", "music", "prompt", "script_card", "runs", "posts",
+           "voiceover", "product_info", "cta_text", "length")
+DEFAULT_CTA = "BẤM GIỎ HÀNG 👇"
+CTA_MAX = 30
+PRODUCT_INFO_MAX = 500
+LENGTHS = {"short": (15.0, 20.0), "medium": (20.0, 35.0), "long": (35.0, 60.0)}
+
+
+def _sanitize(data: dict) -> None:
+    """New optional keys (v0.3): bad or missing values fall back to defaults instead of failing the load."""
+    if data.get("length") not in LENGTHS:
+        data["length"] = "medium"
+    cta = data.get("cta_text")
+    cta = cta.strip() if isinstance(cta, str) else ""
+    data["cta_text"] = cta if 0 < len(cta) <= CTA_MAX else DEFAULT_CTA
+    info = data.get("product_info")
+    data["product_info"] = info[:PRODUCT_INFO_MAX] if isinstance(info, str) else ""
+    if not isinstance(data.get("voiceover"), dict):
+        data["voiceover"] = None
 
 
 def _check_name(name) -> None:
@@ -89,6 +107,10 @@ class Project:
     script_card: dict | None = None
     runs: list[dict] = field(default_factory=list)
     posts: list[dict] = field(default_factory=list)
+    voiceover: dict | None = None      # {"enabled", "voice_id", "voice_name"}
+    product_info: str = ""
+    cta_text: str = DEFAULT_CTA
+    length: str = "medium"
 
     @classmethod
     def load(cls, dir: Path, require_media: bool = True) -> "Project":
@@ -103,6 +125,7 @@ class Project:
             data["clips"] = [data["clip"]]     # legacy single-clip project
         data.setdefault("clips", [])
         data["images"] = data.get("images") or []
+        _sanitize(data)
         p = cls(dir=dir, **{k: data[k] for k in _FIELDS if k in data})
         if p.niche not in NICHES:
             raise BadInput(f"Ngành không hợp lệ: {p.niche}")
@@ -127,6 +150,18 @@ class Project:
     def save(self) -> None:
         data = {k: v for k, v in asdict(self).items() if k in _FIELDS}
         atomic_write_text(self.dir / "project.json", json.dumps(data, ensure_ascii=False, indent=2))
+
+    @property
+    def voiceover_on(self) -> bool:
+        return bool(self.voiceover and self.voiceover.get("enabled") and self.voiceover.get("voice_id"))
+
+    @property
+    def voice_id(self) -> str:
+        return str((self.voiceover or {}).get("voice_id") or "")
+
+    @property
+    def length_range(self) -> tuple[float, float]:
+        return LENGTHS.get(self.length, LENGTHS["medium"])
 
     @property
     def input_dir(self) -> Path:

@@ -63,6 +63,8 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
         *span_lines(prepared),
         f"Logo: {'yes' if project.logo else 'no'}. Background music file: {'yes' if project.music else 'no'}.",
         "Customer request: " + (user_prompt.strip() or "(none - choose the strongest sales edit yourself)"),
+        "Target length: {:.0f}–{:.0f}s.".format(*project.length_range),
+        f"CTA text: {project.cta_text} (use it unless the customer request asks for another CTA).",
     ]
     if project.script_card:
         lines.append("Chosen script card: " + json.dumps(project.script_card, ensure_ascii=False))

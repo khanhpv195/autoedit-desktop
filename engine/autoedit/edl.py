@@ -1,6 +1,7 @@
 import math
 from dataclasses import asdict, dataclass, field
 
+from autoedit.project import DEFAULT_CTA
 from autoedit.render.compose import HOOK_SECONDS
 from autoedit.transcript import Word, resolve_edits, speech_duration
 
@@ -11,7 +12,6 @@ MIN_KEEP_RATIO = 0.30
 HOOK_MAX_WORDS = 5
 BROLL_MIN, BROLL_MAX = 1.5, 4.0
 BROLL_PER_SECONDS = 3.0     # soft rule: at most one b-roll per 3 s of output
-DEFAULT_CTA = "BẤM GIỎ HÀNG 👇"
 
 
 class EdlError(ValueError):
@@ -221,7 +221,8 @@ def _validate_broll(raw: list, kept: list[Range], hook: Hook | None, image_names
 
 
 def validate_edl(raw: dict, words: list[Word], clip_duration: float,
-                 image_names: tuple[str, ...] | list[str] = ()) -> tuple[Edl, list[str]]:
+                 image_names: tuple[str, ...] | list[str] = (), *,
+                 default_cta: str = DEFAULT_CTA) -> tuple[Edl, list[str]]:
     notes: list[str] = []
     keep_raw = raw.get("keep") or []
     if not keep_raw:
@@ -290,7 +291,7 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         caption_fixes=fixes,
         emphasis=emph,
         broll=broll,
-        cta_text=(raw.get("cta_text") or "").strip() or DEFAULT_CTA,
+        cta_text=str(raw.get("cta_text") or "").strip() or default_cta,
         music_use=bool(music.get("use", True)),
         music_duck_db=min(-6.0, max(-24.0, duck)),
     )

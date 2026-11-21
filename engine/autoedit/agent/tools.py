@@ -71,7 +71,7 @@ async def set_edl(s: EditSession, args: dict) -> dict:
             except json.JSONDecodeError as e:
                 raise EdlError(f"edl is not valid JSON: {e}") from e
         edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration,
-                                  image_names=s.prepared.image_names)
+                                  image_names=s.prepared.image_names, default_cta=s.project.cta_text)
     except (EdlError, KeyError, TypeError, ValueError, AttributeError) as e:
         s.edl_errors += 1
         if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
@@ -79,7 +79,11 @@ async def set_edl(s: EditSession, args: dict) -> dict:
         return _text(f"Invalid EDL: {e}", error=True)
     s.edl = edl
     atomic_write_text(s.project.work_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
-    msg = {"corrected_edl": edl.to_dict(), "notes": notes, "output_duration": round(edl.output_duration(), 2)}
+    d = edl.output_duration()
+    lo, hi = s.project.length_range
+    if not (lo * 0.8 <= d <= hi * 1.2):
+        notes.append(f"Lưu ý: video dài {d:.1f}s, mục tiêu {lo:.0f}–{hi:.0f}s — hãy chỉnh lại.")
+    msg = {"corrected_edl": edl.to_dict(), "notes": notes, "output_duration": round(d, 2)}
     return _text(json.dumps(msg, ensure_ascii=False))
 
 
