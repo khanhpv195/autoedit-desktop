@@ -18,7 +18,7 @@ Approved by the user 2026-11-21. Images are used as **b-roll overlays while spee
 
 ### Rust commands (app)
 - `create_project(niche, clips: Vec<String>, images: Vec<String>, logo, music)` — absolute paths, copied into `input/`.
-- New `set_project_media(dir, clips: Vec<String>, images: Vec<String>) -> ProjectDetail` — absolute paths in desired order; a path already inside `<dir>/input/` is kept by name, others are copied in (unique names). Unreferenced input files are left on disk. Clears `script_card` only if clips changed? No — leaves it.
+- New `set_project_media(dir, clips: Vec<String>, images: Vec<String>) -> ProjectDetail` — absolute paths in desired order; a path already inside `<dir>/input/` is kept by name, others are copied in (unique names). Unreferenced input files are left on disk. Leaves `script_card` untouched.
 - `ProjectDetail.clips: string[]`, `ProjectDetail.images: string[]` (absolute paths) replace `clip`.
 
 ### UI (NewVideo)
