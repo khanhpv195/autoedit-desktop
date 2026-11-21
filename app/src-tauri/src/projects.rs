@@ -89,15 +89,23 @@ fn write_json(dir: &Path, m: &Map<String, Value>) -> Result<(), String> {
     std::fs::rename(&tmp, dir.join("project.json")).map_err(|e| e.to_string())
 }
 
-fn copy_input(dir: &Path, src: &Path) -> Result<String, String> {
-    let name = src.file_name().ok_or("Đường dẫn không hợp lệ")?;
-    let input = dir.join("input");
-    std::fs::create_dir_all(&input).map_err(|e| e.to_string())?;
-    let dest = input.join(name);
-    if dest != src {
-        std::fs::copy(src, &dest).map_err(|e| format!("Không chép được {}: {e}", src.display()))?;
-    }
-    Ok(name.to_string_lossy().into_owned())
+/// Run `f` holding the same exclusive lock the engine takes (`project.json.lock`, flock / LockFileEx on the
+/// whole file), so Rust and engine read-modify-write cycles of project.json never interleave.
+fn with_lock<T>(dir: &Path, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("project.json.lock"))
+        .map_err(|e| format!("Không khóa được project: {e}"))?;
+    file.lock().map_err(|e| format!("Không khóa được project: {e}"))?;
+    let out = f();
+    let _ = file.unlock();
+    out
+}
+
+/// A plain file name: no separators, not `.`/`..`, not absolute.
+fn is_plain_name(n: &str) -> bool {
+    !n.is_empty() && Path::new(n).file_name().is_some_and(|f| f == std::ffi::OsStr::new(n))
 }
 
 pub const MAX_CLIPS: usize = 10;
@@ -106,6 +114,9 @@ pub const MAX_IMAGES: usize = 20;
 /// Copy `src` into `<dir>/input/` under a unique name, unless it already lives there (then keep it by name).
 fn place_input(dir: &Path, src: &Path) -> Result<String, String> {
     let name = src.file_name().ok_or("Đường dẫn không hợp lệ")?;
+    if !is_plain_name(&name.to_string_lossy()) {
+        return Err("Tên file không hợp lệ".into());
+    }
     let input = dir.join("input");
     std::fs::create_dir_all(&input).map_err(|e| e.to_string())?;
     let same_dir = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
@@ -127,7 +138,7 @@ fn place_input(dir: &Path, src: &Path) -> Result<String, String> {
     Ok(final_name)
 }
 
-fn place_media(dir: &Path, clips: &[PathBuf], images: &[PathBuf]) -> Result<(Vec<String>, Vec<String>), String> {
+fn validate_media(clips: &[PathBuf], images: &[PathBuf]) -> Result<(), String> {
     if clips.is_empty() {
         return Err("Cần ít nhất 1 clip".into());
     }
@@ -140,6 +151,11 @@ fn place_media(dir: &Path, clips: &[PathBuf], images: &[PathBuf]) -> Result<(Vec
     if let Some(p) = clips.iter().chain(images).find(|p| !p.is_file()) {
         return Err(format!("Không thấy file {}", p.display()));
     }
+    Ok(())
+}
+
+fn place_media(dir: &Path, clips: &[PathBuf], images: &[PathBuf]) -> Result<(Vec<String>, Vec<String>), String> {
+    validate_media(clips, images)?;
     let c = clips.iter().map(|p| place_input(dir, p)).collect::<Result<Vec<_>, _>>()?;
     let i = images.iter().map(|p| place_input(dir, p)).collect::<Result<Vec<_>, _>>()?;
     Ok((c, i))
@@ -158,7 +174,8 @@ pub fn create(
         return Err(format!("Ngành không hợp lệ: {niche}"));
     }
     let first = clips.first().ok_or("Cần ít nhất 1 clip")?;
-    if let Some(p) = clips.iter().chain(images).find(|p| !p.is_file()) {
+    validate_media(clips, images)?;
+    if let Some(p) = logo.into_iter().chain(music).find(|p| !p.is_file()) {
         return Err(format!("Không thấy file {}", p.display()));
     }
     let stem = first.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
@@ -170,20 +187,26 @@ pub fn create(
         k += 1;
     }
     std::fs::create_dir_all(dir.join("input")).map_err(|e| e.to_string())?;
-    let (clip_names, image_names) = place_media(&dir, clips, images)?;
-    let logo_name = logo.map(|p| copy_input(&dir, p)).transpose()?;
-    let music_name = music.map(|p| copy_input(&dir, p)).transpose()?;
-    let mut m = Map::new();
-    m.insert("niche".into(), json!(niche));
-    m.insert("clips".into(), json!(clip_names));
-    m.insert("images".into(), json!(image_names));
-    m.insert("logo".into(), json!(logo_name));
-    m.insert("music".into(), json!(music_name));
-    m.insert("prompt".into(), json!(""));
-    m.insert("script_card".into(), Value::Null);
-    m.insert("runs".into(), json!([]));
-    write_json(&dir, &m)?;
-    summary(&dir, &m)
+    let built = (|| {
+        let (clip_names, image_names) = place_media(&dir, clips, images)?;
+        let logo_name = logo.map(|p| place_input(&dir, p)).transpose()?;
+        let music_name = music.map(|p| place_input(&dir, p)).transpose()?;
+        let mut m = Map::new();
+        m.insert("niche".into(), json!(niche));
+        m.insert("clips".into(), json!(clip_names));
+        m.insert("images".into(), json!(image_names));
+        m.insert("logo".into(), json!(logo_name));
+        m.insert("music".into(), json!(music_name));
+        m.insert("prompt".into(), json!(""));
+        m.insert("script_card".into(), Value::Null);
+        m.insert("runs".into(), json!([]));
+        write_json(&dir, &m)?;
+        summary(&dir, &m)
+    })();
+    if built.is_err() {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    built
 }
 
 fn summary(dir: &Path, m: &Map<String, Value>) -> Result<ProjectSummary, String> {
@@ -225,11 +248,11 @@ fn opt_str(m: &Map<String, Value>, k: &str) -> Option<String> {
 /// File names stored under `key`; `clips` falls back to the legacy single `clip` field.
 fn names(m: &Map<String, Value>, key: &str) -> Vec<String> {
     let list = m.get(key).and_then(Value::as_array).map(|a| {
-        a.iter().filter_map(|v| v.as_str().filter(|s| !s.is_empty()).map(String::from)).collect::<Vec<_>>()
+        a.iter().filter_map(|v| v.as_str().filter(|s| is_plain_name(s)).map(String::from)).collect::<Vec<_>>()
     });
     match list {
         Some(l) => l,
-        None if key == "clips" => opt_str(m, "clip").into_iter().collect(),
+        None if key == "clips" => opt_str(m, "clip").filter(|s| is_plain_name(s)).into_iter().collect(),
         None => vec![],
     }
 }
@@ -240,7 +263,7 @@ pub fn detail(dir: &Path) -> Result<ProjectDetail, String> {
     let abs_list = |k: &str| -> Vec<String> {
         names(&m, k).iter().map(|n| input.join(n).to_string_lossy().into_owned()).collect()
     };
-    let abs_input = |k: &str| opt_str(&m, k).map(|n| input.join(n).to_string_lossy().into_owned());
+    let abs_input = |k: &str| opt_str(&m, k).filter(|n| is_plain_name(n)).map(|n| input.join(n).to_string_lossy().into_owned());
     let runs = m
         .get("runs")
         .and_then(Value::as_array)
@@ -280,39 +303,48 @@ pub fn detail(dir: &Path) -> Result<ProjectDetail, String> {
 }
 
 pub fn update(dir: &Path, patch: &Value) -> Result<(), String> {
-    let mut m = read_json(dir)?;
     let Some(p) = patch.as_object() else { return Err("patch không hợp lệ".into()) };
-    for key in ["niche", "prompt", "script_card"] {
-        let Some(v) = p.get(key) else { continue };
-        if key == "niche" && !v.as_str().is_some_and(|n| NICHES.contains(&n)) {
-            return Err("Ngành không hợp lệ".into());
+    with_lock(dir, || {
+        let mut m = read_json(dir)?;
+        for key in ["niche", "prompt", "script_card"] {
+            let Some(v) = p.get(key) else { continue };
+            if key == "niche" && !v.as_str().is_some_and(|n| NICHES.contains(&n)) {
+                return Err("Ngành không hợp lệ".into());
+            }
+            m.insert(key.into(), v.clone());
         }
-        m.insert(key.into(), v.clone());
-    }
-    write_json(dir, &m)
+        write_json(dir, &m)
+    })
 }
 
 pub fn set_asset(dir: &Path, kind: &str, path: Option<&Path>) -> Result<ProjectDetail, String> {
     if kind != "logo" && kind != "music" {
         return Err(format!("Loại không hợp lệ: {kind}"));
     }
-    let mut m = read_json(dir)?;
+    read_json(dir)?;
+    // Copy first (can take seconds); only the short read-modify-write holds the lock.
     let value = match path {
-        Some(p) => json!(copy_input(dir, p)?),
+        Some(p) => json!(place_input(dir, p)?),
         None => Value::Null,
     };
-    m.insert(kind.into(), value);
-    write_json(dir, &m)?;
+    with_lock(dir, || {
+        let mut m = read_json(dir)?;
+        m.insert(kind.into(), value);
+        write_json(dir, &m)
+    })?;
     detail(dir)
 }
 
 pub fn set_media(dir: &Path, clips: &[PathBuf], images: &[PathBuf]) -> Result<ProjectDetail, String> {
-    let mut m = read_json(dir)?;
+    read_json(dir)?;
     let (c, i) = place_media(dir, clips, images)?;
-    m.insert("clips".into(), json!(c));
-    m.insert("images".into(), json!(i));
-    m.remove("clip");
-    write_json(dir, &m)?;
+    with_lock(dir, || {
+        let mut m = read_json(dir)?;
+        m.insert("clips".into(), json!(c));
+        m.insert("images".into(), json!(i));
+        m.remove("clip");
+        write_json(dir, &m)
+    })?;
     detail(dir)
 }
 
@@ -527,5 +559,115 @@ mod tests {
         assert_eq!(d.clips.len(), 1);
         assert!(dir.join("input/c.mp4").exists());
         assert!(set_media(dir, &[], &[]).is_err());
+    }
+    #[test]
+    fn concurrent_update_and_set_media_keep_both() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let clip = src.path().join("a.mp4");
+        touch(&clip);
+        let s = create(root.path(), "chung", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
+        let dir = PathBuf::from(&s.dir);
+        let big = src.path().join("big.mp4");
+        std::fs::write(&big, vec![1u8; 20_000_000]).unwrap();
+        for n in 0..5 {
+            let (d1, d2, c2, b2) = (dir.clone(), dir.clone(), clip.clone(), big.clone());
+            let t1 = std::thread::spawn(move || set_media(&d1, &[c2, b2], &[]).unwrap());
+            let t2 = std::thread::spawn(move || update(&d2, &json!({"prompt": format!("p{n}")})).unwrap());
+            t1.join().unwrap();
+            t2.join().unwrap();
+            let d = detail(&dir).unwrap();
+            assert_eq!(d.prompt, format!("p{n}"));
+            assert_eq!(d.clips.len(), 2);
+        }
+    }
+    #[test]
+    fn set_media_keeps_prompt_written_during_copy() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let clip = src.path().join("a.mp4");
+        touch(&clip);
+        let s = create(root.path(), "chung", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
+        let dir = Path::new(&s.dir);
+        let other = src.path().join("b.mp4");
+        touch(&other);
+        // the update lands between the (slow) copy phase and the json write
+        let (c, i) = place_media(dir, &[clip.clone(), other], &[]).unwrap();
+        update(dir, &json!({"prompt": "mới"})).unwrap();
+        with_lock(dir, || {
+            let mut m = read_json(dir)?;
+            m.insert("clips".into(), json!(c));
+            m.insert("images".into(), json!(i));
+            write_json(dir, &m)
+        })
+        .unwrap();
+        assert_eq!(detail(dir).unwrap().prompt, "mới");
+    }
+    #[test]
+    fn logo_does_not_replace_broll_image_of_same_name() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let (clip, img) = (src.path().join("a.mp4"), src.path().join("1.jpg"));
+        touch(&clip);
+        std::fs::write(&img, b"broll").unwrap();
+        let s = create(root.path(), "chung", &[clip], std::slice::from_ref(&img), None, None, "2026-11-20").unwrap();
+        let dir = Path::new(&s.dir);
+        let logo_dir = src.path().join("l");
+        std::fs::create_dir_all(&logo_dir).unwrap();
+        let logo = logo_dir.join("1.jpg");
+        std::fs::write(&logo, b"logo").unwrap();
+        let d = set_asset(dir, "logo", Some(&logo)).unwrap();
+        assert!(d.logo.unwrap().ends_with("1-2.jpg"));
+        assert_eq!(std::fs::read(dir.join("input/1.jpg")).unwrap(), b"broll");
+    }
+    #[test]
+    fn failed_create_leaves_no_directory() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let clip = src.path().join("a.mp4");
+        touch(&clip);
+        let missing = src.path().join("nope.png");
+        assert!(create(root.path(), "chung", std::slice::from_ref(&clip), &[], Some(&missing), None, "2026-11-20").is_err());
+        let many: Vec<PathBuf> = (0..21).map(|_| clip.clone()).collect();
+        assert!(create(root.path(), "chung", std::slice::from_ref(&clip), &many, None, None, "2026-11-20").is_err());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+        // a failure after the dir exists (a directory named like a clip is not a file) is cleaned up too
+        let ok2 = src.path().join("b.mp4");
+        touch(&ok2);
+        let sub = src.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let bad_logo = sub.join("logo.png");
+        std::fs::write(&bad_logo, b"x").unwrap();
+        let mut perms = std::fs::metadata(&bad_logo).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o000);
+            std::fs::set_permissions(&bad_logo, perms).unwrap();
+            if std::fs::File::open(&bad_logo).is_err() {
+                assert!(create(root.path(), "chung", &[ok2], &[], Some(&bad_logo), None, "2026-11-20").is_err());
+                assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = &mut perms;
+    }
+    #[test]
+    fn detail_skips_non_plain_names() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let clip = src.path().join("a.mp4");
+        touch(&clip);
+        let s = create(root.path(), "chung", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
+        let dir = Path::new(&s.dir);
+        let mut j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
+        j["clips"] = json!(["a.mp4", "../../etc/passwd", "/abs.mp4", "sub/x.mp4", ".."]);
+        j["logo"] = json!("../x.png");
+        j["music"] = json!("m.mp3");
+        std::fs::write(dir.join("project.json"), j.to_string()).unwrap();
+        let d = detail(dir).unwrap();
+        assert_eq!(d.clips.len(), 1);
+        assert!(d.logo.is_none());
+        assert!(d.music.unwrap().ends_with("input/m.mp3"));
     }
 }

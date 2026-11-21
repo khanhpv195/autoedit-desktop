@@ -4,6 +4,7 @@ from pathlib import Path
 
 from autoedit.agent.library import NICHE_NAMES, niche_intro, niche_section, skill_body
 from autoedit.prep import Prepared
+from autoedit.prep.keyframes import contact_sheets
 from autoedit.project import Project
 from autoedit.transcript import format_phrases, format_words, pack_phrases
 
@@ -19,6 +20,39 @@ def span_lines(prepared: Prepared) -> list[str]:
         lines.append("Images for b-roll (shown as full-frame overlays while the speech continues; add them with "
                      "`broll` {image, at, dur 1.5-4 s}): " + ", ".join(f'"{i.name}"' for i in prepared.images))
     return lines
+
+
+MAX_INDIVIDUAL_IMAGES = 8      # more product images than this go to the agent as contact sheets
+
+
+def _b64_image(p: Path) -> dict:
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                        "data": base64.b64encode(p.read_bytes()).decode()}}
+
+
+def image_blocks(prepared: Prepared, detail: bool = True) -> list[dict]:
+    """Content blocks showing the b-roll images. Up to 8 go one by one, each preceded by its file name; more are
+    packed into 3x3 contact sheets whose tiles carry the file name drawn on them (the `broll.image` names), which
+    keeps the request far below the API's per-request image limit."""
+    imgs = prepared.images
+    if not imgs:
+        return []
+    if len(imgs) <= MAX_INDIVIDUAL_IMAGES:
+        out: list[dict] = [{"type": "text", "text": f"## Images for b-roll ({len(imgs)} follow, each preceded by its "
+                            "file name; use that exact name in `broll.image`)"}]
+        for img in imgs:
+            size = f" ({img.width}x{img.height})" if detail else ""
+            out.append({"type": "text", "text": f'Image "{img.name}"{size}'})
+            out.append(_b64_image(img.small))
+        return out
+    sheets = contact_sheets([(i.name, i.small) for i in imgs], imgs[0].small.parent / "sheets")
+    out = [{"type": "text", "text": f"## Images for b-roll ({len(imgs)} images in {len(sheets)} contact sheets, 3 "
+            "tiles per row, read left to right then top to bottom; the label printed under each tile is its file "
+            "name: use that exact name in `broll.image`)"}]
+    for n, (names, path) in enumerate(sheets, 1):
+        out.append({"type": "text", "text": f"Sheet {n}/{len(sheets)}: " + ", ".join(f'"{x}"' for x in names)})
+        out.append(_b64_image(path))
+    return out
 
 
 def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
@@ -70,12 +104,6 @@ def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, f
         content.append({"type": "text", "text": f"Keyframe at {t:.2f}s"})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                     "data": base64.b64encode(kf.read_bytes()).decode()}})
-    if prepared.images:
-        content.append({"type": "text", "text": f"## Images for b-roll ({len(prepared.images)} follow, each preceded "
-                        "by its file name; use that exact name in `broll.image`)"})
-        for img in prepared.images:
-            content.append({"type": "text", "text": f'Image "{img.name}" ({img.width}x{img.height})'})
-            content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                        "data": base64.b64encode(img.small.read_bytes()).decode()}})
+    content += image_blocks(prepared)
     return {"type": "user", "message": {"role": "user", "content": content},
             "parent_tool_use_id": None, "session_id": "default"}

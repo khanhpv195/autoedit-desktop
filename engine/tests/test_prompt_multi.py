@@ -49,3 +49,33 @@ def test_analyze_message_mentions_spans_and_images(tmp_path):
     content = msg["message"]["content"]
     assert 'Clip 2 "b.mp4": 12.40-16.40s' in content[0]["text"]
     assert any(c["type"] == "text" and c["text"] == 'Image "giay.png"' for c in content)
+
+
+def _many_images(tmp_path, n):
+    from autoedit.prep.keyframes import contact_sheets  # noqa: F401
+    imgs = []
+    for i in range(n):
+        small = tmp_path / f"s{i}.jpg"
+        Image.new("RGB", (96, 54), (i * 10, 50, 50)).save(small)
+        imgs.append(PreparedImage(f"sp_{i}.png", tmp_path / f"sp_{i}.png", small, 1600, 900))
+    return imgs
+
+
+def test_many_images_become_labelled_contact_sheets(tmp_path):
+    prep = _prep(tmp_path)
+    prep.images = _many_images(tmp_path, 20)
+    proj = Project(dir=tmp_path, niche="chung", clips=["a.mp4", "b.mp4"], images=prep.image_names)
+    content = build_edit_message(proj, prep, "", None, None, agent_dir())["message"]["content"]
+    n_images = sum(c["type"] == "image" for c in content)
+    assert n_images == 1 + 3 and n_images <= 24            # 1 keyframe + 3 sheets of up to 9 tiles
+    texts = "\n".join(c["text"] for c in content if c["type"] == "text")
+    assert "contact sheets" in texts and "broll.image" in texts
+    assert '"sp_0.png"' in texts and '"sp_19.png"' in texts
+    sheets = sorted((tmp_path / "sheets").glob("sheet_*.jpg"))
+    assert len(sheets) == 3
+    with Image.open(sheets[0]) as im:
+        assert im.width == 900 and im.height > 900          # 3 columns of 300 px tiles
+    # <= 8 images still go one by one
+    prep.images = _many_images(tmp_path, 8)
+    content = build_edit_message(proj, prep, "", None, None, agent_dir())["message"]["content"]
+    assert sum(c["type"] == "image" for c in content) == 1 + 8

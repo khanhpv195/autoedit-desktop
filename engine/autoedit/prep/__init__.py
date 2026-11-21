@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import shutil
@@ -44,7 +45,8 @@ class Prepared:
 
 def _fingerprint(norm: Path, clip: Path) -> dict:
     c = clip.stat()
-    return {"size": norm.stat().st_size, "clip_size": c.st_size, "clip_mtime_ns": c.st_mtime_ns}
+    return {"size": norm.stat().st_size, "clip_name": clip.name, "clip_size": c.st_size,
+            "clip_mtime_ns": c.st_mtime_ns}
 
 
 def _cache_valid(norm: Path, clip: Path, src_info: MediaInfo) -> bool:
@@ -61,8 +63,13 @@ def _cache_valid(norm: Path, clip: Path, src_info: MediaInfo) -> bool:
         return False
 
 
-def _norm_name(i: int, clip: Path) -> str:
-    return f"{i}_{re.sub(r'[^A-Za-z0-9._-]+', '_', clip.stem)[:40]}.mp4"
+def _cache_stem(path: Path) -> str:
+    """Cache file stem keyed by the file's name (not its position), so reordering never invalidates anything."""
+    return f"{re.sub(r'[^A-Za-z0-9._-]+', '_', path.stem)[:40]}_{hashlib.sha1(path.name.encode()).hexdigest()[:8]}"
+
+
+def _norm_name(clip: Path) -> str:
+    return _cache_stem(clip) + ".mp4"
 
 
 def _concat_fingerprint(parts: list[Path]) -> list[dict]:
@@ -75,7 +82,7 @@ def _build_timeline(project: Project, events: Emitter, clips: list[Path],
     norm_dir = project.work_dir / "norm"
     parts: list[Path] = []
     for i, (clip, info) in enumerate(zip(clips, infos)):
-        norm = norm_dir / _norm_name(i, clip)
+        norm = norm_dir / _norm_name(clip)
         if not _cache_valid(norm, clip, info):
             events.step("Đang chuẩn hóa video…" if len(clips) == 1 else f"Đang chuẩn hóa clip {i + 1}/{len(clips)}…",
                         0.08)
@@ -88,6 +95,8 @@ def _build_timeline(project: Project, events: Emitter, clips: list[Path],
     for old in norm_dir.glob("*"):
         if old.name not in keep:
             old.unlink(missing_ok=True)
+    for legacy in ("normalized.mp4", "normalized.json"):      # single-clip cache of older versions
+        (project.work_dir / legacy).unlink(missing_ok=True)
     fp = json.dumps(_concat_fingerprint(parts), sort_keys=True)
     if len(parts) == 1:
         return parts[0], fp, parts
@@ -115,17 +124,31 @@ def _spans(clips: list[Path], parts_duration: list[float]) -> list[tuple[str, fl
     return spans
 
 
+def _image_fingerprint(path: Path) -> dict:
+    st = path.stat()
+    return {"name": path.name, "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
 def _prepare_images(project: Project) -> list[PreparedImage]:
     out = []
+    img_dir = project.work_dir / "images"
     for i, path in enumerate(project.image_paths):
         w, h = check_image(path)
-        small = project.work_dir / "images" / f"{i}_{re.sub(r'[^A-Za-z0-9._-]+', '_', path.stem)[:40]}.jpg"
-        if not small.exists() or small.stat().st_mtime < path.stat().st_mtime:
+        small = img_dir / (_cache_stem(path) + ".jpg")
+        side = small.with_suffix(".json")
+        fp = _image_fingerprint(path)
+        try:
+            valid = small.exists() and json.loads(side.read_text(encoding="utf-8")) == fp
+        except Exception:
+            valid = False
+        if not valid:
+            side.unlink(missing_ok=True)
             downscale_image(path, small)
+            atomic_write_text(side, json.dumps(fp))
         out.append(PreparedImage(project.images[i], path, small, w, h))
-    keep = {i.small.name for i in out}
-    for old in (project.work_dir / "images").glob("*.jpg"):
-        if old.name not in keep:
+    keep = {i.small.name for i in out} | {i.small.with_suffix(".json").name for i in out}
+    for old in img_dir.glob("*"):
+        if old.name not in keep and old.suffix in (".jpg", ".json"):
             old.unlink(missing_ok=True)
     return out
 

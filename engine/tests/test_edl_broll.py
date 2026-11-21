@@ -75,3 +75,34 @@ def test_snapped_range_used_for_membership():
     words = [Word("a", 1.0, 1.4), Word("b", 5.0, 5.5)]
     edl, _ = v({"keep": [{"start": 1.2, "end": 5.2}], "broll": [{"image": "a.png", "at": 3.0, "dur": 2}]}, words=words)
     assert len(edl.broll) == 1
+
+
+def test_null_dur_uses_default():
+    edl, _ = v({"broll": [{"image": "a.png", "at": 4.0, "dur": None}, ]})
+    assert edl.broll[0].dur == pytest.approx(2.5)
+    edl, _ = v({"broll": [{"image": "a.png", "at": 4.0}]})
+    assert edl.broll[0].dur == pytest.approx(2.5)
+
+
+def test_hook_push_stays_in_its_kept_range():
+    # keep 0-2 (short), 5-9, 12-16; hook = 12-13.5 -> ordered: hook (out 0-1.5), 0-2 (1.5-3.5), 5-9 (3.5-7.5), 13.5-16
+    keep = [{"start": 0, "end": 2}, {"start": 5, "end": 9}, {"start": 12, "end": 16}]
+    hook = {"move_to_front": [12, 13.5], "text": "HI"}
+    # at=0.5 -> output 2.0 (<2.5): pushed to timeline 1.0, but only 1 s of that range is left -> dropped
+    edl, notes = v({"hook": hook, "broll": [{"image": "a.png", "at": 0.5, "dur": 2}]}, keep=keep)
+    assert edl.broll == [] and notes
+    # at=12.0 is inside the hook (output 0.0): pushing to output 2.5 does not fit the 1.5 s hook -> dropped,
+    # never lands in another range
+    edl, notes = v({"hook": hook, "broll": [{"image": "a.png", "at": 12.0, "dur": 2}]}, keep=keep)
+    assert edl.broll == [] and any("hook" in n for n in notes)
+    # at=5.2 (output 3.7) is fine as is
+    edl, _ = v({"hook": hook, "broll": [{"image": "a.png", "at": 5.2, "dur": 2}]}, keep=keep)
+    assert edl.output_time(edl.broll[0].at) == pytest.approx(3.7)
+
+
+def test_hook_push_maps_back_within_same_range():
+    # kept 0-6 and 8-12; b-roll at 1.0 (output 1.0) pushed to output 2.5 -> timeline 2.5, same range
+    edl, _ = v({"hook": None, "broll": [{"image": "a.png", "at": 1.0, "dur": 2}]},
+               keep=[{"start": 0, "end": 6}, {"start": 8, "end": 12}])
+    b = edl.broll[0]
+    assert b.at == pytest.approx(2.5) and edl.output_time(b.at) == pytest.approx(2.5)
