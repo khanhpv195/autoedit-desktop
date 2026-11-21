@@ -32,5 +32,5 @@ def test_prepare_caches_normalize(clip, tmp_path, monkeypatch):
     p1 = prepare(Project.load(d), Emitter(buf))
     p2 = prepare(Project.load(d), Emitter(buf))
     assert len(calls) == 1
-    assert p1.normalized == d / "work" / "norm" / "0_clip.mp4" and len(p2.keyframes) == 6
+    assert p1.normalized == d / "work" / "norm" / prep._norm_name(d / "input" / "clip.mp4") and len(p2.keyframes) == 6
     assert '"type": "step"' in buf.getvalue()
