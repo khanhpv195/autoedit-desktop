@@ -49,11 +49,36 @@ def test_keep_order_is_play_order():
 
 
 def test_overlapping_ranges_are_rejected():
-    with pytest.raises(EdlError, match=r"keep\[2\].*chồng lên keep\[1\].*một lần"):
-        v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}, {"start": 1.5, "end": 2.0}]})
+    with pytest.raises(EdlError, match=r"keep\[2\].*chồng lên keep\[0\].*một lần"):
+        v({"keep": [{"start": 1.0, "end": 2.0}, {"start": 4.0, "end": 6.0}, {"start": 1.5, "end": 2.0}]})
     with pytest.raises(EdlError, match="chồng"):
         validate_edl({"keep": [{"start": 0.0, "end": 3.0}, {"start": 5.0, "end": 6.0}, {"start": 2.0, "end": 4.0}]},
                      [], 8.0)
+
+
+def test_overlap_error_quotes_raw_numbers():
+    """The agent sees its own numbers, not the snapped/padded ones."""
+    with pytest.raises(EdlError, match=r"keep\[2\] \(1\.5–2\.5\) chồng lên keep\[0\] \(1\.2–1\.7\)"):
+        v({"keep": [{"start": 1.2, "end": 1.7}, {"start": 4.0, "end": 6.0}, {"start": 1.5, "end": 2.5}]})
+
+
+MID = [Word("một", 1.0, 1.4), Word("áo", 5.3, 5.7), Word("len", 8.0, 8.5)]
+
+
+def test_mid_word_split_of_one_take_merges():
+    """Splitting a take mid-word (word at 5.3-5.7, split at 5.5) is one continuous take, not an overlap."""
+    edl, _ = validate_edl({"keep": [{"start": 0.0, "end": 5.5}, {"start": 5.5, "end": 10.0}]}, MID, 12.0)
+    assert [(r.start, r.end) for r in edl.keep] == [(0.0, pytest.approx(10.0))]
+
+
+def test_reversed_mid_word_split_is_clamped_not_rejected():
+    """Reversed order of the same split: padding makes the snapped ranges overlap; the later source range is
+    clamped to start where the earlier ends, and the play order is kept."""
+    edl, _ = validate_edl({"keep": [{"start": 5.5, "end": 10.0}, {"start": 0.0, "end": 5.5}]}, MID, 12.0)
+    a, b = edl.keep
+    assert a.start > b.start            # play order preserved: the later footage plays first
+    assert a.start == pytest.approx(b.end) and a.end == pytest.approx(10.0)
+    assert b.end >= 5.7                 # the split word is kept whole, once
 
 
 def test_list_adjacent_touching_ranges_merge():

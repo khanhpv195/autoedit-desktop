@@ -119,6 +119,8 @@ async def _edit(args, events: Emitter) -> int:
                 if ok:
                     edl, summary = session.edl, session.summary
                 elif project.voiceover_on:
+                    if session.voice_error is not None:     # e.g. VoiceLimit: the user can retry later
+                        raise session.voice_error
                     raise AgentFailed(VOICE_AGENT_FAILED)
                 else:
                     edl, summary = silence_cut_edl(prepared.words, prepared.info.duration), [FALLBACK_SUMMARY]

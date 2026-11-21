@@ -55,7 +55,17 @@ def test_cache_hit_needs_no_key(tmp_path, monkeypatch):
     (d / f"{h}.json").write_text(json.dumps([["xin", 0, 0.2], ["chào", 0.3, 0.5]]))
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     path, words = eleven.tts("xin chào", "v1", d)
-    assert words == [("xin", 0, 0.2), ("chào", 0.3, 0.5)] and eleven.cached("v1", "xin chào", d)
+    assert words == [("xin", 0, 0.2), ("chào", 0.3, 0.5)]
+    assert eleven.cached("xin chào", "v1", d) == (path, words)
+
+
+def test_cached_lookup_makes_no_http(tmp_path, monkeypatch):
+    monkeypatch.setattr(eleven, "_request", lambda *a, **k: pytest.fail("no HTTP on a cache lookup"))
+    assert eleven.cached("chưa có", "v1", tmp_path / "vo") is None
+    d = tmp_path / "vo"; d.mkdir()
+    h = eleven.cache_key("v1", "chỉ mp3")
+    (d / f"{h}.mp3").write_bytes(FAKE_MP3)     # no json: the entry is incomplete
+    assert eleven.cached("chỉ mp3", "v1", d) is None
 
 
 @pytest.mark.parametrize("status,body,cls", [

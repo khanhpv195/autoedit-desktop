@@ -71,6 +71,24 @@ async def view_frames(s: EditSession, args: dict) -> dict:
     return {"content": content}
 
 
+def cached_voice_lookup(s: EditSession):
+    """Cache-only voice lookup for validate_edl (spec A4: a cache hit counts as generated). A hit is stored in the
+    session like a tool-made line; never makes an HTTP call."""
+    def lookup(at: float, text: str) -> VoiceLine | None:
+        if not s.project.voice_id:
+            return None
+        hit = eleven.cached(text, s.project.voice_id, s.project.work_dir / "vo")
+        if hit is None:
+            return None
+        try:
+            line = VoiceLine(at, text, hit[0], audio_duration(hit[0]), hit[1])
+        except VoiceError:
+            return None     # unreadable file: treat as not generated
+        s.voice_lines[(at, text)] = line
+        return line
+    return lookup
+
+
 async def set_edl(s: EditSession, args: dict) -> dict:
     if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
         s.aborted = True
@@ -84,7 +102,8 @@ async def set_edl(s: EditSession, args: dict) -> dict:
                 raise EdlError(f"edl is not valid JSON: {e}") from e
         edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration,
                                   image_names=s.prepared.image_names, default_cta=s.project.cta_text,
-                                  voiceover_on=s.project.voiceover_on, voice_lines=s.voice_lines)
+                                  voiceover_on=s.project.voiceover_on, voice_lines=s.voice_lines,
+                                  voice_lookup=cached_voice_lookup(s) if s.project.voiceover_on else None)
     except (EdlError, KeyError, TypeError, ValueError, AttributeError) as e:
         s.edl_errors += 1
         if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
@@ -164,12 +183,15 @@ async def voiceover(s: EditSession, args: dict) -> dict:
         if isinstance(e, FATAL_VOICE):
             s.aborted, s.fatal = True, e
             return _text(f"Voiceover failed: {e.message}. Stop now.", error=True)
+        s.voice_error = e     # if the run then doesn't finish, it fails with this error's own code
         return _text(f"Voiceover failed: {e.message}. You may try again.", error=True)
+    s.voice_error = None
     out, warnings = [], []
     for line in made:
         s.voice_lines[(line.at, line.text)] = line
         o = s.edl.output_time(line.at) if s.edl is not None else None
-        out.append({"at": line.at, "text": line.text, "duration": round(line.duration, 2),
+        out.append({"id": eleven.cache_key(s.project.voice_id, line.text), "at": line.at, "text": line.text,
+                    "duration": round(line.duration, 2),
                     "out_start": None if o is None else round(o, 2),
                     "out_end": None if o is None else round(o + line.duration, 2)})
     if s.edl is not None:

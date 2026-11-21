@@ -21,3 +21,4 @@ class EditSession:
     voice_lines: dict[tuple[float, str], VoiceLine] = field(default_factory=dict)
     voice_calls: int = 0
     fatal: Exception | None = None      # an error that must fail the run with its own code (e.g. VoiceAuth)
+    voice_error: Exception | None = None    # last retryable voice error (VoiceLimit/VoiceFailed); cleared on success

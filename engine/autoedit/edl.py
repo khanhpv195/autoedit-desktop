@@ -256,10 +256,45 @@ def _validate_broll(raw: list, kept: list[Range], hook: Hook | None, image_names
     return out
 
 
+def _merge_and_check(ranges: list[Range], keep_raw: list) -> list[tuple[int, Range]]:
+    """Free shot order: the list order is the play order. Works on the agent's RAW numbers (before snap/pad) so a
+    take split mid-word is not mistaken for an overlap. A list neighbour that starts inside (or within TOUCH of the
+    end of) the previous range continues it and merges; any other overlap beyond TOUCH means the same footage
+    would play twice: reject it, quoting the agent's own numbers."""
+    merged: list[tuple[int, Range]] = []
+    for i, r in enumerate(ranges):
+        prev = merged[-1][1] if merged else None
+        if prev is not None and prev.start - 1e-9 <= r.start <= prev.end + TOUCH:
+            prev.end = max(prev.end, r.end)
+        else:
+            merged.append((i, Range(r.start, r.end, r.reason)))
+
+    def raw(i: int) -> str:
+        return f"{float(keep_raw[i]['start']):g}–{float(keep_raw[i]['end']):g}"
+
+    for x, (i, a) in enumerate(merged):
+        for j, b in merged[:x]:
+            if min(a.end, b.end) - max(a.start, b.start) > TOUCH:
+                raise EdlError(f"keep[{i}] ({raw(i)}) chồng lên keep[{j}] ({raw(j)}); mỗi đoạn chỉ dùng một lần")
+    return merged
+
+
+def _clamp_padding_overlaps(ranges: list[Range]) -> None:
+    """After snap/pad, two ranges that did not overlap as given may touch into each other's padding: the one
+    later in the source starts where the earlier one ends (no footage plays twice, no error)."""
+    for x, a in enumerate(ranges):
+        for b in ranges[:x]:
+            early, late = (a, b) if a.start <= b.start else (b, a)
+            if late.start < early.end:
+                late.start = early.end
+
+
 def validate_edl(raw: dict, words: list[Word], clip_duration: float,
                  image_names: tuple[str, ...] | list[str] = (), *,
                  default_cta: str = DEFAULT_CTA, voiceover_on: bool = False,
-                 voice_lines: dict | None = None) -> tuple[Edl, list[str]]:
+                 voice_lines: dict | None = None, voice_lookup=None) -> tuple[Edl, list[str]]:
+    """`voice_lookup(at, text) -> VoiceLine | None` finds lines not made in this session but already in the voice
+    cache (a re-edit reusing the previous EDL's lines): a cache hit counts as generated."""
     notes: list[str] = []
     keep_raw = raw.get("keep") or []
     if not keep_raw:
@@ -269,22 +304,11 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         a, b = float(k["start"]), float(k["end"])
         if not (0 <= a < b <= clip_duration + 0.01):
             raise EdlError(f"range {a}-{b} is outside 0-{clip_duration:.2f} or inverted")
-        a, b = _snap_pad(a, min(b, clip_duration), words, clip_duration)
-        ranges.append(Range(a, b, str(k.get("reason", ""))))
-
-    # free shot order: the list order is the play order. Neighbours in the list that touch in the source merge;
-    # any other overlap means the same footage would play twice: reject it.
-    merged: list[tuple[int, Range]] = []
-    for i, r in enumerate(ranges):
-        if merged and abs(r.start - merged[-1][1].end) <= TOUCH:
-            merged[-1][1].end = max(merged[-1][1].end, r.end)
-        else:
-            merged.append((i, r))
-    for x, (i, a) in enumerate(merged):
-        for j, b in merged[:x]:
-            if min(a.end, b.end) - max(a.start, b.start) > TOUCH:
-                raise EdlError(f"keep[{i}] ({a.start:.1f}–{a.end:.1f}) chồng lên keep[{j}] ({b.start:.1f}–{b.end:.1f}); "
-                               "mỗi đoạn chỉ dùng một lần")
+        ranges.append(Range(a, min(b, clip_duration), str(k.get("reason", ""))))
+    merged = _merge_and_check(ranges, keep_raw)
+    for _, r in merged:
+        r.start, r.end = _snap_pad(r.start, r.end, words, clip_duration)
+    _clamp_padding_overlaps([r for _, r in merged])
     kept = []
     for _, r in merged:
         if r.duration < MIN_SEGMENT:
@@ -342,12 +366,12 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         music_use=bool(music.get("use", True)),
         music_duck_db=min(-6.0, max(-24.0, duck)),
     )
-    edl.voiceover = _validate_voiceover(raw.get("voiceover") or [], edl, voice_lines or {})
+    edl.voiceover = _validate_voiceover(raw.get("voiceover") or [], edl, voice_lines or {}, voice_lookup)
     return edl, notes
 
 
-def _validate_voiceover(raw: list, edl: Edl, voice_lines: dict) -> list[VoiceCue]:
-    """Every cue must be a line made by the `voiceover` tool in this session; lines must sit inside kept footage,
+def _validate_voiceover(raw: list, edl: Edl, voice_lines: dict, voice_lookup=None) -> list[VoiceCue]:
+    """Every cue must be a line made by the `voiceover` tool in this session or already cached; lines must sit inside kept footage,
     not overlap each other and end before the video ends. Returned in output-time order."""
     if not raw:
         return []
@@ -356,6 +380,8 @@ def _validate_voiceover(raw: list, edl: Edl, voice_lines: dict) -> list[VoiceCue
     for c in raw:
         key = voice_key(c["at"], c["text"])
         line = voice_lines.get(key)
+        if line is None and voice_lookup is not None:
+            line = voice_lookup(*key)
         if line is None:
             raise EdlError(f"voiceover line {key[1]!r} at {key[0]} was not generated: call the voiceover tool with "
                            "exactly this at/text first")

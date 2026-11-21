@@ -91,3 +91,22 @@ def test_compose_graph_mixes_voice_with_adelay(monkeypatch, tmp_path):
     assert "adelay=1250|1250" in graph and "adelay=4000|4000" in graph
     assert "amix=inputs=4:duration=first:normalize=0" in graph and "between(t,1.250,2.500)" in graph
     assert str(tmp_path / "v0.mp3") in cmd and str(tmp_path / "v1.mp3") in cmd
+
+
+def test_voiceover_skips_pop_check_in_preview_and_final(vo_setup, tmp_path, monkeypatch):
+    """With voiceover the base is muted and the voice runs across cuts: pop scores on the mix are meaningless."""
+    from autoedit.render import pipeline
+    from autoedit.render.qc import QcReport
+    proj, prep, _ = vo_setup
+    lines = {(2.0, LINE): VoiceLine(2.0, LINE, None, 1.0, [tuple(w) for w in LINE_WORDS])}
+    edl, _ = validate_edl({"keep": [{"start": 0.0, "end": 2.5}, {"start": 3.0, "end": 5.0}],
+                           "voiceover": [{"at": 2.0, "text": LINE}]},
+                          WORDS, 6.0, voiceover_on=True, voice_lines=lines)
+    seen = []
+    monkeypatch.setattr(pipeline, "edit_checks",
+                        lambda path, broll=(), cuts=(): seen.append(("pv", list(cuts))) or [])
+    monkeypatch.setattr(pipeline, "run_qc",
+                        lambda path, d, broll=(), cuts=(): seen.append(("qc", list(cuts))) or QcReport(ok=True))
+    render(prep, proj, edl, tmp_path / "pv.mp4", preview=True)
+    render(prep, proj, edl, tmp_path / "out.mp4", preview=False)
+    assert seen == [("pv", []), ("qc", [])]

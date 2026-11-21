@@ -10,7 +10,7 @@ from autoedit.agent.prompt import build_edit_prompt
 from autoedit.agent.runner import AgentOutcome
 from autoedit.agent.session import EditSession
 from autoedit.edl import EdlError, VoiceLine, validate_edl
-from autoedit.errors import VoiceAuth, VoiceFailed
+from autoedit.errors import VoiceAuth, VoiceFailed, VoiceLimit
 from autoedit.events import Emitter
 from autoedit.prep import Prepared
 from autoedit.prep.probe import MediaInfo, probe
@@ -112,6 +112,7 @@ async def test_success_stores_lines_and_reports_windows(session, fake_tts):
     assert out["lines"][0]["duration"] == pytest.approx(1.0, abs=0.08)
     assert out["lines"][0]["out_start"] == pytest.approx(0.05, abs=0.05)
     assert any("overlap" in w for w in out["warnings"])
+    assert out["lines"][0]["id"] == eleven.cache_key("v1", "Áo len xinh")     # spec A4: per-line file id
     assert (0.6, "Áo len xinh") in session.voice_lines and session.voice_calls == 1
     assert fake_tts[0] == ("Áo len xinh", "v1")
 
@@ -134,6 +135,50 @@ async def test_set_edl_validates_voiceover(session, fake_tts):
     for cues, match in bad:
         res = await tools.set_edl(session, {"edl": {"keep": keep, "voiceover": cues}})
         assert res["is_error"] and match in text_of(res), text_of(res)
+
+
+def put_cached(session, text, dur=1.0):
+    cache = session.project.work_dir / "vo"
+    cache.mkdir(parents=True, exist_ok=True)
+    h = eleven.cache_key(session.project.voice_id, text)
+    silent_mp3(cache / f"{h}.mp3", dur)
+    (cache / f"{h}.json").write_text(json.dumps([[w, 0.0, 0.2] for w in text.split()], ensure_ascii=False))
+
+
+async def test_cached_lines_validate_without_tool_call(session, fake_tts):
+    """Re-edit: lines from the previous EDL already in the voice cache count as generated (spec A4)."""
+    put_cached(session, "Áo len xinh")
+    res = await tools.set_edl(session, {"edl": {"keep": [{"start": 0.0, "end": 5.0}],
+                                                "voiceover": [{"at": 0.5, "text": "Áo len xinh"}]}})
+    assert not res.get("is_error"), text_of(res)
+    assert [c.text for c in session.edl.voiceover] == ["Áo len xinh"] and fake_tts == []
+    line = session.voice_lines[(0.5, "Áo len xinh")]
+    assert line.duration == pytest.approx(1.0, abs=0.08) and line.words[0][0] == "Áo"
+    res = await tools.set_edl(session, {"edl": {"keep": [{"start": 0.0, "end": 5.0}],
+                                                "voiceover": [{"at": 0.5, "text": "chưa tạo"}]}})
+    assert res["is_error"] and "not generated" in text_of(res) and fake_tts == []
+
+
+def test_cached_line_reaches_render_without_key(session, monkeypatch):
+    """The render path reads the same cached file: no key, no HTTP."""
+    from autoedit.render.pipeline import voice_inputs
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    put_cached(session, "Áo len xinh")
+    edl, _ = validate_edl({"keep": [{"start": 0.0, "end": 5.0}], "voiceover": [{"at": 0.5, "text": "Áo len xinh"}]},
+                          WORDS, 6.0, voiceover_on=True, voice_lookup=tools.cached_voice_lookup(session))
+    [(path, start, dur, at, words)] = voice_inputs(session.project, edl)
+    assert path.is_file() and at == 0.5 and words[0][0] == "Áo"
+
+
+def test_voice_inputs_rejects_line_outside_kept_footage(session):
+    """A cue whose `at` maps to no output time must fail the render, never be silently dropped."""
+    from autoedit.edl import Edl, Range, VoiceCue
+    from autoedit.errors import RenderFailed
+    from autoedit.render.pipeline import voice_inputs
+    put_cached(session, "Áo len xinh")
+    edl = Edl(keep=[Range(0.0, 2.0)], voiceover=[VoiceCue(3.0, "Áo len xinh")])
+    with pytest.raises(RenderFailed, match="Áo len xinh"):
+        voice_inputs(session.project, edl)
 
 
 def test_validate_edl_sorts_cues_by_output_time():
@@ -166,6 +211,13 @@ async def test_transient_voice_error_lets_agent_retry(session, monkeypatch):
     monkeypatch.setattr(eleven, "tts", busy)
     res = await tools.voiceover(session, {"lines": [{"at": 0.7, "text": "chào"}]})
     assert res["is_error"] and not session.aborted
+    assert isinstance(session.voice_error, VoiceFailed)
+
+
+async def test_successful_retry_clears_voice_error(session, fake_tts):
+    session.voice_error = VoiceLimit(eleven.MSG_LIMIT)
+    assert not (await tools.voiceover(session, {"lines": [{"at": 0.7, "text": "chào"}]})).get("is_error")
+    assert session.voice_error is None
 
 
 def test_prompt_voiceover_block(tmp_path):
@@ -239,6 +291,19 @@ def test_unfinished_agent_with_voiceover_fails(cli_project, monkeypatch, capsys)
     assert cli.main(["edit", "--project", str(cli_project)]) == 1
     last = events(capsys)[-1]
     assert last["code"] == "AGENT_FAILED" and last["message"] == cli.VOICE_AGENT_FAILED
+
+
+def test_unfinished_agent_after_retryable_voice_error_reports_it(cli_project, monkeypatch, capsys):
+    monkeypatch.setattr(eleven, "quota", lambda: 5000)
+
+    async def agent(session, prompt, options, **k):
+        session.voice_error = VoiceLimit(eleven.MSG_LIMIT)
+        return AgentOutcome(False, 3, "gave up")
+    monkeypatch.setattr(cli, "run_agent", agent)
+    assert cli.main(["edit", "--project", str(cli_project)]) == 1
+    last = events(capsys)[-1]
+    assert last["code"] == "VOICE_LIMIT" and last["message"] == eleven.MSG_LIMIT
+    assert not (cli_project / "runs" / "1").exists()
 
 
 def test_final_render_voice_error_is_not_swallowed(cli_project, monkeypatch, capsys):
