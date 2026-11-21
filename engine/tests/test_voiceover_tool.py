@@ -169,6 +169,17 @@ def test_cached_line_reaches_render_without_key(session, monkeypatch):
     assert path.is_file() and at == 0.5 and words[0][0] == "Áo"
 
 
+def test_voice_inputs_rejects_line_outside_kept_footage(session):
+    """A cue whose `at` maps to no output time must fail the render, never be silently dropped."""
+    from autoedit.edl import Edl, Range, VoiceCue
+    from autoedit.errors import RenderFailed
+    from autoedit.render.pipeline import voice_inputs
+    put_cached(session, "Áo len xinh")
+    edl = Edl(keep=[Range(0.0, 2.0)], voiceover=[VoiceCue(3.0, "Áo len xinh")])
+    with pytest.raises(RenderFailed, match="Áo len xinh"):
+        voice_inputs(session.project, edl)
+
+
 def test_validate_edl_sorts_cues_by_output_time():
     lines = {(5.0, "a"): VoiceLine(5.0, "a", None, 1.0, []), (1.0, "b"): VoiceLine(1.0, "b", None, 1.0, [])}
     edl, _ = validate_edl({"keep": [{"start": 4.0, "end": 7.0}, {"start": 0.0, "end": 3.0}],

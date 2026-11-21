@@ -7,7 +7,7 @@ from autoedit.fsutil import part_path
 from autoedit.prep import Prepared
 from autoedit.prep.keyframes import downscale_image, frame_at
 from autoedit.project import Project
-from autoedit.errors import VoiceMissing
+from autoedit.errors import RenderFailed, VoiceMissing
 from autoedit.render.captions import build_cues, build_voice_cues, speech_intervals, write_ass
 from autoedit.render.compose import compose
 from autoedit.render.loudness import loudnorm
@@ -50,8 +50,8 @@ def voice_inputs(project: Project, edl: Edl) -> list[tuple[Path, float, float, f
     out = []
     for c in edl.voiceover:
         start = edl.output_time(c.at)
-        if start is None:
-            continue
+        if start is None:   # validate_edl rejects this; never render with a line silently missing
+            raise RenderFailed(f"Câu lồng tiếng {c.text!r} (at {c.at}) nằm ngoài đoạn được giữ")
         path, words = eleven.tts(c.text, project.voice_id, project.work_dir / "vo")
         out.append((path, start, audio_duration(path), c.at, words))
     return out
