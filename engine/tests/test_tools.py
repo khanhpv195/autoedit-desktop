@@ -110,3 +110,12 @@ async def test_ffmpeg_work_runs_off_the_event_loop(session, monkeypatch):
     await tools.render_preview(session, {})
     await tools.view_frames(session, {"times": [1.0]})
     assert seen and all(t is not threading.main_thread() for t in seen)
+
+
+async def test_view_frames_session_cap(session):
+    for _ in range(tools.MAX_VIEWED_FRAMES // tools.MAX_FRAMES):
+        res = await tools.view_frames(session, {"times": [0.5, 1, 2, 3, 4, 5]})
+        assert not res.get("is_error")
+    res = await tools.view_frames(session, {"times": [1.0]})
+    assert res.get("is_error") and "limit" in text_of(res)
+    assert session.frames_viewed == tools.MAX_VIEWED_FRAMES

@@ -5,7 +5,7 @@ from claude_agent_sdk import AssistantMessage, RateLimitEvent, ResultMessage, qu
 
 from autoedit.agent.library import NICHE_NAMES, niche_section
 from autoedit.agent.options import model, plain_options
-from autoedit.agent.prompt import span_lines
+from autoedit.agent.prompt import image_blocks, span_lines
 from autoedit.agent.runner import _iso
 from autoedit.agent.sdk_errors import NO_AUTH_MSG, RATE_MSG, classify_result, classify_sdk_error
 from autoedit.errors import AgentFailed, NoAuth, RateLimited
@@ -47,10 +47,7 @@ def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclu
     for kf in prepared.keyframes[:3]:
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                     "data": base64.b64encode(kf.read_bytes()).decode()}})
-    for img in prepared.images:
-        content.append({"type": "text", "text": f'Image "{img.name}"'})
-        content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                                    "data": base64.b64encode(img.small.read_bytes()).decode()}})
+    content += image_blocks(prepared, detail=False)
     return {"type": "user", "message": {"role": "user", "content": content},
             "parent_tool_use_id": None, "session_id": "default"}
 
