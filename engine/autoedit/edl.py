@@ -185,15 +185,22 @@ def _validate_broll(raw: list, kept: list[Range], hook: Hook | None, image_names
         if image not in image_names:
             names = ", ".join(image_names) or "(no images in this project)"
             raise EdlError(f"broll image {image!r} is not one of the project images: {names}")
-        dur = min(BROLL_MAX, max(BROLL_MIN, float(b.get("dur", 2.5))))
+        raw_dur = b.get("dur")
+        dur = min(BROLL_MAX, max(BROLL_MIN, 2.5 if raw_dur is None else float(raw_dur)))
         span = probe_edl.output_span(at, dur)
         if span is None:
             notes.append(f"dropped broll {image} at {at:.2f}: not inside a kept range")
             continue
         o_start, o_end = span
         if o_start < HOOK_SECONDS:
+            # push the start to HOOK_SECONDS in OUTPUT time, then map back to a timeline `at` in the same kept range
             shift = HOOK_SECONDS - o_start
-            o_start, at = HOOK_SECONDS, at + shift
+            new_at = at + shift
+            r = next((r for r in probe_edl.ordered() if r.start - 1e-9 <= at < r.end - 1e-9), None)
+            if r is None or new_at >= r.end - 1e-9:
+                notes.append(f"dropped broll {image}: it would cover the hook's first {HOOK_SECONDS}s")
+                continue
+            at = new_at
             span = probe_edl.output_span(at, dur)
             if span is None or span[0] < HOOK_SECONDS - 1e-6:
                 notes.append(f"dropped broll {image}: it would cover the hook's first {HOOK_SECONDS}s")

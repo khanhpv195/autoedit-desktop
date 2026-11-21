@@ -45,3 +45,17 @@ def test_check_logo_and_music(tmp_path):
         check_logo(tmp_path / "logo.gif")
     with pytest.raises(BadInput):
         check_music(tmp_path / "song.ogg")
+
+
+def test_check_image_decompression_bomb_is_bad_input(tmp_path, monkeypatch):
+    from PIL import Image
+    from autoedit.errors import BadInput
+    from autoedit.prep.probe import check_image
+    p = tmp_path / "big.png"
+    Image.new("RGB", (200, 200)).save(p)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)       # more than 2x the limit: DecompressionBombError
+    with pytest.raises(BadInput, match="quá lớn"):
+        check_image(p)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 30000)     # between 1x and 2x: a warning, turned into an error
+    with pytest.raises(BadInput, match="quá lớn"):
+        check_image(p)

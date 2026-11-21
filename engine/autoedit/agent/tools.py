@@ -16,7 +16,8 @@ from autoedit.transcript import format_phrases, pack_phrases
 
 MAX_PREVIEWS = 3
 MAX_EDL_ERRORS = 3
-MAX_FRAMES = 6
+MAX_FRAMES = 6          # per view_frames call
+MAX_VIEWED_FRAMES = 12  # per session: keeps the whole conversation far below the API's 100-images-per-request limit
 TOOL_NAMES = ("get_transcript", "view_frames", "set_edl", "render_preview", "finish")
 
 
@@ -44,6 +45,12 @@ async def view_frames(s: EditSession, args: dict) -> dict:
     times = [min(max(0.0, float(t)), max(0.0, dur - 0.05)) for t in args.get("times", [])][:MAX_FRAMES]
     if not times:
         return _text("times must contain 1-6 source times", error=True)
+    left = MAX_VIEWED_FRAMES - s.frames_viewed
+    if left <= 0:
+        return _text(f"view_frames limit reached ({MAX_VIEWED_FRAMES} frames per session). Decide from what you "
+                     "have: set_edl, render_preview, finish.", error=True)
+    times = times[:left]
+    s.frames_viewed += len(times)
     out_dir = s.project.work_dir / "frames"
     content = [{"type": "text", "text": "Frames at " + ", ".join(f"{t:.2f}s" for t in times)}]
     for t in times:
@@ -133,7 +140,7 @@ EDL_SCHEMA = {
 SCHEMAS = {
     "get_transcript": ("Read the transcript as phrases with source times. Optional start/end in seconds.",
                        {"type": "object", "properties": {"start": {"type": "number"}, "end": {"type": "number"}}}),
-    "view_frames": ("See still frames at up to 6 timeline times (seconds).",
+    "view_frames": ("See still frames at up to 6 timeline times (seconds); 12 frames in total per session.",
                     {"type": "object", "properties": {"times": {"type": "array", "items": {"type": "number"},
                                                                 "minItems": 1, "maxItems": 6}},
                      "required": ["times"]}),
