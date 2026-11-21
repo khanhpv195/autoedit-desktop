@@ -292,7 +292,9 @@ def _clamp_padding_overlaps(ranges: list[Range]) -> None:
 def validate_edl(raw: dict, words: list[Word], clip_duration: float,
                  image_names: tuple[str, ...] | list[str] = (), *,
                  default_cta: str = DEFAULT_CTA, voiceover_on: bool = False,
-                 voice_lines: dict | None = None) -> tuple[Edl, list[str]]:
+                 voice_lines: dict | None = None, voice_lookup=None) -> tuple[Edl, list[str]]:
+    """`voice_lookup(at, text) -> VoiceLine | None` finds lines not made in this session but already in the voice
+    cache (a re-edit reusing the previous EDL's lines): a cache hit counts as generated."""
     notes: list[str] = []
     keep_raw = raw.get("keep") or []
     if not keep_raw:
@@ -364,12 +366,12 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         music_use=bool(music.get("use", True)),
         music_duck_db=min(-6.0, max(-24.0, duck)),
     )
-    edl.voiceover = _validate_voiceover(raw.get("voiceover") or [], edl, voice_lines or {})
+    edl.voiceover = _validate_voiceover(raw.get("voiceover") or [], edl, voice_lines or {}, voice_lookup)
     return edl, notes
 
 
-def _validate_voiceover(raw: list, edl: Edl, voice_lines: dict) -> list[VoiceCue]:
-    """Every cue must be a line made by the `voiceover` tool in this session; lines must sit inside kept footage,
+def _validate_voiceover(raw: list, edl: Edl, voice_lines: dict, voice_lookup=None) -> list[VoiceCue]:
+    """Every cue must be a line made by the `voiceover` tool in this session or already cached; lines must sit inside kept footage,
     not overlap each other and end before the video ends. Returned in output-time order."""
     if not raw:
         return []
@@ -378,6 +380,8 @@ def _validate_voiceover(raw: list, edl: Edl, voice_lines: dict) -> list[VoiceCue
     for c in raw:
         key = voice_key(c["at"], c["text"])
         line = voice_lines.get(key)
+        if line is None and voice_lookup is not None:
+            line = voice_lookup(*key)
         if line is None:
             raise EdlError(f"voiceover line {key[1]!r} at {key[0]} was not generated: call the voiceover tool with "
                            "exactly this at/text first")

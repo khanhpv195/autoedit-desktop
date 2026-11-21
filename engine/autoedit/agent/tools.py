@@ -71,6 +71,24 @@ async def view_frames(s: EditSession, args: dict) -> dict:
     return {"content": content}
 
 
+def cached_voice_lookup(s: EditSession):
+    """Cache-only voice lookup for validate_edl (spec A4: a cache hit counts as generated). A hit is stored in the
+    session like a tool-made line; never makes an HTTP call."""
+    def lookup(at: float, text: str) -> VoiceLine | None:
+        if not s.project.voice_id:
+            return None
+        hit = eleven.cached(text, s.project.voice_id, s.project.work_dir / "vo")
+        if hit is None:
+            return None
+        try:
+            line = VoiceLine(at, text, hit[0], audio_duration(hit[0]), hit[1])
+        except VoiceError:
+            return None     # unreadable file: treat as not generated
+        s.voice_lines[(at, text)] = line
+        return line
+    return lookup
+
+
 async def set_edl(s: EditSession, args: dict) -> dict:
     if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
         s.aborted = True
@@ -84,7 +102,8 @@ async def set_edl(s: EditSession, args: dict) -> dict:
                 raise EdlError(f"edl is not valid JSON: {e}") from e
         edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration,
                                   image_names=s.prepared.image_names, default_cta=s.project.cta_text,
-                                  voiceover_on=s.project.voiceover_on, voice_lines=s.voice_lines)
+                                  voiceover_on=s.project.voiceover_on, voice_lines=s.voice_lines,
+                                  voice_lookup=cached_voice_lookup(s) if s.project.voiceover_on else None)
     except (EdlError, KeyError, TypeError, ValueError, AttributeError) as e:
         s.edl_errors += 1
         if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:

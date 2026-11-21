@@ -136,6 +136,39 @@ async def test_set_edl_validates_voiceover(session, fake_tts):
         assert res["is_error"] and match in text_of(res), text_of(res)
 
 
+def put_cached(session, text, dur=1.0):
+    cache = session.project.work_dir / "vo"
+    cache.mkdir(parents=True, exist_ok=True)
+    h = eleven.cache_key(session.project.voice_id, text)
+    silent_mp3(cache / f"{h}.mp3", dur)
+    (cache / f"{h}.json").write_text(json.dumps([[w, 0.0, 0.2] for w in text.split()], ensure_ascii=False))
+
+
+async def test_cached_lines_validate_without_tool_call(session, fake_tts):
+    """Re-edit: lines from the previous EDL already in the voice cache count as generated (spec A4)."""
+    put_cached(session, "Áo len xinh")
+    res = await tools.set_edl(session, {"edl": {"keep": [{"start": 0.0, "end": 5.0}],
+                                                "voiceover": [{"at": 0.5, "text": "Áo len xinh"}]}})
+    assert not res.get("is_error"), text_of(res)
+    assert [c.text for c in session.edl.voiceover] == ["Áo len xinh"] and fake_tts == []
+    line = session.voice_lines[(0.5, "Áo len xinh")]
+    assert line.duration == pytest.approx(1.0, abs=0.08) and line.words[0][0] == "Áo"
+    res = await tools.set_edl(session, {"edl": {"keep": [{"start": 0.0, "end": 5.0}],
+                                                "voiceover": [{"at": 0.5, "text": "chưa tạo"}]}})
+    assert res["is_error"] and "not generated" in text_of(res) and fake_tts == []
+
+
+def test_cached_line_reaches_render_without_key(session, monkeypatch):
+    """The render path reads the same cached file: no key, no HTTP."""
+    from autoedit.render.pipeline import voice_inputs
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    put_cached(session, "Áo len xinh")
+    edl, _ = validate_edl({"keep": [{"start": 0.0, "end": 5.0}], "voiceover": [{"at": 0.5, "text": "Áo len xinh"}]},
+                          WORDS, 6.0, voiceover_on=True, voice_lookup=tools.cached_voice_lookup(session))
+    [(path, start, dur, at, words)] = voice_inputs(session.project, edl)
+    assert path.is_file() and at == 0.5 and words[0][0] == "Áo"
+
+
 def test_validate_edl_sorts_cues_by_output_time():
     lines = {(5.0, "a"): VoiceLine(5.0, "a", None, 1.0, []), (1.0, "b"): VoiceLine(1.0, "b", None, 1.0, [])}
     edl, _ = validate_edl({"keep": [{"start": 4.0, "end": 7.0}, {"start": 0.0, "end": 3.0}],

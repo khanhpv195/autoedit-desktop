@@ -121,16 +121,23 @@ def _paths(voice_id: str, text: str, cache_dir: Path) -> tuple[Path, Path]:
     return Path(cache_dir) / f"{h}.mp3", Path(cache_dir) / f"{h}.json"
 
 
-def cached(voice_id: str, text: str, cache_dir: Path) -> bool:
+def cached(text: str, voice_id: str, cache_dir: Path) -> tuple[Path, list[Word]] | None:
+    """Cache-only lookup (never HTTP): (mp3, words) if the line is fully cached, else None."""
     mp3, js = _paths(voice_id, text, cache_dir)
-    return mp3.is_file() and js.is_file()
+    if not (mp3.is_file() and js.is_file()):
+        return None
+    try:
+        return mp3, [(str(w), float(a), float(b)) for w, a, b in json.loads(js.read_text(encoding="utf-8"))]
+    except (OSError, ValueError, TypeError):
+        return None     # a damaged entry is a miss: tts() re-synthesizes it
 
 
 def tts(text: str, voice_id: str, cache_dir: Path) -> tuple[Path, list[Word]]:
     """Synthesize `text` (Vietnamese) with timestamps. Cached by (voice, model, text): a hit makes no HTTP call."""
+    hit = cached(text, voice_id, cache_dir)
+    if hit is not None:
+        return hit
     mp3, js = _paths(voice_id, text, cache_dir)
-    if mp3.is_file() and js.is_file():
-        return mp3, [(str(w), float(a), float(b)) for w, a, b in json.loads(js.read_text(encoding="utf-8"))]
     d = _request("POST", f"/v1/text-to-speech/{voice_id}/with-timestamps",
                  {"text": text, "model_id": MODEL_ID, "language_code": LANGUAGE, "output_format": OUTPUT_FORMAT})
     try:
