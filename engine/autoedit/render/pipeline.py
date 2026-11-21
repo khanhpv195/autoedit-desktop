@@ -102,7 +102,8 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
     def once() -> Path:
         mixed = compose(base, work / "composite.mp4", duration=total, ass=ass, hook_png=hook, logo_png=logo,
                         cta_png=cta, music=music, speech=speech, duck_db=edl.music_duck_db, preview=preview, broll=broll,
-                        voice=[(p, s) for p, s, _, _, _ in voice])
+                        voice=[(p, s) for p, s, _, _, _ in voice],
+                        hook_position=edl.hook.position if edl.hook else "middle")
         tmp = part_path(out)
         try:
             loudnorm(mixed, tmp, two_pass=not preview)

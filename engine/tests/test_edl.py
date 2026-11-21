@@ -105,7 +105,7 @@ def test_hook_text_without_move_to_front():
     edl, _ = v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}], "hook": {"text": "XEM NGAY"}})
     assert edl.hook.text == "XEM NGAY" and edl.hook.start is None
     assert [r.start for r in edl.ordered()] == [r.start for r in edl.keep]   # nothing moved
-    assert edl.to_dict()["hook"] == {"text": "XEM NGAY"}
+    assert edl.to_dict()["hook"] == {"text": "XEM NGAY", "position": "middle"}
     again, _ = v(edl.to_dict())
     assert again.to_dict() == edl.to_dict()
     with pytest.raises(EdlError, match="5"):
@@ -215,3 +215,10 @@ def test_rejects_empty_fix_text(bad):
 def test_rejects_empty_hook_text():
     with pytest.raises(EdlError, match="empty"):
         v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"move_to_front": [4.0, 5.2], "text": "  "}})
+
+
+def test_hook_position_is_kept_and_checked():
+    edl, _ = v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"text": "XEM NGAY", "position": "lower"}})
+    assert edl.hook.position == "lower" and edl.to_dict()["hook"]["position"] == "lower"
+    with pytest.raises(EdlError):
+        v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"text": "XEM NGAY", "position": "left"}})

@@ -62,5 +62,5 @@ def refine_edl(edl: Edl, src, duration: float) -> Edl:
     x = _pcm(src, SR)
     if not x:
         return edl
-    hook = Hook(None, None, edl.hook.text) if edl.hook else None
+    hook = Hook(None, None, edl.hook.text, edl.hook.position) if edl.hook else None
     return replace(edl, keep=refine_ranges(x, edl.ordered(), duration), hook=hook)

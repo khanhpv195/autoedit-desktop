@@ -41,10 +41,14 @@ def broll_chain(idx: int, src: str, start: float, end: float, w: int, h: int) ->
             f"format=yuv420p,setpts=PTS-STARTPTS+{start:.3f}/TB[br{idx}]"]
 
 
+HOOK_Y = {"top": 300, "middle": 680, "lower": 930}     # card top (1080x1920); captions start ~1200
+
+
 def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path | None,
             logo_png: Path | None, cta_png: Path | None, music: Path | None,
             speech: list[tuple[float, float]], duck_db: float, preview: bool,
-            broll: list[tuple[Path, float, float]] = (), voice: list[tuple[Path, float]] = ()) -> Path:
+            broll: list[tuple[Path, float, float]] = (), voice: list[tuple[Path, float]] = (),
+            hook_position: str = "middle") -> Path:
     """broll: (image file, output start, output end) full-frame overlays, drawn on the base before everything else.
     voice: (voiceover line file, output start) mixed over the base audio; `speech` should then be the voice
     intervals so the music ducks under them."""
@@ -73,7 +77,7 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
         graph.append(f"[{cur}][br{idx}]overlay=x=0:y=0:enable='between(t,{b_start:.3f},{b_end:.3f})'[v{idx}]")
         cur, idx = f"v{idx}", idx + 1
     if hook_png:
-        add_overlay(hook_png, "(W-w)/2", 300, f"between(t,0,{HOOK_SECONDS})")
+        add_overlay(hook_png, "(W-w)/2", HOOK_Y.get(hook_position, HOOK_Y["middle"]), f"between(t,0,{HOOK_SECONDS})")
     if logo_png:
         add_overlay(logo_png, str(int(48 * k)), 120, None)
     if cta_png:

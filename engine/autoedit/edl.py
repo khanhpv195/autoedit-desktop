@@ -36,6 +36,7 @@ class Hook:
     start: float | None     # None: hook text only, laid over whatever plays first (nothing moved)
     end: float | None
     text: str
+    position: str = "middle"    # where the card sits: top / middle / lower (keep it off the face)
 
     @property
     def moved(self) -> bool:
@@ -115,9 +116,10 @@ class Edl:
     def _hook_dict(self) -> dict | None:
         if not self.hook:
             return None
-        if not self.hook.moved:
-            return {"text": self.hook.text}
-        return {"move_to_front": [self.hook.start, self.hook.end], "text": self.hook.text}
+        d = {"text": self.hook.text, "position": self.hook.position}
+        if self.hook.moved:
+            d["move_to_front"] = [self.hook.start, self.hook.end]
+        return d
 
     def ordered(self) -> list[Range]:
         """Play order: the keep list as given (free shot order), with a moved hook range first."""
@@ -346,6 +348,9 @@ def keep_short_heads(kept: list[Range], words: list[Word], dur: float) -> tuple[
     return out, notes
 
 
+HOOK_POSITIONS = ("top", "middle", "lower")
+
+
 STATIC_MAX = 7.0        # seconds of one framing before a note asks for a cutaway
 
 
@@ -525,14 +530,17 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
             raise EdlError("hook text must not be empty (use hook: null for no hook)")
         if len(text.split()) > HOOK_MAX_WORDS:
             raise EdlError(f"hook text must be at most {HOOK_MAX_WORDS} words")
+        pos = str(h.get("position") or "middle").strip().lower()
+        if pos not in HOOK_POSITIONS:
+            raise EdlError(f"hook position must be one of {', '.join(HOOK_POSITIONS)}")
         if h.get("move_to_front"):
             a, b = (float(x) for x in h["move_to_front"])
             if not (0 <= a < b <= clip_duration + 0.01):
                 raise EdlError("hook range is outside the clip or inverted")
             a, b = _snap_pad(a, min(b, clip_duration), words, clip_duration)
-            hook = Hook(a, b, text)
+            hook = Hook(a, b, text, pos)
         else:
-            hook = Hook(None, None, text)       # text over the first 2.5 s of whatever plays first
+            hook = Hook(None, None, text, pos)       # text over the first 2.5 s of whatever plays first
 
     fixes = [CaptionFix(float(c["at"]), str(c["wrong"]).strip(), str(c["right"]).strip())
              for c in raw.get("caption_fixes") or []]

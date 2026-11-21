@@ -245,7 +245,10 @@ EDL_SCHEMA = {
             "required": ["start", "end"]}},
         "hook": {"type": ["object", "null"], "properties": {
             "move_to_front": {"type": "array", "items": _NUM, "minItems": 2, "maxItems": 2},
-            "text": {"type": "string"}}, "required": ["text"]},
+            "text": {"type": "string"},
+            "position": {"type": "string", "enum": ["top", "middle", "lower"],
+                         "description": "where the hook card sits; pick the one that covers no face"}},
+            "required": ["text"]},
         "caption_fixes": {"type": "array", "items": {
             "type": "object", "properties": {"at": _NUM, "wrong": {"type": "string"}, "right": {"type": "string"}},
             "required": ["at", "wrong", "right"]}},

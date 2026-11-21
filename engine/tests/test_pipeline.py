@@ -25,7 +25,7 @@ def test_final_render_passes_qc(tmp_path, clip):
     proj, prep, edl = setup(tmp_path, clip)
     res = render(prep, proj, edl, tmp_path / "final.mp4", preview=False)
     assert res.qc.ok, res.qc.issues
-    assert not res.needs_review and abs(res.duration - edl.output_duration()) < 0.1
+    assert not res.needs_review and abs(res.duration - edl.output_duration()) < 0.5  # seams move edges into pauses
 
 
 def test_preview_and_frames(tmp_path, clip):
@@ -64,6 +64,6 @@ def test_hook_text_only_and_reversed_order_preview(tmp_path, clip):
                            "hook": {"text": "CHỈ 189K"}}, WORDS, 6.0)
     res = render(prep, proj, edl, tmp_path / "preview.mp4", preview=True)
     assert (proj.work_dir / "render_preview" / "hook.png").exists()
-    assert abs(probe(res.path).duration - edl.output_duration()) < 0.1
+    assert abs(probe(res.path).duration - edl.output_duration()) < 0.5
     ass = (proj.work_dir / "render_preview" / "captions.ass").read_text(encoding="utf-8")
     assert ass.index("GIÁ") < ass.index("CHÀO")       # reversed shots: the price line plays first

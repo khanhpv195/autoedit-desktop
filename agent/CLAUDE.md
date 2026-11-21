@@ -69,6 +69,9 @@ Normally: `set_edl` → `render_preview` → `finish`.
 - `hook`: optional. An on-screen text of at most 5 words shown for the first 2.5 s, over whatever plays first.
   `{"text": "..."}` alone is enough (put the hook shot first in `keep` yourself). Add `move_to_front`
   `[start, end]` to also move that source range to the very start. Use `null` when nothing strong exists.
+  `position`: `"top"` (card at 16–29% of the height), `"middle"` (35–48%, default) or `"lower"` (48–62%).
+  **The hook must never cover a face.** Look at the frame of the shot that plays first: full-body shot (face in the
+  top third) → `"middle"`; face in the middle (close-up, half-body) → `"lower"`; face low or no face → `"top"`.
 - `caption_fixes`: Whisper mistakes in brand names, prices, CTAs. `wrong` must be the words exactly as in
   the transcript; `at` = source time of the first wrong word (see the word times).
 - `emphasis`: 1–4 words to highlight in captions (price, product name, key number); `word` is the
