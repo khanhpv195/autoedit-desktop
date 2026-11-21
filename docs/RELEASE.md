@@ -63,3 +63,10 @@ cd app/src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
 ## 5. Ghi chú về ffmpeg
 
 Bản ffmpeg dựng sẵn lấy từ ffmpeg.martin-riedl.de (build GPL, có libx264, libass, zimg). Script ghim URL và sha256. Khi phát hành thương mại, xem lại giấy phép GPL của bản này. Muốn đổi nguồn, sửa `scripts/fetch-bins-mac.sh`; script tự kiểm các filter engine cần.
+
+## 6. License
+
+- Bản phát hành cần `app/src-tauri/license.json` đã điền `url` và `pubkey` (xem `license-server/README.md`). Để trống thì build release dừng ngay trong `build.rs`, và `scripts/build-app.sh` dừng trước khi build.
+- Build debug vẫn chạy với `license.json` trống. Đặt `AUTOEDIT_LICENSE_DEV=1` khi chạy bản debug để bỏ qua màn kích hoạt.
+- Khóa ký riêng (private key) và admin token chỉ nằm trong trình quản lý mật khẩu và trong secret của Worker. Không commit.
+- Đổi khóa ký nghĩa là phải phát hành bản mới, và mọi khách phải kích hoạt lại.

@@ -3,6 +3,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+if ! python3 -c 'import json,sys; d=json.load(open("app/src-tauri/license.json")); sys.exit(0 if d.get("url") and d.get("pubkey") else 1)'; then
+  echo "app/src-tauri/license.json chưa có url/pubkey. Làm theo license-server/README.md trước khi build bản phát hành." >&2
+  exit 1
+fi
 "$ROOT/scripts/build-engine.sh"
 "$ROOT/scripts/fetch-bins-mac.sh"
 cd app
