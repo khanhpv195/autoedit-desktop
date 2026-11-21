@@ -60,3 +60,11 @@ test("while pending the button says Đang kích hoạt… and is disabled", asyn
   const b = await screen.findByRole("button", { name: "Đang kích hoạt…" });
   expect(b).toBeDisabled();
 });
+
+test("sends the normalised key", async () => {
+  a.licenseActivate.mockResolvedValue({ licensed: true, name: "Shop A" });
+  render(<Activate onDone={() => {}} />);
+  await userEvent.type(screen.getByPlaceholderText("AE-XXXX-XXXX-XXXX-XXXX"), " ae7kq2m9xdooilzzzz ");
+  await userEvent.click(screen.getByRole("button", { name: "Kích hoạt" }));
+  expect(a.licenseActivate).toHaveBeenCalledWith("AE-7KQ2-M9XD-0011-ZZZZ");
+});

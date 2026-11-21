@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as api from "../lib/api";
-import { licenseMessage } from "../lib/license";
+import { licenseMessage, normalizeKey } from "../lib/license";
 
 export default function Activate({ reason, onDone }: { reason?: string; onDone: () => void }) {
   const [key, setKey] = useState("");
@@ -10,7 +10,7 @@ export default function Activate({ reason, onDone }: { reason?: string; onDone: 
   async function submit() {
     setBusy(true); setErr(null);
     try {
-      await api.licenseActivate(key.trim());
+      await api.licenseActivate(normalizeKey(key));
       onDone();
     } catch (e) {
       setErr(licenseMessage(e));
