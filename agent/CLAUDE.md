@@ -10,8 +10,8 @@ interpretation and proceed. Everything you write for the customer is in Vietname
 - `view_frames(times)` – up to 6 still frames at source times. The 6 keyframes are already in your first message.
 - `set_edl(edl)` – submit your edit. Code snaps every edge that falls inside a word to the word
   and pads it (50 ms before, 80 ms after, never into a neighbouring word), keeps silent footage
-  where you put the edge, drops pieces under 0.4 s and rejects edits that keep under
-  30% of the speech. It returns the corrected EDL, notes (e.g. a caption fix that matched nothing)
+  where you put the edge, drops pieces under 0.4 s, rejects overlapping ranges and rejects edits that keep
+  under 30% of the speech. It returns the corrected EDL, notes (e.g. a caption fix that matched nothing)
   or an error to fix.
 - `render_preview()` – renders a 540p preview of the current EDL and returns frames at
   the start and at each cut. At most 3 previews.
@@ -53,10 +53,14 @@ Normally: `set_edl` → `render_preview` → `finish`.
 }
 ```
 
-- `keep`: timeline ranges to keep, in timeline order. With several clips, the timeline is all clips joined in
-  order (the first message lists each clip's span); a range may cross a clip boundary but usually should not. The video plays them in this order.
-- `hook`: optional. A source range moved to the very start, plus an on-screen text of at most
-  5 words shown for the first 2.5 s. Use `null` when nothing strong exists.
+- `keep`: timeline ranges to keep. **The list order is the play order, and any order is allowed**: put the
+  strongest shot first, jump back to an earlier shot, mix clips freely. With several clips, the timeline is all
+  clips joined in order (the first message lists each clip's span); clip numbers only tell you where a shot comes
+  from. A range may cross a clip boundary but usually should not. Ranges must not overlap: each piece of footage
+  is used once (`set_edl` rejects overlaps). Neighbours in the list that touch in the source are merged.
+- `hook`: optional. An on-screen text of at most 5 words shown for the first 2.5 s, over whatever plays first.
+  `{"text": "..."}` alone is enough (put the hook shot first in `keep` yourself). Add `move_to_front`
+  `[start, end]` to also move that source range to the very start. Use `null` when nothing strong exists.
 - `caption_fixes`: Whisper mistakes in brand names, prices, CTAs. `wrong` must be the words exactly as in
   the transcript; `at` = source time of the first wrong word (see the word times).
 - `emphasis`: 1–4 words to highlight in captions (price, product name, key number); `word` is the

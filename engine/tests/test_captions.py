@@ -81,3 +81,15 @@ def test_unmatched_fix_reported_in_notes():
                                "emphasis": [{"at": 20.0, "word": "zzz"}]}, PHRASE, 25.0)
     assert any("không có" in n for n in notes) and any("zzz" in n for n in notes)
     assert not any("tuyết mưu" in n for n in notes)
+
+
+def test_reversed_ranges_words_in_output_order():
+    """B2: keep order [5.0-6.4] then [0.9-1.8]: the later words play first; cues stay in output-time order."""
+    ranges = [Range(4.9, 6.4), Range(0.9, 1.8)]
+    tw = map_words(ranges, WORDS, [], [])
+    assert [w.text for w in tw] == ["son", "này", "giá", "189K", "chào", "cả", "nhà"]
+    assert all(a.start <= b.start for a, b in zip(tw, tw[1:]))
+    cues = build_cues(ranges, WORDS, [], [], total=2.4)
+    assert all(a.end <= b.start + 1e-9 for a, b in zip(cues, cues[1:]))
+    assert cues[0].words[0].text == "son" and cues[-1].words[-1].text == "nhà"
+    assert abs(next(w for w in tw if w.text == "chào").start - (1.0 - 0.9 + 1.5)) < 1e-6

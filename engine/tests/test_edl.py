@@ -39,10 +39,52 @@ def test_edge_inside_word_snaps_but_silent_edge_stays():
     assert r.end == pytest.approx(5.25, abs=FRAME)   # pad clamped to mid-gap before 'năm'
 
 
-def test_merges_overlaps_and_sorts():
-    edl, _ = v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}, {"start": 1.5, "end": 2.0}]})
+def test_keep_order_is_play_order():
+    """B2: ranges play in the given order, no sorting."""
+    edl, _ = v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}]})
     got = [x for r in edl.keep for x in (r.start, r.end)]
-    assert got == pytest.approx([0.95, 2.08, 3.95, 6.08], abs=FRAME / 2 + 1e-6)
+    assert got == pytest.approx([3.95, 6.08, 0.95, 2.08], abs=FRAME / 2 + 1e-6)
+    assert [r.start for r in edl.ordered()] == [r.start for r in edl.keep]
+    assert edl.output_time(1.0) == pytest.approx(6.08 - 3.95 + 0.05, abs=FRAME)
+
+
+def test_overlapping_ranges_are_rejected():
+    with pytest.raises(EdlError, match=r"keep\[2\].*chồng lên keep\[1\].*một lần"):
+        v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}, {"start": 1.5, "end": 2.0}]})
+    with pytest.raises(EdlError, match="chồng"):
+        validate_edl({"keep": [{"start": 0.0, "end": 3.0}, {"start": 5.0, "end": 6.0}, {"start": 2.0, "end": 4.0}]},
+                     [], 8.0)
+
+
+def test_list_adjacent_touching_ranges_merge():
+    edl, _ = validate_edl({"keep": [{"start": 0.0, "end": 2.0}, {"start": 2.02, "end": 3.0},
+                                    {"start": 5.0, "end": 6.0}]}, [], 8.0)
+    assert [(r.start, r.end) for r in edl.keep] == [(0.0, 3.0), (5.0, 6.0)]
+
+
+def test_touching_but_not_list_adjacent_stay_separate():
+    edl, _ = validate_edl({"keep": [{"start": 2.0, "end": 3.0}, {"start": 5.0, "end": 6.0},
+                                    {"start": 0.0, "end": 2.0}]}, [], 8.0)
+    assert [(r.start, r.end) for r in edl.keep] == [(2.0, 3.0), (5.0, 6.0), (0.0, 2.0)]
+
+
+def test_coverage_rule_skipped_with_voiceover():
+    with pytest.raises(EdlError, match="30%"):
+        v({"keep": [{"start": 1.0, "end": 1.4}]})
+    edl, _ = validate_edl({"keep": [{"start": 1.0, "end": 1.4}, {"start": 6.5, "end": 7.5}]}, WORDS, 8.0,
+                          voiceover_on=True)
+    assert len(edl.keep) == 2
+
+
+def test_hook_text_without_move_to_front():
+    edl, _ = v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}], "hook": {"text": "XEM NGAY"}})
+    assert edl.hook.text == "XEM NGAY" and edl.hook.start is None
+    assert [r.start for r in edl.ordered()] == [r.start for r in edl.keep]   # nothing moved
+    assert edl.to_dict()["hook"] == {"text": "XEM NGAY"}
+    again, _ = v(edl.to_dict())
+    assert again.to_dict() == edl.to_dict()
+    with pytest.raises(EdlError, match="5"):
+        v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"text": "một hai ba bốn năm sáu"}})
 
 
 def test_drops_short_segment_with_note():

@@ -8,6 +8,7 @@ from autoedit.transcript import Word, resolve_edits, speech_duration
 PAD_BEFORE = 0.05
 PAD_AFTER = 0.08
 MIN_SEGMENT = 0.4
+TOUCH = 0.05        # ranges whose edges are this close count as touching
 MIN_KEEP_RATIO = 0.30
 HOOK_MAX_WORDS = 5
 BROLL_MIN, BROLL_MAX = 1.5, 4.0
@@ -31,9 +32,13 @@ class Range:
 
 @dataclass
 class Hook:
-    start: float
-    end: float
+    start: float | None     # None: hook text only, laid over whatever plays first (nothing moved)
+    end: float | None
     text: str
+
+    @property
+    def moved(self) -> bool:
+        return self.start is not None and self.end is not None
 
 
 @dataclass
@@ -70,7 +75,7 @@ class Edl:
     def to_dict(self) -> dict:
         return {
             "keep": [asdict(r) for r in self.keep],
-            "hook": {"move_to_front": [self.hook.start, self.hook.end], "text": self.hook.text} if self.hook else None,
+            "hook": self._hook_dict(),
             "caption_fixes": [asdict(c) for c in self.caption_fixes],
             "emphasis": [asdict(e) for e in self.emphasis],
             "broll": [asdict(b) for b in self.broll],
@@ -78,8 +83,16 @@ class Edl:
             "music": {"use": self.music_use, "duck_db": self.music_duck_db},
         }
 
-    def ordered(self) -> list[Range]:
+    def _hook_dict(self) -> dict | None:
         if not self.hook:
+            return None
+        if not self.hook.moved:
+            return {"text": self.hook.text}
+        return {"move_to_front": [self.hook.start, self.hook.end], "text": self.hook.text}
+
+    def ordered(self) -> list[Range]:
+        """Play order: the keep list as given (free shot order), with a moved hook range first."""
+        if not self.hook or not self.hook.moved:
             return list(self.keep)
         h = Range(self.hook.start, self.hook.end, "hook")
         rest: list[Range] = []
@@ -222,7 +235,7 @@ def _validate_broll(raw: list, kept: list[Range], hook: Hook | None, image_names
 
 def validate_edl(raw: dict, words: list[Word], clip_duration: float,
                  image_names: tuple[str, ...] | list[str] = (), *,
-                 default_cta: str = DEFAULT_CTA) -> tuple[Edl, list[str]]:
+                 default_cta: str = DEFAULT_CTA, voiceover_on: bool = False) -> tuple[Edl, list[str]]:
     notes: list[str] = []
     keep_raw = raw.get("keep") or []
     if not keep_raw:
@@ -235,15 +248,21 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         a, b = _snap_pad(a, min(b, clip_duration), words, clip_duration)
         ranges.append(Range(a, b, str(k.get("reason", ""))))
 
-    ranges.sort(key=lambda r: r.start)
-    merged: list[Range] = []
-    for r in ranges:
-        if merged and r.start <= merged[-1].end:
-            merged[-1].end = max(merged[-1].end, r.end)
+    # free shot order: the list order is the play order. Neighbours in the list that touch in the source merge;
+    # any other overlap means the same footage would play twice: reject it.
+    merged: list[tuple[int, Range]] = []
+    for i, r in enumerate(ranges):
+        if merged and abs(r.start - merged[-1][1].end) <= TOUCH:
+            merged[-1][1].end = max(merged[-1][1].end, r.end)
         else:
-            merged.append(r)
+            merged.append((i, r))
+    for x, (i, a) in enumerate(merged):
+        for j, b in merged[:x]:
+            if min(a.end, b.end) - max(a.start, b.start) > TOUCH:
+                raise EdlError(f"keep[{i}] ({a.start:.1f}–{a.end:.1f}) chồng lên keep[{j}] ({b.start:.1f}–{b.end:.1f}); "
+                               "mỗi đoạn chỉ dùng một lần")
     kept = []
-    for r in merged:
+    for _, r in merged:
         if r.duration < MIN_SEGMENT:
             notes.append(f"dropped {r.start:.2f}-{r.end:.2f}: shorter than {MIN_SEGMENT}s")
         else:
@@ -252,7 +271,7 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         raise EdlError("every range is shorter than 0.4s")
 
     total_speech = speech_duration(words)
-    if total_speech > 0:
+    if total_speech > 0 and not voiceover_on:      # with voiceover the original audio is muted
         ratio = _speech_in(kept, words) / total_speech
         if ratio < MIN_KEEP_RATIO:
             raise EdlError(f"keeps only {ratio:.0%} of the speech; keep at least 30%")
@@ -265,11 +284,14 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
             raise EdlError("hook text must not be empty (use hook: null for no hook)")
         if len(text.split()) > HOOK_MAX_WORDS:
             raise EdlError(f"hook text must be at most {HOOK_MAX_WORDS} words")
-        a, b = (float(x) for x in h["move_to_front"])
-        if not (0 <= a < b <= clip_duration + 0.01):
-            raise EdlError("hook range is outside the clip or inverted")
-        a, b = _snap_pad(a, min(b, clip_duration), words, clip_duration)
-        hook = Hook(a, b, text)
+        if h.get("move_to_front"):
+            a, b = (float(x) for x in h["move_to_front"])
+            if not (0 <= a < b <= clip_duration + 0.01):
+                raise EdlError("hook range is outside the clip or inverted")
+            a, b = _snap_pad(a, min(b, clip_duration), words, clip_duration)
+            hook = Hook(a, b, text)
+        else:
+            hook = Hook(None, None, text)       # text over the first 2.5 s of whatever plays first
 
     fixes = [CaptionFix(float(c["at"]), str(c["wrong"]).strip(), str(c["right"]).strip())
              for c in raw.get("caption_fixes") or []]

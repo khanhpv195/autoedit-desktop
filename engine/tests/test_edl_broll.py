@@ -106,3 +106,11 @@ def test_hook_push_maps_back_within_same_range():
                keep=[{"start": 0, "end": 6}, {"start": 8, "end": 12}])
     b = edl.broll[0]
     assert b.at == pytest.approx(2.5) and edl.output_time(b.at) == pytest.approx(2.5)
+
+
+def test_broll_at_maps_through_reversed_ranges():
+    keep = [{"start": 20, "end": 26}, {"start": 0, "end": 8}]     # second range plays from output 6 s
+    edl, notes = v({"broll": [{"image": "a.png", "at": 3.0, "dur": 2}]}, keep=keep)
+    assert edl.broll and edl.output_span(3.0, 2.0) == pytest.approx((9.0, 11.0))
+    edl, _ = v({"broll": [{"image": "a.png", "at": 23.0, "dur": 2}]}, keep=keep)
+    assert edl.output_span(23.0, 2.0) == pytest.approx((3.0, 5.0))

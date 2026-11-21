@@ -124,7 +124,7 @@ EDL_SCHEMA = {
             "required": ["start", "end"]}},
         "hook": {"type": ["object", "null"], "properties": {
             "move_to_front": {"type": "array", "items": _NUM, "minItems": 2, "maxItems": 2},
-            "text": {"type": "string"}}, "required": ["move_to_front", "text"]},
+            "text": {"type": "string"}}, "required": ["text"]},
         "caption_fixes": {"type": "array", "items": {
             "type": "object", "properties": {"at": _NUM, "wrong": {"type": "string"}, "right": {"type": "string"}},
             "required": ["at", "wrong", "right"]}},
