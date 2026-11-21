@@ -93,7 +93,26 @@ def chunk(ws: list[TimedWord], target: int = 4, hard: int = 6) -> list[list[Time
 
 def build_cues(ranges: list[Range], words: list[Word], fixes: list[CaptionFix],
                emphasis: list[Emphasis], total: float) -> list[Cue]:
-    tw = map_words(ranges, words, fixes, emphasis)
+    return _cues(map_words(ranges, words, fixes, emphasis), total)
+
+
+def build_voice_cues(lines: list[tuple[float, float, list]], fixes: list[CaptionFix], emphasis: list[Emphasis],
+                     total: float) -> list[Cue]:
+    """Captions from voiceover words. lines = [(output start, timeline `at`, [(text, start, end) relative to the
+    line])]. caption_fixes / emphasis match by text, each line on its own (their `at` is a timeline second, so the
+    words are matched at `at + word time`); each line is its own caption group."""
+    tw: list[TimedWord] = []
+    for g, (out_start, at, words) in enumerate(lines):
+        timeline = [Word(str(t), at + float(a), at + float(b)) for t, a, b in words]
+        fixed, emph_idx, _ = resolve_edits(timeline, fixes, emphasis)
+        for k, w in enumerate(fixed):
+            tw.append(TimedWord(w.text, out_start + (w.start - at), out_start + (w.end - at), w.start, g,
+                                k in emph_idx))
+    tw.sort(key=lambda t: t.start)
+    return _cues(tw, total)
+
+
+def _cues(tw: list[TimedWord], total: float) -> list[Cue]:
     groups: list[list[TimedWord]] = []
     for w in tw:
         if not groups or groups[-1][-1].group != w.group:
