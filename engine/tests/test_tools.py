@@ -139,3 +139,11 @@ async def test_preview_text_lists_qc_issues(session, monkeypatch):
     monkeypatch.setattr(tools, "render", fake_render)
     t = text_of(await tools.render_preview(session, {}))
     assert "Kiểm tra: khung đứng 3.20–4.10s; tiếng bụp ở cắt 1.20s" in t
+
+
+async def test_set_edl_returns_captions_to_proofread(session):
+    edl = dict(EDL, caption_fixes=[{"at": 3.7, "wrong": "189K", "right": "189 nghìn"}])
+    res = await tools.set_edl(session, {"edl": edl})
+    caps = json.loads(text_of(res))["captions"]
+    text = " ".join(caps)
+    assert caps[0].startswith("[0.60]") and "chào cả nhà" in text and "189 nghìn" in text and "189K" not in text

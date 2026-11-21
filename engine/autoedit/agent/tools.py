@@ -11,6 +11,7 @@ from autoedit.edl import EdlError, VoiceLine, validate_edl, voice_key
 from autoedit.errors import AutoeditError, VoiceAuth, VoiceError, VoiceMissing, VoiceQuota
 from autoedit.fsutil import atomic_write_text
 from autoedit.prep.keyframes import frame_at
+from autoedit.render.captions import chunk, map_words
 from autoedit.render.pipeline import preview_frames, render
 from autoedit.transcript import format_phrases, pack_phrases
 from autoedit.voice import eleven
@@ -121,7 +122,16 @@ async def set_edl(s: EditSession, args: dict) -> dict:
         out_map.append({"timeline": [round(r.start, 2), round(r.end, 2)], "output": [round(t, 2), round(t + r.duration, 2)]})
         t += r.duration
     msg = {"corrected_edl": edl.to_dict(), "notes": notes, "output_duration": round(d, 2), "output_map": out_map}
+    if not s.project.voiceover_on and s.prepared.words:
+        msg["captions"] = caption_lines(edl, s.prepared.words)
     return _text(json.dumps(msg, ensure_ascii=False))
+
+
+def caption_lines(edl, words) -> list[str]:
+    """The on-screen captions in play order (caption fixes applied), each with the source time of its first word,
+    so the agent can proofread exactly what the customer will read."""
+    tw = map_words(edl.ordered(), words, edl.caption_fixes, edl.emphasis)
+    return [f"[{c[0].src_start:.2f}] " + " ".join(w.text for w in c) for c in chunk(tw)]
 
 
 async def render_preview(s: EditSession, args: dict) -> dict:

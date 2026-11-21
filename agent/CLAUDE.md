@@ -37,6 +37,10 @@ speech or voiceover is on). Do not look for them again and do not call
    was dropped, fix its `at` (use `output_map`, which maps each kept timeline range to output seconds) and
    call `set_edl` again. If a note says a range starts or ends mid-sentence, move that edge to the sentence
    start/end it names (or drop the fragment) unless you cut there on purpose.
+   Then proofread `captions` (exactly what the customer will read, `[source time]` of each line's first word):
+   read every line as a Vietnamese customer would. For each word that is wrong or makes no sense (misheard
+   brand, size, "xăng" for cm, a stray repeated number), add a `caption_fixes` entry and call `set_edl` again.
+   Do this in the same turn as any other fix; one proofreading pass is enough.
 3. Call `render_preview` and check the frames. Re-submit with `set_edl` only if a cut is clearly
    wrong (mid-word, flash cut, hook not landing). Usually 1 preview is enough.
 4. Call `finish` with 2–4 short customer-facing bullets.

@@ -37,3 +37,9 @@ def test_refine_edl_flattens_moved_hook_into_play_order(monkeypatch):
     out = seams.refine_edl(edl, "x", 1.0)
     assert out.hook.text == "HI" and not out.hook.moved and len(out.keep) == 2
     assert abs(out.keep[0].start - 0.6) <= 0.1
+
+
+def test_edge_inside_speech_looks_wider_for_a_pause():
+    x = _signal([(0.28, 0.33)])                 # the only pause is 200 ms before the start the snap gave
+    [r] = refine_ranges(x, [Range(0.5, 0.9)], 1.0)
+    assert 0.27 <= r.start <= 0.34

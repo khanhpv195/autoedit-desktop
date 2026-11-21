@@ -12,6 +12,9 @@ WIN = 0.02          # RMS window
 HOP = 0.005
 START_SEARCH = (-0.10, 0.03)    # a start may move a little earlier (catch the onset), barely later
 END_SEARCH = (-0.03, 0.12)      # an end mostly later: whisper ends words early
+LOUD_DB = -32.0                 # still this loud at the best point: the edge sits inside speech, look wider
+WIDE_START = (-0.25, 0.06)
+WIDE_END = (-0.10, 0.20)
 
 
 def _rms_db(x: array, t: float) -> float:
@@ -41,7 +44,13 @@ def refine_ranges(x: array, ranges: list[Range], duration: float) -> list[Range]
         lo_start = max([0.0] + [o.end for o in others if o.end <= r.start + 1e-6])
         hi_end = min([duration] + [o.start for o in others if o.start >= r.end - 1e-6])
         s = quietest(x, max(lo_start, r.start + START_SEARCH[0]), r.start + START_SEARCH[1], r.start)
+        if _rms_db(x, s) > LOUD_DB:
+            w = quietest(x, max(lo_start, r.start + WIDE_START[0]), r.start + WIDE_START[1], r.start)
+            s = w if _rms_db(x, w) < _rms_db(x, s) - 6 else s
         e = quietest(x, r.end + END_SEARCH[0], min(hi_end, r.end + END_SEARCH[1]), r.end)
+        if _rms_db(x, e) > LOUD_DB:
+            w = quietest(x, r.end + WIDE_END[0], min(hi_end, r.end + WIDE_END[1]), r.end)
+            e = w if _rms_db(x, w) < _rms_db(x, e) - 6 else e
         out.append(replace(r, start=s, end=e) if e - s > 0.2 else r)
     return out
 
