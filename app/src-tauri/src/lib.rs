@@ -55,6 +55,7 @@ pub fn run() {
             commands::get_project,
             commands::update_project,
             commands::set_project_asset,
+            commands::set_project_media,
             commands::read_run_feed,
             commands::auth_status,
             commands::login_start,

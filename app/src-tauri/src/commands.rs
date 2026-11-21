@@ -137,7 +137,8 @@ fn projects_root(state: &AppState) -> PathBuf {
 pub async fn create_project(
     state: State<'_, AppState>,
     niche: String,
-    clip: String,
+    clips: Vec<String>,
+    images: Vec<String>,
     logo: Option<String>,
     music: Option<String>,
 ) -> Result<ProjectSummary, String> {
@@ -149,7 +150,8 @@ pub async fn create_project(
         projects::create(
             &root,
             &niche,
-            Path::new(&clip),
+            &clips.iter().map(PathBuf::from).collect::<Vec<_>>(),
+            &images.iter().map(PathBuf::from).collect::<Vec<_>>(),
             logo.as_deref().map(Path::new),
             music.as_deref().map(Path::new),
             &today,
@@ -177,6 +179,20 @@ pub fn update_project(dir: String, patch: serde_json::Value) -> Result<(), Strin
 #[tauri::command(async)]
 pub fn set_project_asset(dir: String, kind: String, path: Option<String>) -> Result<ProjectDetail, String> {
     projects::set_asset(Path::new(&dir), &kind, path.as_deref().map(Path::new))
+}
+
+#[tauri::command]
+pub async fn set_project_media(dir: String, clips: Vec<String>, images: Vec<String>) -> Result<ProjectDetail, String> {
+    // Copying large files must not block the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        projects::set_media(
+            Path::new(&dir),
+            &clips.iter().map(PathBuf::from).collect::<Vec<_>>(),
+            &images.iter().map(PathBuf::from).collect::<Vec<_>>(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

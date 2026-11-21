@@ -33,7 +33,8 @@ pub struct Run {
 pub struct ProjectDetail {
     #[serde(flatten)]
     pub summary: ProjectSummary,
-    pub clip: String,
+    pub clips: Vec<String>,
+    pub images: Vec<String>,
     pub logo: Option<String>,
     pub music: Option<String>,
     pub prompt: String,
@@ -99,10 +100,56 @@ fn copy_input(dir: &Path, src: &Path) -> Result<String, String> {
     Ok(name.to_string_lossy().into_owned())
 }
 
+pub const MAX_CLIPS: usize = 10;
+pub const MAX_IMAGES: usize = 20;
+
+/// Copy `src` into `<dir>/input/` under a unique name, unless it already lives there (then keep it by name).
+fn place_input(dir: &Path, src: &Path) -> Result<String, String> {
+    let name = src.file_name().ok_or("Đường dẫn không hợp lệ")?;
+    let input = dir.join("input");
+    std::fs::create_dir_all(&input).map_err(|e| e.to_string())?;
+    let same_dir = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    };
+    if src.parent().is_some_and(|p| same_dir(p, &input)) {
+        return Ok(name.to_string_lossy().into_owned());
+    }
+    let stem = Path::new(name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = Path::new(name).extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let mut final_name = name.to_string_lossy().into_owned();
+    let mut k = 2;
+    while input.join(&final_name).exists() {
+        final_name = format!("{stem}-{k}{ext}");
+        k += 1;
+    }
+    std::fs::copy(src, input.join(&final_name)).map_err(|e| format!("Không chép được {}: {e}", src.display()))?;
+    Ok(final_name)
+}
+
+fn place_media(dir: &Path, clips: &[PathBuf], images: &[PathBuf]) -> Result<(Vec<String>, Vec<String>), String> {
+    if clips.is_empty() {
+        return Err("Cần ít nhất 1 clip".into());
+    }
+    if clips.len() > MAX_CLIPS {
+        return Err(format!("Tối đa {MAX_CLIPS} clip"));
+    }
+    if images.len() > MAX_IMAGES {
+        return Err(format!("Tối đa {MAX_IMAGES} ảnh"));
+    }
+    if let Some(p) = clips.iter().chain(images).find(|p| !p.is_file()) {
+        return Err(format!("Không thấy file {}", p.display()));
+    }
+    let c = clips.iter().map(|p| place_input(dir, p)).collect::<Result<Vec<_>, _>>()?;
+    let i = images.iter().map(|p| place_input(dir, p)).collect::<Result<Vec<_>, _>>()?;
+    Ok((c, i))
+}
+
 pub fn create(
     root: &Path,
     niche: &str,
-    clip: &Path,
+    clips: &[PathBuf],
+    images: &[PathBuf],
     logo: Option<&Path>,
     music: Option<&Path>,
     today: &str,
@@ -110,10 +157,11 @@ pub fn create(
     if !NICHES.contains(&niche) {
         return Err(format!("Ngành không hợp lệ: {niche}"));
     }
-    if !clip.is_file() {
-        return Err("Không thấy file clip".into());
+    let first = clips.first().ok_or("Cần ít nhất 1 clip")?;
+    if let Some(p) = clips.iter().chain(images).find(|p| !p.is_file()) {
+        return Err(format!("Không thấy file {}", p.display()));
     }
-    let stem = clip.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = first.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let base = format!("{today}_{}", slugify(&stem));
     let mut dir = root.join(&base);
     let mut k = 2;
@@ -122,12 +170,13 @@ pub fn create(
         k += 1;
     }
     std::fs::create_dir_all(dir.join("input")).map_err(|e| e.to_string())?;
-    let clip_name = copy_input(&dir, clip)?;
+    let (clip_names, image_names) = place_media(&dir, clips, images)?;
     let logo_name = logo.map(|p| copy_input(&dir, p)).transpose()?;
     let music_name = music.map(|p| copy_input(&dir, p)).transpose()?;
     let mut m = Map::new();
     m.insert("niche".into(), json!(niche));
-    m.insert("clip".into(), json!(clip_name));
+    m.insert("clips".into(), json!(clip_names));
+    m.insert("images".into(), json!(image_names));
     m.insert("logo".into(), json!(logo_name));
     m.insert("music".into(), json!(music_name));
     m.insert("prompt".into(), json!(""));
@@ -173,9 +222,24 @@ fn opt_str(m: &Map<String, Value>, k: &str) -> Option<String> {
     m.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from)
 }
 
+/// File names stored under `key`; `clips` falls back to the legacy single `clip` field.
+fn names(m: &Map<String, Value>, key: &str) -> Vec<String> {
+    let list = m.get(key).and_then(Value::as_array).map(|a| {
+        a.iter().filter_map(|v| v.as_str().filter(|s| !s.is_empty()).map(String::from)).collect::<Vec<_>>()
+    });
+    match list {
+        Some(l) => l,
+        None if key == "clips" => opt_str(m, "clip").into_iter().collect(),
+        None => vec![],
+    }
+}
+
 pub fn detail(dir: &Path) -> Result<ProjectDetail, String> {
     let m = read_json(dir)?;
     let input = dir.join("input");
+    let abs_list = |k: &str| -> Vec<String> {
+        names(&m, k).iter().map(|n| input.join(n).to_string_lossy().into_owned()).collect()
+    };
     let abs_input = |k: &str| opt_str(&m, k).map(|n| input.join(n).to_string_lossy().into_owned());
     let runs = m
         .get("runs")
@@ -204,7 +268,8 @@ pub fn detail(dir: &Path) -> Result<ProjectDetail, String> {
         .unwrap_or_default();
     Ok(ProjectDetail {
         summary: summary(dir, &m)?,
-        clip: abs_input("clip").unwrap_or_default(),
+        clips: abs_list("clips"),
+        images: abs_list("images"),
         logo: abs_input("logo"),
         music: abs_input("music"),
         prompt: opt_str(&m, "prompt").unwrap_or_default(),
@@ -237,6 +302,16 @@ pub fn set_asset(dir: &Path, kind: &str, path: Option<&Path>) -> Result<ProjectD
         None => Value::Null,
     };
     m.insert(kind.into(), value);
+    write_json(dir, &m)?;
+    detail(dir)
+}
+
+pub fn set_media(dir: &Path, clips: &[PathBuf], images: &[PathBuf]) -> Result<ProjectDetail, String> {
+    let mut m = read_json(dir)?;
+    let (c, i) = place_media(dir, clips, images)?;
+    m.insert("clips".into(), json!(c));
+    m.insert("images".into(), json!(i));
+    m.remove("clip");
     write_json(dir, &m)?;
     detail(dir)
 }
@@ -275,15 +350,16 @@ mod tests {
         touch(&clip);
         let logo = src.path().join("logo.png");
         touch(&logo);
-        let s = create(root.path(), "thoi-trang", &clip, Some(&logo), None, "2026-11-20").unwrap();
+        let s = create(root.path(), "thoi-trang", std::slice::from_ref(&clip), &[], Some(&logo), None, "2026-11-20").unwrap();
         assert!(s.dir.ends_with("2026-11-20_vay-do"));
         let j: Value =
             serde_json::from_str(&std::fs::read_to_string(Path::new(&s.dir).join("project.json")).unwrap()).unwrap();
-        assert_eq!(j["clip"], "Váy đỏ.mp4");
+        assert_eq!(j["clips"], json!(["Váy đỏ.mp4"]));
+        assert!(j.get("clip").is_none());
         assert_eq!(j["logo"], "logo.png");
         assert!(j["music"].is_null());
         assert!(Path::new(&s.dir).join("input/Váy đỏ.mp4").exists());
-        let s2 = create(root.path(), "thoi-trang", &clip, None, None, "2026-11-20").unwrap();
+        let s2 = create(root.path(), "thoi-trang", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
         assert!(s2.dir.ends_with("2026-11-20_vay-do-2"));
     }
     #[test]
@@ -293,13 +369,13 @@ mod tests {
         touch(&clip);
         let projects = root.path().join("p");
         std::fs::create_dir_all(&projects).unwrap();
-        create(&projects, "chung", &clip, None, None, "2026-11-20").unwrap();
+        create(&projects, "chung", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(30));
         let second = root.path().join("a.mp4");
         touch(&second);
-        create(&projects, "chung", &second, None, None, "2026-11-20").unwrap();
+        create(&projects, "chung", std::slice::from_ref(&second), &[], None, None, "2026-11-20").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(30));
-        create(&projects, "chung", &clip, None, None, "2026-11-19").unwrap();
+        create(&projects, "chung", std::slice::from_ref(&clip), &[], None, None, "2026-11-19").unwrap();
         let titles: Vec<String> = list(&projects).into_iter().map(|p| p.dir.rsplit('/').next().unwrap().to_string()).collect();
         assert_eq!(titles, vec!["2026-11-20_a", "2026-11-20_c", "2026-11-19_c"]);
     }
@@ -308,7 +384,7 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let clip = src.path().join("a.mp4");
         touch(&clip);
-        assert!(create(src.path(), "xe-hoi", &clip, None, None, "2026-11-20").is_err());
+        assert!(create(src.path(), "xe-hoi", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").is_err());
     }
     #[test]
     fn update_keeps_unknown_keys_and_ignores_disallowed() {
@@ -316,7 +392,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let clip = src.path().join("a.mp4");
         touch(&clip);
-        let s = create(root.path(), "do-an", &clip, None, None, "2026-11-20").unwrap();
+        let s = create(root.path(), "do-an", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
         update(Path::new(&s.dir), &json!({"prompt": "ngắn gọn", "runs": "hack"})).unwrap();
         let d = detail(Path::new(&s.dir)).unwrap();
         assert_eq!(d.prompt, "ngắn gọn");
@@ -330,7 +406,7 @@ mod tests {
         touch(&clip);
         let song = src.path().join("s.mp3");
         touch(&song);
-        let s = create(root.path(), "do-an", &clip, None, None, "2026-11-20").unwrap();
+        let s = create(root.path(), "do-an", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
         let d = set_asset(Path::new(&s.dir), "music", Some(&song)).unwrap();
         assert!(d.music.unwrap().ends_with("input/s.mp3"));
         assert!(set_asset(Path::new(&s.dir), "music", None).unwrap().music.is_none());
@@ -342,7 +418,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let clip = src.path().join("a.mp4");
         touch(&clip);
-        let s = create(root.path(), "do-an", &clip, None, None, "2026-11-20").unwrap();
+        let s = create(root.path(), "do-an", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
         let dir = Path::new(&s.dir);
         let mut j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
         j["runs"] = json!([{"n":1,"final":"runs/1/final.mp4","prompt":"p","feedback":null,"summary":["s"],"needs_review":true,"fallback":false}]);
@@ -368,7 +444,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let clip = src.path().join("a.mp4");
         touch(&clip);
-        let s = create(root.path(), "do-an", &clip, None, None, "2026-11-20").unwrap();
+        let s = create(root.path(), "do-an", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
         let dir = Path::new(&s.dir);
         assert!(detail(dir).unwrap().posts.is_empty());
         let mut j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
@@ -376,5 +452,80 @@ mod tests {
         std::fs::write(dir.join("project.json"), j.to_string()).unwrap();
         let v = serde_json::to_value(detail(dir).unwrap()).unwrap();
         assert_eq!(v["posts"][0]["id"], "p1");
+    }
+    #[test]
+    fn create_with_several_clips_and_images() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let mk = |n: &str| {
+            let p = src.path().join(n);
+            touch(&p);
+            p
+        };
+        let (a, b, i1, i2) = (mk("a.mp4"), mk("b.mov"), mk("x.png"), mk("y.jpg"));
+        let s = create(root.path(), "chung", &[b.clone(), a.clone()], &[i1, i2], None, None, "2026-11-20").unwrap();
+        assert!(s.dir.ends_with("2026-11-20_b"));
+        let d = detail(Path::new(&s.dir)).unwrap();
+        let tail = |v: &[String]| v.iter().map(|p| p.rsplit('/').next().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(tail(&d.clips), ["b.mov", "a.mp4"]);
+        assert_eq!(tail(&d.images), ["x.png", "y.jpg"]);
+        assert!(Path::new(&d.images[1]).exists());
+        assert!(create(root.path(), "chung", &[], &[], None, None, "2026-11-20").is_err());
+        let many: Vec<PathBuf> = (0..11).map(|_| a.clone()).collect();
+        assert!(create(root.path(), "chung", &many, &[], None, None, "2026-11-20").is_err());
+    }
+    #[test]
+    fn detail_reads_legacy_clip() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let clip = src.path().join("a.mp4");
+        touch(&clip);
+        let s = create(root.path(), "do-an", std::slice::from_ref(&clip), &[], None, None, "2026-11-20").unwrap();
+        let dir = Path::new(&s.dir);
+        let mut j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
+        j.as_object_mut().unwrap().remove("clips");
+        j.as_object_mut().unwrap().remove("images");
+        j["clip"] = json!("a.mp4");
+        std::fs::write(dir.join("project.json"), j.to_string()).unwrap();
+        let d = detail(dir).unwrap();
+        assert_eq!(d.clips.len(), 1);
+        assert!(d.clips[0].ends_with("input/a.mp4"));
+        assert!(d.images.is_empty());
+    }
+    #[test]
+    fn set_media_keeps_inside_copies_outside_and_orders() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let mk = |n: &str| {
+            let p = src.path().join(n);
+            touch(&p);
+            p
+        };
+        let (a, b, c, img) = (mk("a.mp4"), mk("b.mp4"), mk("c.mp4"), mk("p.png"));
+        let s = create(root.path(), "chung", &[a.clone(), b.clone()], &[], None, None, "2026-11-20").unwrap();
+        let dir = Path::new(&s.dir);
+        // simulate a legacy leftover `clip` field
+        let mut j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
+        j["clip"] = json!("a.mp4");
+        std::fs::write(dir.join("project.json"), j.to_string()).unwrap();
+        let before = detail(dir).unwrap();
+        let (ia, ib) = (PathBuf::from(&before.clips[0]), PathBuf::from(&before.clips[1]));
+        // reorder (inside input -> kept); outside clip c and image copied; a same-named outside file gets a unique name
+        let other = src.path().join("sub");
+        std::fs::create_dir_all(&other).unwrap();
+        let a2 = other.join("a.mp4");
+        std::fs::write(&a2, b"different").unwrap();
+        let d = set_media(dir, &[ib, ia, c, a2], &[img]).unwrap();
+        let tail = |v: &[String]| v.iter().map(|p| p.rsplit('/').next().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(tail(&d.clips), ["b.mp4", "a.mp4", "c.mp4", "a-2.mp4"]);
+        assert_eq!(tail(&d.images), ["p.png"]);
+        let j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
+        assert!(j.get("clip").is_none());
+        assert_eq!(std::fs::read_dir(dir.join("input")).unwrap().count(), 5);
+        // dropping clips leaves their files on disk
+        let d = set_media(dir, &[PathBuf::from(&d.clips[0])], &[]).unwrap();
+        assert_eq!(d.clips.len(), 1);
+        assert!(dir.join("input/c.mp4").exists());
+        assert!(set_media(dir, &[], &[]).is_err());
     }
 }
