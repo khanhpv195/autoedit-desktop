@@ -190,7 +190,8 @@ async def voiceover(s: EditSession, args: dict) -> dict:
     for line in made:
         s.voice_lines[(line.at, line.text)] = line
         o = s.edl.output_time(line.at) if s.edl is not None else None
-        out.append({"at": line.at, "text": line.text, "duration": round(line.duration, 2),
+        out.append({"id": eleven.cache_key(s.project.voice_id, line.text), "at": line.at, "text": line.text,
+                    "duration": round(line.duration, 2),
                     "out_start": None if o is None else round(o, 2),
                     "out_end": None if o is None else round(o + line.duration, 2)})
     if s.edl is not None:

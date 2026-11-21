@@ -112,6 +112,7 @@ async def test_success_stores_lines_and_reports_windows(session, fake_tts):
     assert out["lines"][0]["duration"] == pytest.approx(1.0, abs=0.08)
     assert out["lines"][0]["out_start"] == pytest.approx(0.05, abs=0.05)
     assert any("overlap" in w for w in out["warnings"])
+    assert out["lines"][0]["id"] == eleven.cache_key("v1", "Áo len xinh")     # spec A4: per-line file id
     assert (0.6, "Áo len xinh") in session.voice_lines and session.voice_calls == 1
     assert fake_tts[0] == ("Áo len xinh", "v1")
 
