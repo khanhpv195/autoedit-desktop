@@ -15,7 +15,7 @@ const e = vi.mocked(engine);
 const run1 = { n: 1, final: "/p/1/runs/1/final.mp4", prompt: "p", feedback: null, summary: ["Cắt lặng", "Thêm hook"], needsReview: false, fallback: false };
 const detail = (runs: any[]) => ({
   dir: "/p/1", title: "Váy hoa", niche: "thoi-trang", created: "2026-11-20", status: "done" as const, runCount: runs.length,
-  clip: "/p/1/clip.mp4", logo: null, music: null, prompt: "làm gọn", scriptCard: null, runs,
+  clips: ["/p/1/clip.mp4"], images: [], logo: null, music: null, prompt: "làm gọn", scriptCard: null, runs,
 });
 
 let emit: (ev: any) => void; let finish: (r: any) => void; const cancel = vi.fn(async () => {});

@@ -26,7 +26,7 @@ const account: any = {
 const run = { n: 1, final: "/p/1/runs/1/final.mp4", prompt: "p", feedback: null, summary: [], needsReview: false, fallback: false };
 const detail = (posts: any[] = []): any => ({
   dir: "/p/1", title: "Váy", niche: "chung", created: "2026-11-20", status: "done", runCount: 1,
-  clip: "", logo: null, music: null, prompt: "", scriptCard: null, runs: [run], posts,
+  clips: [], images: [], logo: null, music: null, prompt: "", scriptCard: null, runs: [run], posts,
 });
 const post = (over: any = {}) => ({ id: "p1", title: "t", status: "SCHEDULED", postDate: "2026-11-21T19:30:00+07:00", channels: ["TIKTOK"], error: null, project: "1", run: 1, permalinks: {}, ...over });
 

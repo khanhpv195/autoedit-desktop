@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import * as api from "../lib/api";
+import { classify, type Classified } from "../lib/media";
 import { useStore } from "../state/store";
 
 type Props = {
   kind: "clip" | "logo" | "music";
   label: string;
   hint?: string;
-  accept: string[];
-  onFile: (path: string) => void;
-  variant?: "big" | "slot";
+  accept?: string[];
+  onFile?: (path: string) => void;
+  /** Multi-file mode: all dropped/picked paths, sorted into clips and images. */
+  onMedia?: (m: Classified) => void;
+  variant?: "big" | "slot" | "bar";
   dragDrop?: boolean;
   value?: string | null;
   disabled?: boolean;
@@ -18,20 +21,27 @@ type Props = {
 const ext = (p: string) => p.split(".").pop()?.toLowerCase() ?? "";
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
-export default function DropZone({ kind, label, hint, accept, onFile, variant = "big", dragDrop = false, value, disabled }: Props) {
+export default function DropZone({ kind, label, hint, accept = [], onFile, onMedia, variant = "big", dragDrop = false, value, disabled }: Props) {
   const { notify } = useStore();
   const ref = useRef<HTMLDivElement>(null);
   const [over, setOver] = useState(false);
-  const propsRef = useRef({ accept, onFile, notify, disabled });
-  propsRef.current = { accept, onFile, notify, disabled };
+  const propsRef = useRef({ accept, onFile, onMedia, notify, disabled });
+  propsRef.current = { accept, onFile, onMedia, notify, disabled };
+
+  function takeMany(paths: string[]) {
+    const c = classify(paths);
+    if (c.ignored.length) propsRef.current.notify(`Bỏ qua ${c.ignored.length} file không hỗ trợ (chỉ mp4, mov, png, jpg, webp)`);
+    if (c.clips.length || c.images.length) propsRef.current.onMedia?.(c);
+  }
 
   function take(path: string) {
     if (!propsRef.current.accept.includes(ext(path))) { propsRef.current.notify("File không đúng loại"); return; }
-    propsRef.current.onFile(path);
+    propsRef.current.onFile?.(path);
   }
 
   async function pick() {
     if (disabled) return;
+    if (onMedia) { takeMany(await api.pickMedia()); return; }
     const p = await api.pickFile(kind);
     if (p) take(p);
   }
@@ -53,7 +63,10 @@ export default function DropZone({ kind, label, hint, accept, onFile, variant = 
         else if (p.type === "over") setOver(inside(p.position));
         else if (p.type === "drop") {
           setOver(false);
-          if (!propsRef.current.disabled && inside(p.position) && p.paths[0]) take(p.paths[0]);
+          if (!propsRef.current.disabled && inside(p.position) && p.paths.length) {
+            if (propsRef.current.onMedia) takeMany(p.paths);
+            else take(p.paths[0]);
+          }
         }
       }).then((f) => { if (dead) f(); else un = f; }).catch(() => {});
     } catch { /* not running inside Tauri (tests, browser) */ }
@@ -66,6 +79,14 @@ export default function DropZone({ kind, label, hint, accept, onFile, variant = 
         onKeyDown={(e) => { if (e.key === "Enter") pick(); }}>
         <span className="ic">{kind === "logo" ? "🏷️" : "🎵"}</span>
         <div><b>{label}</b><small>{value ? baseName(value) : hint}</small></div>
+      </div>
+    );
+  }
+  if (variant === "bar") {
+    return (
+      <div ref={ref} className={"dropbar" + (over ? " over" : "")} role="button" tabIndex={0} onClick={pick}
+        onKeyDown={(e) => { if (e.key === "Enter") pick(); }}>
+        <b>{label}</b>{hint && <small>{hint}</small>}
       </div>
     );
   }

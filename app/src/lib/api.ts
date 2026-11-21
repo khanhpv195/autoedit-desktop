@@ -22,13 +22,15 @@ export const clearSocialKey = () => invoke<null>("clear_social_key");
 export const mcpList = () => invoke<McpServer[]>("mcp_list");
 export const mcpSave = (server: McpServer, secrets: Record<string, string>) => invoke<null>("mcp_save", { server, secrets });
 export const mcpDelete = (name: string) => invoke<null>("mcp_delete", { name });
-export const createProject = (niche: string, clip: string, logo: string | null, music: string | null) =>
-  invoke<ProjectSummary>("create_project", { niche, clip, logo, music });
+export const createProject = (niche: string, clips: string[], images: string[], logo: string | null, music: string | null) =>
+  invoke<ProjectSummary>("create_project", { niche, clips, images, logo, music });
 export const listProjects = () => invoke<ProjectSummary[]>("list_projects");
 export const getProject = (dir: string) => invoke<ProjectDetail>("get_project", { dir });
 export const updateProject = (dir: string, patch: ProjectPatch) => invoke<null>("update_project", { dir, patch });
 export const setProjectAsset = (dir: string, kind: "logo" | "music", path: string | null) =>
   invoke<ProjectDetail>("set_project_asset", { dir, kind, path });
+export const setProjectMedia = (dir: string, clips: string[], images: string[]) =>
+  invoke<ProjectDetail>("set_project_media", { dir, clips, images });
 export const readRunFeed = (dir: string, n: number) => invoke<FeedItem[]>("read_run_feed", { dir, n });
 
 export const onLoginOutput = async (cb: (o: LoginOutput) => void): Promise<() => void> =>
@@ -46,6 +48,13 @@ const FILTERS = {
 export async function pickFile(kind: "clip" | "logo" | "music"): Promise<string | null> {
   const r = await open({ multiple: false, directory: false, filters: [{ ...FILTERS[kind], extensions: [...FILTERS[kind].extensions] }] });
   return typeof r === "string" ? r : null;
+}
+export async function pickMedia(): Promise<string[]> {
+  const r = await open({
+    multiple: true, directory: false,
+    filters: [{ name: "Clip và ảnh", extensions: ["mp4", "mov", "m4v", "png", "jpg", "jpeg", "webp"] }],
+  });
+  return Array.isArray(r) ? r : typeof r === "string" ? [r] : [];
 }
 export async function pickFolder(): Promise<string | null> {
   const r = await open({ multiple: false, directory: true });
