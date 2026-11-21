@@ -44,3 +44,23 @@ class SocialLimit(AutoeditError):
 
 class SocialFailed(AutoeditError):
     code = "SOCIAL_FAILED"
+
+
+class VoiceAuth(AutoeditError):
+    code = "VOICE_AUTH"
+
+
+class VoiceQuota(AutoeditError):
+    code = "VOICE_QUOTA"
+
+
+class VoiceMissing(AutoeditError):
+    code = "VOICE_MISSING"
+
+
+class VoiceLimit(AutoeditError):
+    code = "VOICE_LIMIT"
+
+
+class VoiceFailed(AutoeditError):
+    code = "VOICE_FAILED"
