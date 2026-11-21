@@ -55,6 +55,20 @@ def image_blocks(prepared: Prepared, detail: bool = True) -> list[dict]:
     return out
 
 
+def voiceover_lines(project: Project) -> list[str]:
+    return [
+        "Lồng tiếng AI: BẬT. The original audio is muted; an AI voice reads the lines you write "
+        f"(voice: {(project.voiceover or {}).get('voice_name') or project.voice_id}).",
+        "Thông tin sản phẩm (khách nhập): " + (project.product_info.strip() or "(trống)"),
+        "Voiceover rules: write only what the product info says plus what is visible in the footage; no invented "
+        "material, price, size or promises. Speak about 2.5 words per second; leave 0.3 s between lines; the last "
+        "line is the cart CTA (giỏ hàng). Short Vietnamese sentences, at most 120 characters each.",
+        "Order: decide the shots, call `voiceover` with your lines ({at, text}, `at` = timeline second inside a kept "
+        "range), read back the real durations, then call `set_edl` with the same lines in `voiceover`, then "
+        "`render_preview` and `finish`. The 30% speech rule does not apply.",
+    ]
+
+
 def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
                       previous: dict | None, user_mcp: list[str] | None = None) -> str:
     lines = [
@@ -72,6 +86,8 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
         lines.append("This is a re-edit. Customer feedback on the previous version: " + feedback.strip())
     if previous:
         lines.append("Previous EDL: " + json.dumps(previous, ensure_ascii=False))
+    if project.voiceover_on:
+        lines += voiceover_lines(project)
     if user_mcp:
         lines.append("Tool bổ sung của khách: " + ", ".join(f"mcp__{n}__*" for n in user_mcp)
                      + " — dùng khi cần thông tin sản phẩm/thương hiệu; không bắt buộc, "

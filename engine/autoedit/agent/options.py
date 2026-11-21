@@ -17,7 +17,7 @@ def model() -> str:
 
 
 def edit_options(agent_dir: Path, server, model: str, stderr=None, user_mcp: dict | None = None,
-                 user_mcp_file: Path | None = None) -> ClaudeAgentOptions:
+                 user_mcp_file: Path | None = None, voiceover: bool = False) -> ClaudeAgentOptions:
     """`user_mcp` only supplies the server names to allow. Their configs (secrets) travel in `user_mcp_file`
     (see mcp_user.config_file) as a second --mcp-config, never inside `mcp_servers`: the SDK would put those
     on the CLI command line."""
@@ -28,7 +28,8 @@ def edit_options(agent_dir: Path, server, model: str, stderr=None, user_mcp: dic
         setting_sources=["project"],     # agent/CLAUDE.md only, never ~/.claude
         mcp_servers={"autoedit": server},
         extra_args={"mcp-config": str(user_mcp_file)} if user_mcp and user_mcp_file else {},
-        allowed_tools=EDIT_TOOLS + [f"mcp__{n}" for n in user_mcp],
+        allowed_tools=EDIT_TOOLS + (["mcp__autoedit__voiceover"] if voiceover else [])
+        + [f"mcp__{n}" for n in user_mcp],
         max_turns=15,
         model=model,
         cli_path=find_cli(),             # None only when running from source: SDK uses its own copy

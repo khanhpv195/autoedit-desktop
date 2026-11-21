@@ -15,9 +15,9 @@ from autoedit.agent.options import edit_options, model
 from autoedit.agent.prompt import build_edit_message
 from autoedit.agent.runner import run_agent
 from autoedit.agent.session import EditSession
-from autoedit.agent.tools import build_server
+from autoedit.agent.tools import VOICE_CALL_CHARS, build_server
 from autoedit.claude_cli import find_cli, install_cli
-from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited
+from autoedit.errors import AgentFailed, AutoeditError, NoAuth, RateLimited, VoiceError, VoiceQuota
 from autoedit.events import Emitter
 from autoedit import mcp_user, secrets_env
 from autoedit.model_dl import install_model
@@ -27,6 +27,7 @@ from autoedit.prep import prepare
 from autoedit.project import Project, update_project
 from autoedit.render.pipeline import render
 from autoedit.resources import agent_dir
+from autoedit.voice import eleven
 
 
 class Tee:
@@ -68,6 +69,8 @@ async def _edit(args, events: Emitter) -> int:
     find_cli()  # fail fast with SETUP_REQUIRED, before transcribing
     project = Project.load(Path(args.project))
     prepared = prepare(project, events)
+    if project.voiceover_on and eleven.quota() < VOICE_CALL_CHARS:    # before any Claude turn is spent
+        raise VoiceQuota(eleven.MSG_QUOTA)
     user_prompt = args.prompt if args.prompt is not None else project.prompt
     previous = _previous_edl(project) if args.feedback else None
     run_dir = project.new_run_dir()
@@ -96,11 +99,14 @@ async def _edit(args, events: Emitter) -> int:
                     with mcp_user.config_file(user_mcp) as mcp_file:    # 0600 temp file, removed right after the run
                         outcome = await run_agent(
                             session, message,
-                            edit_options(agent_dir(), build_server(session), model(), cli_stderr, user_mcp, mcp_file),
+                            edit_options(agent_dir(), build_server(session), model(), cli_stderr, user_mcp, mcp_file,
+                                         voiceover=project.voiceover_on),
                             on_message=on_message)
                     usage["turns"] = outcome.turns
+                    if session.fatal is not None:
+                        raise session.fatal
                     ok = outcome.finished
-                except (RateLimited, NoAuth):
+                except (RateLimited, NoAuth, VoiceError):
                     raise
                 except Exception:
                     traceback.print_exc(file=sys.stderr)

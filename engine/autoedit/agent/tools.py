@@ -7,18 +7,30 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from autoedit import __version__
 from autoedit.agent.session import EditSession
-from autoedit.edl import EdlError, validate_edl
-from autoedit.errors import AutoeditError
+from autoedit.edl import EdlError, VoiceLine, validate_edl, voice_key
+from autoedit.errors import AutoeditError, VoiceAuth, VoiceError, VoiceMissing, VoiceQuota
 from autoedit.fsutil import atomic_write_text
 from autoedit.prep.keyframes import frame_at
 from autoedit.render.pipeline import preview_frames, render
 from autoedit.transcript import format_phrases, pack_phrases
+from autoedit.voice import eleven
+from autoedit.voice.lines import audio_duration
 
 MAX_PREVIEWS = 3
 MAX_EDL_ERRORS = 3
 MAX_FRAMES = 6          # per view_frames call
 MAX_VIEWED_FRAMES = 12  # per session: keeps the whole conversation far below the API's 100-images-per-request limit
 TOOL_NAMES = ("get_transcript", "view_frames", "set_edl", "render_preview", "finish")
+VOICE_TOOL = "voiceover"
+VOICE_LINE_MAX = 120
+VOICE_CALL_CHARS = 600
+VOICE_MAX_CALLS = 3
+VOICE_GAP = 0.3
+FATAL_VOICE = (VoiceAuth, VoiceMissing, VoiceQuota)     # retrying cannot help: fail the run with this error
+
+
+def tool_names(session: EditSession) -> tuple[str, ...]:
+    return TOOL_NAMES + ((VOICE_TOOL,) if session.project.voiceover_on else ())
 
 
 def _text(t: str, error: bool = False) -> dict:
@@ -71,7 +83,8 @@ async def set_edl(s: EditSession, args: dict) -> dict:
             except json.JSONDecodeError as e:
                 raise EdlError(f"edl is not valid JSON: {e}") from e
         edl, notes = validate_edl(raw, s.prepared.words, s.prepared.info.duration,
-                                  image_names=s.prepared.image_names, default_cta=s.project.cta_text)
+                                  image_names=s.prepared.image_names, default_cta=s.project.cta_text,
+                                  voiceover_on=s.project.voiceover_on, voice_lines=s.voice_lines)
     except (EdlError, KeyError, TypeError, ValueError, AttributeError) as e:
         s.edl_errors += 1
         if s.edl_errors >= MAX_EDL_ERRORS and s.edl is None:
@@ -107,9 +120,78 @@ async def render_preview(s: EditSession, args: dict) -> dict:
     return {"content": content + [_image(p) for p in frames]}
 
 
+async def voiceover(s: EditSession, args: dict) -> dict:
+    """Synthesize short voiceover lines (ElevenLabs, cached). Limits are checked before any API call."""
+    if not s.project.voiceover_on:
+        return _text("Voiceover is off for this video.", error=True)
+    raw = args.get("lines") or []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raw = []
+    try:
+        lines = [voice_key(x["at"], x["text"]) for x in raw]
+    except (KeyError, TypeError, ValueError):
+        return _text("lines must be a list of {at: number, text: string}", error=True)
+    if not lines or any(not t for _, t in lines):
+        return _text("lines must contain 1 or more {at, text} with non-empty text", error=True)
+    if s.voice_calls >= VOICE_MAX_CALLS:
+        return _text(f"voiceover limit reached ({VOICE_MAX_CALLS} calls per session). Use the lines you have.",
+                     error=True)
+    long = [t for _, t in lines if len(t) > VOICE_LINE_MAX]
+    if long:
+        return _text(f"each line must be one short sentence of at most {VOICE_LINE_MAX} characters: {long[0]!r}",
+                     error=True)
+    total = sum(len(t) for _, t in lines)
+    if total > VOICE_CALL_CHARS:
+        return _text(f"at most {VOICE_CALL_CHARS} characters per call (got {total}); keep the script short",
+                     error=True)
+    dur = s.prepared.info.duration
+    for at, t in lines:
+        if not 0 <= at < dur:
+            return _text(f"line {t!r}: at {at} is outside the timeline 0-{dur:.2f}s", error=True)
+        if s.edl is not None and s.edl.output_time(at) is None:
+            return _text(f"line {t!r}: at {at} is not inside a kept range of the current EDL", error=True)
+    s.voice_calls += 1
+    cache = s.project.work_dir / "vo"
+    made: list[VoiceLine] = []
+    try:
+        for at, t in lines:
+            path, words = await asyncio.to_thread(eleven.tts, t, s.project.voice_id, cache)
+            made.append(VoiceLine(at, t, path, await asyncio.to_thread(audio_duration, path), words))
+    except VoiceError as e:
+        if isinstance(e, FATAL_VOICE):
+            s.aborted, s.fatal = True, e
+            return _text(f"Voiceover failed: {e.message}. Stop now.", error=True)
+        return _text(f"Voiceover failed: {e.message}. You may try again.", error=True)
+    out, warnings = [], []
+    for line in made:
+        s.voice_lines[(line.at, line.text)] = line
+        o = s.edl.output_time(line.at) if s.edl is not None else None
+        out.append({"at": line.at, "text": line.text, "duration": round(line.duration, 2),
+                    "out_start": None if o is None else round(o, 2),
+                    "out_end": None if o is None else round(o + line.duration, 2)})
+    if s.edl is not None:
+        total_out = s.edl.output_duration()
+        placed = sorted((x for x in out if x["out_start"] is not None), key=lambda x: x["out_start"])
+        for a, b in zip(placed, placed[1:]):
+            if b["out_start"] - a["out_end"] < VOICE_GAP:
+                warnings.append(f"{a['text']!r} would overlap {b['text']!r} (gap under {VOICE_GAP}s): move one")
+        for x in placed:
+            if x["out_end"] > total_out + 0.05:
+                warnings.append(f"{x['text']!r} runs past the video end ({total_out:.2f}s)")
+    else:
+        warnings.append("no EDL yet: out_start/out_end are known after set_edl")
+    return _text(json.dumps({"lines": out, "warnings": warnings}, ensure_ascii=False))
+
+
 async def finish(s: EditSession, args: dict) -> dict:
     if s.edl is None:
         return _text("Call set_edl first.", error=True)
+    if s.project.voiceover_on and not s.edl.voiceover:
+        return _text("Voiceover is on: call voiceover, then set_edl with `voiceover` lines, before finish.",
+                     error=True)
     summary = [str(x).strip() for x in args.get("summary", []) if str(x).strip()][:4]
     if not summary:
         return _text("summary must have 1-4 short Vietnamese bullets", error=True)
@@ -139,6 +221,9 @@ EDL_SCHEMA = {
             "required": ["image", "at", "dur"]}},
         "cta_text": {"type": "string"},
         "music": {"type": "object", "properties": {"use": {"type": "boolean"}, "duck_db": _NUM}},
+        "voiceover": {"type": "array", "description": "only when voiceover is on: lines made by the voiceover tool",
+                      "items": {"type": "object", "properties": {"at": _NUM, "text": {"type": "string"}},
+                                "required": ["at", "text"]}},
     },
     "required": ["keep"],
 }
@@ -161,8 +246,15 @@ SCHEMAS = {
                                                              "minItems": 1, "maxItems": 4}},
                 "required": ["summary"]}),
 }
+SCHEMAS[VOICE_TOOL] = (
+    "Make AI voiceover lines (Vietnamese). lines = [{at: timeline second inside a kept range, text: one short "
+    f"sentence ≤{VOICE_LINE_MAX} chars}}], ≤{VOICE_CALL_CHARS} chars per call, {VOICE_MAX_CALLS} calls per session. "
+    "Returns each line's real duration and output window; then put the same {at, text} in set_edl `voiceover`.",
+    {"type": "object", "properties": {"lines": {"type": "array", "minItems": 1, "items": {
+        "type": "object", "properties": {"at": _NUM, "text": {"type": "string"}}, "required": ["at", "text"]}}},
+     "required": ["lines"]})
 HANDLERS = {"get_transcript": get_transcript, "view_frames": view_frames, "set_edl": set_edl,
-            "render_preview": render_preview, "finish": finish}
+            "render_preview": render_preview, "finish": finish, VOICE_TOOL: voiceover}
 
 
 def build_server(session: EditSession):
@@ -171,5 +263,5 @@ def build_server(session: EditSession):
             return await fn(session, args)
         return handler
 
-    sdk_tools = [tool(name, SCHEMAS[name][0], SCHEMAS[name][1])(bind(HANDLERS[name])) for name in TOOL_NAMES]
+    sdk_tools = [tool(name, SCHEMAS[name][0], SCHEMAS[name][1])(bind(HANDLERS[name])) for name in tool_names(session)]
     return create_sdk_mcp_server(name="autoedit", version=__version__, tools=sdk_tools)

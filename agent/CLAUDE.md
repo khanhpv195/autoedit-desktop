@@ -74,6 +74,22 @@ Normally: `set_edl` → `render_preview` → `finish`.
   CTA; omit it to use that default. Keep it short; an emoji is fine.
 - `music.use`: false if the clip already has music or the speech is quiet.
 
+## Lồng tiếng (chỉ khi bật)
+
+Only when the request says `Lồng tiếng AI: BẬT` (otherwise the tool does not exist):
+
+- The original audio is muted in the final video; captions come from the voiceover words.
+- `voiceover(lines)` – `lines = [{"at": 6.5, "text": "Áo len cổ lọ, mặc ấm mà vẫn gọn."}]`. `at` is a timeline
+  second inside a kept range (like `broll.at`); the line starts playing where that moment lands in the output.
+  One short sentence per line (≤120 characters), ≤600 characters per call, at most 3 calls. It returns each
+  line's real duration and output window, plus warnings (overlap with the next line, past the video end).
+- Then call `set_edl` with the same lines in `"voiceover": [{"at": 6.5, "text": "..."}]` (exactly the `at` and
+  `text` you sent). `set_edl` rejects lines not made by the tool, overlapping lines and lines past the end.
+  `finish` requires the voiceover lines in the EDL.
+- Write only what the product info (`Thông tin sản phẩm`) says plus what is visible: no invented material,
+  price, size or promises. About 2.5 words per second, 0.3 s between lines, the last line is the cart CTA.
+- The 30% speech rule does not apply when voiceover is on.
+
 ## Hard rules
 
 - Never cut inside a word. Never reorder words inside a sentence.

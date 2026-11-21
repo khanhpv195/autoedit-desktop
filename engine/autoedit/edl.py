@@ -1,5 +1,6 @@
 import math
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from autoedit.project import DEFAULT_CTA
 from autoedit.render.compose import HOOK_SECONDS
@@ -62,6 +63,26 @@ class Broll:
 
 
 @dataclass
+class VoiceCue:
+    at: float       # timeline seconds, inside a kept range (same convention as b-roll)
+    text: str
+
+
+@dataclass
+class VoiceLine:
+    """A voiceover line synthesized in this session (the `voiceover` tool)."""
+    at: float
+    text: str
+    path: Path | None
+    duration: float
+    words: list = field(default_factory=list)     # [(text, start, end)] relative to the line start
+
+
+def voice_key(at: float, text: str) -> tuple[float, str]:
+    return round(float(at), 3), str(text).strip()
+
+
+@dataclass
 class Edl:
     keep: list[Range]
     hook: Hook | None = None
@@ -71,6 +92,7 @@ class Edl:
     cta_text: str = DEFAULT_CTA
     music_use: bool = True
     music_duck_db: float = -14.0
+    voiceover: list[VoiceCue] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +103,7 @@ class Edl:
             "broll": [asdict(b) for b in self.broll],
             "cta_text": self.cta_text,
             "music": {"use": self.music_use, "duck_db": self.music_duck_db},
+            "voiceover": [asdict(c) for c in self.voiceover],
         }
 
     def _hook_dict(self) -> dict | None:
@@ -235,7 +258,8 @@ def _validate_broll(raw: list, kept: list[Range], hook: Hook | None, image_names
 
 def validate_edl(raw: dict, words: list[Word], clip_duration: float,
                  image_names: tuple[str, ...] | list[str] = (), *,
-                 default_cta: str = DEFAULT_CTA, voiceover_on: bool = False) -> tuple[Edl, list[str]]:
+                 default_cta: str = DEFAULT_CTA, voiceover_on: bool = False,
+                 voice_lines: dict | None = None) -> tuple[Edl, list[str]]:
     notes: list[str] = []
     keep_raw = raw.get("keep") or []
     if not keep_raw:
@@ -317,4 +341,33 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         music_use=bool(music.get("use", True)),
         music_duck_db=min(-6.0, max(-24.0, duck)),
     )
+    edl.voiceover = _validate_voiceover(raw.get("voiceover") or [], edl, voice_lines or {})
     return edl, notes
+
+
+def _validate_voiceover(raw: list, edl: Edl, voice_lines: dict) -> list[VoiceCue]:
+    """Every cue must be a line made by the `voiceover` tool in this session; lines must sit inside kept footage,
+    not overlap each other and end before the video ends. Returned in output-time order."""
+    if not raw:
+        return []
+    total = edl.output_duration()
+    placed: list[tuple[float, float, VoiceCue]] = []
+    for c in raw:
+        key = voice_key(c["at"], c["text"])
+        line = voice_lines.get(key)
+        if line is None:
+            raise EdlError(f"voiceover line {key[1]!r} at {key[0]} was not generated: call the voiceover tool with "
+                           "exactly this at/text first")
+        start = edl.output_time(key[0])
+        if start is None:
+            raise EdlError(f"voiceover line {key[1]!r}: at {key[0]} is not inside a kept range")
+        if start + line.duration > total + 0.05:
+            raise EdlError(f"voiceover line {key[1]!r} runs past the end of the video ({start:.2f}+"
+                           f"{line.duration:.2f}s > {total:.2f}s); move it earlier or shorten it")
+        placed.append((start, start + line.duration, VoiceCue(key[0], key[1])))
+    placed.sort(key=lambda x: x[0])
+    for (a0, a1, a), (b0, _, b) in zip(placed, placed[1:]):
+        if b0 < a1 - 0.01:
+            raise EdlError(f"voiceover lines overlap: {a.text!r} plays {a0:.2f}-{a1:.2f}s and {b.text!r} starts "
+                           f"at {b0:.2f}s; leave 0.3 s between lines")
+    return [c for _, _, c in placed]
