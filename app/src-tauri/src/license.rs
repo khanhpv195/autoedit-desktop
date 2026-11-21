@@ -18,6 +18,7 @@ pub struct License {
     pub key: String,
     pub machine: String,
     pub name: String,
+    #[allow(dead_code)] // part of the signed payload, not used by the app
     pub iat: i64,
 }
 
@@ -44,12 +45,14 @@ pub fn hash_platform_id(id: &str) -> String {
     d.iter().take(16).map(|b| format!("{b:02x}")).collect()
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn parse_ioreg(out: &str) -> Option<String> {
     let line = out.lines().find(|l| l.contains("\"IOPlatformUUID\""))?;
     let v = line.split('=').nth(1)?.trim().trim_matches('"');
     (!v.is_empty()).then(|| v.to_string())
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))] // only called on Windows; tested everywhere
 fn parse_reg(out: &str) -> Option<String> {
     let line = out.lines().find(|l| l.contains("MachineGuid"))?;
     line.split("REG_SZ").nth(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
