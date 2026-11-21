@@ -100,8 +100,10 @@ async def render_preview(s: EditSession, args: dict) -> dict:
     s.previews += 1
     s.events.preview(str(res.path), s.previews)
     frames = await asyncio.to_thread(preview_frames, res.path, s.edl, s.project.work_dir / "frames")
-    content = [{"type": "text", "text": f"Preview {s.previews}/{MAX_PREVIEWS}: {res.duration:.2f}s. "
-                                        "Frames: start, then just after each cut."}]
+    text = f"Preview {s.previews}/{MAX_PREVIEWS}: {res.duration:.2f}s. Frames: start, then just after each cut."
+    if res.checks:
+        text += "\nKiểm tra: " + "; ".join(res.checks)
+    content = [{"type": "text", "text": text}]
     return {"content": content + [_image(p) for p in frames]}
 
 

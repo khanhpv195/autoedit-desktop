@@ -34,3 +34,23 @@ def test_preview_and_frames(tmp_path, clip):
     assert res.qc is None and probe(res.path).width == 540
     frames = preview_frames(res.path, edl, tmp_path / "pf")
     assert 2 <= len(frames) <= 4
+
+
+def test_cut_times():
+    from autoedit.edl import Range
+    from autoedit.render.pipeline import cut_times
+    assert cut_times([Range(4, 6), Range(0, 1.5), Range(8, 9)]) == [2.0, 3.5]
+    assert cut_times([Range(0, 3)]) == []
+
+
+def test_preview_runs_freeze_and_pop_checks(tmp_path, clip, monkeypatch):
+    import autoedit.render.pipeline as pl
+    seen = {}
+
+    def fake_checks(path, broll, cuts):
+        seen.update(path=path, broll=broll, cuts=cuts)
+        return ["khung đứng 1.00–2.00s"]
+    monkeypatch.setattr(pl, "edit_checks", fake_checks)
+    proj, prep, edl = setup(tmp_path, clip)
+    res = render(prep, proj, edl, tmp_path / "preview.mp4", preview=True)
+    assert res.checks == ["khung đứng 1.00–2.00s"] and seen["cuts"] == pl.cut_times(edl.ordered())

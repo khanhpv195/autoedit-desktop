@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from autoedit.edl import Edl
@@ -11,7 +11,7 @@ from autoedit.render.captions import build_cues, speech_intervals, write_ass
 from autoedit.render.compose import compose
 from autoedit.render.loudness import loudnorm
 from autoedit.render.overlays import prepare_logo, text_card
-from autoedit.render.qc import QcReport, run_qc
+from autoedit.render.qc import QcReport, edit_checks, run_qc
 from autoedit.render.segments import render_base
 
 
@@ -21,6 +21,7 @@ class RenderResult:
     duration: float
     qc: QcReport | None
     needs_review: bool
+    checks: list[str] = field(default_factory=list)    # preview only: freeze / pop issues for the agent
 
 
 def _broll_inputs(prepared: Prepared, project: Project, edl: Edl, work: Path) -> list[tuple[Path, float, float]]:
@@ -33,6 +34,15 @@ def _broll_inputs(prepared: Prepared, project: Project, edl: Edl, work: Path) ->
         if span is None or b.image not in known:
             continue
         out.append((downscale_image(known[b.image], work / f"broll_{i}.jpg", max_side=2400), span[0], span[1]))
+    return out
+
+
+def cut_times(ranges) -> list[float]:
+    """Output-time boundaries between consecutive ranges."""
+    out, t = [], 0.0
+    for r in ranges[:-1]:
+        t += r.duration
+        out.append(round(t, 3))
     return out
 
 
@@ -62,12 +72,14 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
         return out
 
     once()
+    windows = [(a, b) for _, a, b in broll]
+    cuts = cut_times(ranges)
     if preview:
-        return RenderResult(out, total, None, False)
-    qc = run_qc(out, total)
-    if not qc.ok:
+        return RenderResult(out, total, None, False, edit_checks(out, windows, cuts))
+    qc = run_qc(out, total, broll=windows, cuts=cuts)
+    if qc.retryable:
         once()
-        qc = run_qc(out, total)
+        qc = run_qc(out, total, broll=windows, cuts=cuts)
     return RenderResult(out, total, qc, not qc.ok)
 
 
