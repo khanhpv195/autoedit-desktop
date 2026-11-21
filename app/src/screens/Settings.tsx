@@ -100,8 +100,8 @@ export default function Settings() {
               <div className="setgrid">
                 <span className="k">Thư mục project</span>
                 <span className="row">
-                  <code style={{ fontSize: 12 }}>{settings?.projectsRoot}</code>
-                  <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={changeFolder}>Đổi…</button>
+                  <code style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{settings?.projectsRoot}</code>
+                  <button className="btn ghost" onClick={changeFolder}>Đổi…</button>
                 </span>
               </div>
             </div>
@@ -121,9 +121,9 @@ export default function Settings() {
           <div className="tabp stack">
             <div className="card">
               <h3>Tài khoản Claude</h3>
-              <div className="row" style={{ justifyContent: "space-between" }}>
+              <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                 <span className={"pill " + (source ? "ok" : "warn")}>{status}</span>
-                <span className="row">
+                <span className="row" style={{ flexWrap: "wrap" }}>
                   <button className="btn ghost" onClick={startChange}>Đổi tài khoản</button>
                   {source === "app-token" && <button className="btn ghost" onClick={doLogout}>Đăng xuất</button>}
                   <button className="btn ghost" onClick={check}>Kiểm tra kết nối</button>
@@ -197,10 +197,10 @@ function DefaultsCard({ settings, save }: { settings: SettingsT; save: (s: Setti
           {settings.defaultLogo && (
             <img src={api.fileSrc(settings.defaultLogo)} alt="Logo mặc định" style={{ height: 40, maxWidth: 120, objectFit: "contain" }} />
           )}
-          <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={pickLogo}>
+          <button className="btn ghost" onClick={pickLogo}>
             {settings.defaultLogo ? "Đổi logo" : "Chọn logo"}
           </button>
-          {settings.defaultLogo && <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={removeLogo}>Bỏ logo</button>}
+          {settings.defaultLogo && <button className="btn ghost" onClick={removeLogo}>Bỏ logo</button>}
         </span>
         <span className="k">Chữ kêu gọi</span>
         <span>

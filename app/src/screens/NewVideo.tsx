@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowRight, ArrowUp, ChevronLeft, Image as ImageIcon, Mic, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
 import type { EngineJob } from "../lib/engine";
@@ -304,13 +305,16 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   return (
     <div className="view on">
       <div className="backrow">
-        <button className="backbtn" onClick={() => go({ name: "niche" })}>← Đổi ngành</button>
-        <h1 style={{ margin: 0 }}>Video mới</h1>
+        <button className="backbtn" onClick={() => go({ name: "niche" })}><ChevronLeft size={16} aria-hidden />Đổi ngành</button>
         <span className="catbadge">{nicheLabel(niche)}</span>
       </div>
-      <div className="sub">Thả clip và ảnh vào, bấm để AI gợi ý kịch bản (hoặc tự viết), rồi bấm dựng.</div>
+      <h1>Video mới</h1>
+      <div className="sub">Thả clip và ảnh vào, để AI gợi ý kịch bản (hoặc tự viết), rồi bấm dựng.</div>
       <div className="newgrid">
-        <div>
+        <div className="panel">
+          <div className="ptitle"><span className="n">1</span><b>Clip & ảnh</b>
+            {media.clips.length > 0 && <span className="right hint">{media.clips.length} clip{media.images.length > 0 ? ` · ${media.images.length} ảnh` : ""}</span>}
+          </div>
           {media.clips.length === 0 && media.images.length === 0 ? (
             <DropZone kind="clip" variant="big" dragDrop onMedia={addMedia}
               label="Kéo clip và ảnh vào đây" hint="mp4, mov, png, jpg — chọn được nhiều file" />
@@ -320,10 +324,11 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
                 <div className="medialist">
                   {media.clips.map((c, i) => (
                     <div className="row" key={i}>
-                      <span className="nm" title={c}>{i + 1}. {baseName(c)}</span>
-                      <button aria-label={`Lên ${baseName(c)}`} disabled={i === 0} onClick={() => moveClip(i, -1)}>↑</button>
-                      <button aria-label={`Xuống ${baseName(c)}`} disabled={i === media.clips.length - 1} onClick={() => moveClip(i, 1)}>↓</button>
-                      <button aria-label={`Xóa ${baseName(c)}`} disabled={media.clips.length <= 1} onClick={() => removeClip(i)}>✕</button>
+                      <span className="num">{i + 1}</span>
+                      <span className="nm" title={c}>{baseName(c)}</span>
+                      <button aria-label={`Lên ${baseName(c)}`} disabled={i === 0} onClick={() => moveClip(i, -1)}><ArrowUp aria-hidden /></button>
+                      <button aria-label={`Xuống ${baseName(c)}`} disabled={i === media.clips.length - 1} onClick={() => moveClip(i, 1)}><ArrowDown aria-hidden /></button>
+                      <button aria-label={`Xóa ${baseName(c)}`} disabled={media.clips.length <= 1} onClick={() => removeClip(i)}><X aria-hidden /></button>
                     </div>
                   ))}
                 </div>
@@ -334,98 +339,109 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
                 <div className="imgstrip">
                   {media.images.map((im, i) => (
                     <div className="imgchip" key={i} title={im}>
+                      <ImageIcon size={14} aria-hidden style={{ color: "var(--muted)", flexShrink: 0 }} />
                       <span>{baseName(im)}</span>
-                      <button aria-label={`Xóa ảnh ${baseName(im)}`} onClick={() => removeImage(i)}>✕</button>
+                      <button aria-label={`Xóa ảnh ${baseName(im)}`} onClick={() => removeImage(i)}><X aria-hidden /></button>
                     </div>
                   ))}
                 </div>
               )}
-              <DropZone kind="clip" variant="bar" dragDrop onMedia={addMedia} label="+ Thêm file" hint="kéo thả hoặc bấm để chọn" />
+              <DropZone kind="clip" variant="bar" dragDrop onMedia={addMedia} label="Thêm file" hint="kéo thả hoặc bấm để chọn" />
             </>
           )}
         </div>
         <div>
-          <div className="slots">
-            <DropZone kind="logo" variant="slot" label="Logo (tùy chọn)" hint="PNG/JPG" accept={["png", "jpg", "jpeg"]}
-              value={logo} onFile={(p) => onAsset("logo", p)} />
-            <DropZone kind="music" variant="slot" label="Nhạc nền (tùy chọn)" hint="MP3/M4A/WAV" accept={["mp3", "m4a", "wav"]}
-              value={music} onFile={(p) => onAsset("music", p)} />
-          </div>
-          {logo && (
-            <div style={{ marginTop: -12, marginBottom: 12 }}>
-              <button className="linkbtn" onClick={() => onAsset("logo", null)}>Bỏ logo</button>
+          <div className="panel">
+            <div className="ptitle"><span className="n">2</span><b>Logo, nhạc & độ dài</b></div>
+            <div className="slots">
+              <DropZone kind="logo" variant="slot" label="Logo" hint="Tùy chọn · PNG/JPG" accept={["png", "jpg", "jpeg"]}
+                value={logo} onFile={(p) => onAsset("logo", p)} />
+              <DropZone kind="music" variant="slot" label="Nhạc nền" hint="Tùy chọn · MP3/M4A/WAV" accept={["mp3", "m4a", "wav"]}
+                value={music} onFile={(p) => onAsset("music", p)} />
             </div>
-          )}
-          <div className="label" style={{ margin: 0 }}>Độ dài video</div>
-          <div className="row" style={{ margin: "6px 0 14px" }}>
-            {LENGTHS.map(([id, label]) => (
-              <button key={id} className={"chip" + (length === id ? " on" : "")} aria-pressed={length === id}
-                onClick={() => chooseLength(id)}>{label}</button>
-            ))}
-          </div>
-          <div className="card" style={{ padding: 12, marginBottom: 14 }}>
-            <label className="row" style={{ gap: 8 }}>
-              <input type="checkbox" checked={voiceOn && voiceReady} disabled={!voiceReady}
-                onChange={(e) => { toggleTouched.current = true; setVoiceOn(e.target.checked); }} />
-              <b>🎙 Lồng tiếng AI</b>
-            </label>
-            {hasElevenKey === false && (
-              <button className="linkbtn" onClick={() => go({ name: "settings", tab: "conn" })}>Nhập key ở Cài đặt</button>
-            )}
-            {hasElevenKey === true && !voiceId && (
-              <button className="linkbtn" onClick={() => go({ name: "settings", tab: "conn" })}>Chọn giọng mặc định ở Cài đặt</button>
-            )}
-            {voiceOn && voiceReady && (
-              <div className="stack" style={{ marginTop: 10 }}>
-                <select aria-label="Giọng đọc" value={voiceId}
-                  onChange={(e) => { voiceTouched.current = true; setVoiceId(e.target.value); }}>
-                  {voiceList.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </select>
-                <div>
-                  <div className="label" style={{ margin: 0 }}>Thông tin sản phẩm</div>
-                  <textarea aria-label="Thông tin sản phẩm" maxLength={MAX_PRODUCT_INFO} value={productInfo}
-                    onChange={(e) => setProductInfo(e.target.value.slice(0, MAX_PRODUCT_INFO))}
-                    placeholder="Tên sản phẩm, chất liệu, giá, ưu đãi. AI chỉ nói những gì bạn ghi ở đây." />
-                  <div className="hint" style={{ textAlign: "right" }}>{productInfo.length}/{MAX_PRODUCT_INFO}</div>
-                </div>
+            {logo && (
+              <div style={{ marginTop: 6 }}>
+                <button className="linkbtn" onClick={() => onAsset("logo", null)}>Bỏ logo</button>
               </div>
             )}
-          </div>
-          <div className="scbar">
-            <div className="label" style={{ margin: 0 }}>Kịch bản AI gợi ý</div>
-            {cards.length > 0 && !analyzing && dir && pending === 0 && (
-              <button className="linkbtn" onClick={() => void runAnalyze(shown.current)}>↻ Gợi ý khác</button>
-            )}
-          </div>
-          {analyzing && (
-            <div className="sc-empty"><span className="spin" /> AI đang xem clip…{stepLabel && <div className="hint">{stepLabel}</div>}</div>
-          )}
-          {!analyzing && cards.length === 0 && (
-            <div className="sc-empty">
-              <button className="btn" disabled={!dir || pending > 0} onClick={() => void runAnalyze([])}>✨ AI gợi ý kịch bản</button>
-              {!dir && <div className="hint">Thêm clip để AI gợi ý</div>}
-              {dir && pending > 0 && <div className="hint">Đang chép file…</div>}
+            <div className="label" style={{ margin: "16px 0 8px" }}>Độ dài video</div>
+            <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+              {LENGTHS.map(([id, label]) => (
+                <button key={id} className={"chip" + (length === id ? " on" : "")} aria-pressed={length === id}
+                  onClick={() => chooseLength(id)}>{label}</button>
+              ))}
             </div>
-          )}
-          {err && <div style={{ marginBottom: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
-            onSetup={() => go({ name: "onboarding" })} onRetry={dir ? () => void runAnalyze(shown.current) : undefined} /></div>}
-          <div className="scripts">
-            {cards.map((c, i) => (
-              <div key={c.title + i} className={"sc" + (picked === i ? " on" : "")} role="button" tabIndex={0}
-                onClick={() => pick(i)} onKeyDown={(e) => { if (e.key === "Enter") pick(i); }}>
-                <div>
-                  <b>{c.title}</b>
-                  <span className="hk">{c.hook}</span>
-                  <ol className="outline">{steps(c.outline).map((st, k) => <li key={k}>{st}</li>)}</ol>
+            <div className={"vobox" + (voiceOn && voiceReady ? " on" : "")} style={{ marginTop: 16 }}>
+              <label className="switch">
+                <input type="checkbox" aria-label="Lồng tiếng AI" checked={voiceOn && voiceReady} disabled={!voiceReady}
+                  onChange={(e) => { toggleTouched.current = true; setVoiceOn(e.target.checked); }} />
+                <span className="track" aria-hidden />
+                <span><b><Mic size={15} aria-hidden style={{ verticalAlign: -2, marginRight: 4 }} />Lồng tiếng AI</b>
+                  <span className="hint">Giọng đọc ElevenLabs thay cho tiếng gốc</span></span>
+              </label>
+              {hasElevenKey === false && (
+                <button className="linkbtn" onClick={() => go({ name: "settings", tab: "conn" })}>Nhập key ở Cài đặt<ArrowRight size={13} aria-hidden /></button>
+              )}
+              {hasElevenKey === true && !voiceId && (
+                <button className="linkbtn" onClick={() => go({ name: "settings", tab: "conn" })}>Chọn giọng mặc định ở Cài đặt<ArrowRight size={13} aria-hidden /></button>
+              )}
+              {voiceOn && voiceReady && (
+                <div className="stack" style={{ marginTop: 14 }}>
+                  <div>
+                    <div className="label">Giọng đọc</div>
+                    <select aria-label="Giọng đọc" value={voiceId}
+                      onChange={(e) => { voiceTouched.current = true; setVoiceId(e.target.value); }}>
+                      {voiceList.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="label">Thông tin sản phẩm</div>
+                    <textarea aria-label="Thông tin sản phẩm" maxLength={MAX_PRODUCT_INFO} value={productInfo}
+                      onChange={(e) => setProductInfo(e.target.value.slice(0, MAX_PRODUCT_INFO))}
+                      placeholder="Tên sản phẩm, chất liệu, giá, ưu đãi. AI chỉ nói những gì bạn ghi ở đây." />
+                    <div className="counter">{productInfo.length}/{MAX_PRODUCT_INFO}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
-          <div className="label" style={{ marginTop: 10 }}>Mô tả muốn dựng</div>
-          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Ví dụ: làm ngắn gọn, mở đầu bằng câu chốt giá" />
+          <div className="panel">
+            <div className="ptitle"><span className="n">3</span><b>Kịch bản</b>
+              {cards.length > 0 && !analyzing && dir && pending === 0 && (
+                <button className="linkbtn" onClick={() => void runAnalyze(shown.current)}><RefreshCw size={13} aria-hidden />Gợi ý khác</button>
+              )}
+            </div>
+            {analyzing && (
+              <div className="sc-empty"><span className="spin" /> AI đang xem clip…{stepLabel && <div className="hint">{stepLabel}</div>}</div>
+            )}
+            {!analyzing && cards.length === 0 && (
+              <div className="sc-empty">
+                <button className="btn ghost" disabled={!dir || pending > 0} onClick={() => void runAnalyze([])}>
+                  <Sparkles size={16} aria-hidden style={{ color: "var(--accent)" }} />AI gợi ý kịch bản</button>
+                {!dir && <div className="hint">Thêm clip để AI gợi ý</div>}
+                {dir && pending > 0 && <div className="hint">Đang chép file…</div>}
+              </div>
+            )}
+            {err && <div style={{ marginBottom: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
+              onSetup={() => go({ name: "onboarding" })} onRetry={dir ? () => void runAnalyze(shown.current) : undefined} /></div>}
+            <div className="scripts">
+              {cards.map((c, i) => (
+                <div key={c.title + i} className={"sc" + (picked === i ? " on" : "")} role="button" tabIndex={0}
+                  onClick={() => pick(i)} onKeyDown={(e) => { if (e.key === "Enter") pick(i); }}>
+                  <div>
+                    <b>{c.title}</b>
+                    <span className="hk">{c.hook}</span>
+                    <ol className="outline">{steps(c.outline).map((st, k) => <li key={k}>{st}</li>)}</ol>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="label" style={{ marginTop: 14 }}>Mô tả muốn dựng</div>
+            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Ví dụ: làm ngắn gọn, mở đầu bằng câu chốt giá" />
+          </div>
           <div className="buildrow">
-            <button className="btn primary big" disabled={!canBuild} onClick={build}>Dựng video</button>
+            <button className="btn primary big" disabled={!canBuild} onClick={build}><Wand2 size={18} aria-hidden />Dựng video</button>
             <span className="hint">{!dir ? "Thêm clip để bắt đầu" : pending > 0 ? "Đang chép file…" : ""}</span>
           </div>
         </div>

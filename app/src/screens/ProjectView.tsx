@@ -1,3 +1,4 @@
+import { Clapperboard } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ErrorPanel from "../components/ErrorPanel";
 import * as api from "../lib/api";
@@ -64,7 +65,7 @@ export default function ProjectView({ dir }: { dir: string }) {
       )}
       {detail && !hasRuns && !error && !reloading && (
         <div className="lock">
-          <div className="big">🎬</div>
+          <div className="lockic"><Clapperboard aria-hidden /></div>
           <h2>{detail.title}</h2>
           <p>Video này chưa được dựng.</p>
           <button className="btn primary" onClick={() => go({ name: "new", niche: detail.niche, dir })}>Dựng video</button>

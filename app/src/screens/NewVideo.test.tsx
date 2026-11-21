@@ -27,7 +27,7 @@ const detail = (clips: string[], images: string[], extra: Partial<ProjectDetail>
   clips, images, logo: null, music: null, prompt: "", scriptCard: null, runs: [], ...extra,
 });
 const inp = (n: string) => `/proj/1/input/${n}`;
-const AI = "✨ AI gợi ý kịch bản";
+const AI = "AI gợi ý kịch bản";
 const CTA = "BẤM GIỎ HÀNG 👇";
 
 beforeEach(() => {
@@ -43,9 +43,14 @@ beforeEach(() => {
   a.updateProject.mockResolvedValue(null);
 });
 
+/** Matches a clip row by its visible order badge + file name, e.g. "2. b.mov". */
+const clipRow = (want: string) => (_c: string, el: Element | null) =>
+  !!el?.matches(".medialist .row") &&
+  `${el.querySelector(".num")?.textContent}. ${el.querySelector(".nm")?.textContent}` === want;
+
 async function addFirst() {
   await userEvent.click(await screen.findByText("Kéo clip và ảnh vào đây"));
-  await screen.findByText("1. a.mp4");
+  await screen.findByText(clipRow("1. a.mp4"));
 }
 
 test("picking a clip creates the project but does NOT analyze; the button does", async () => {
@@ -60,7 +65,7 @@ test("picking a clip creates the project but does NOT analyze; the button does",
   await userEvent.click(screen.getByText("Ý 2"));
   expect(screen.getByRole("textbox")).toHaveValue("Prompt 2");
   expect(a.updateProject).toHaveBeenCalledWith("/proj/1", { script_card: cards[1] });
-  await userEvent.click(screen.getByText("↻ Gợi ý khác"));
+  await userEvent.click(screen.getByText("Gợi ý khác"));
   expect(e.analyze).toHaveBeenLastCalledWith("/proj/1", ["Ý 1", "Ý 2", "Ý 3"], expect.any(Function), expect.any(Function));
 });
 
@@ -76,10 +81,10 @@ test("multi-drop sorts clips and images, ignores other files, passes images to c
   a.getProject.mockResolvedValue(detail([inp("a.mp4"), inp("b.mov")], [inp("x.png")]));
   // jsdom rects are all zero, so a (0,0) drop counts as inside
   act(() => dropHandler!({ payload: { type: "drop", position: { x: 0, y: 0 }, paths: ["/v/a.mp4", "/v/x.png", "/v/b.mov", "/v/notes.txt"] } }));
-  expect(await screen.findByText("1. a.mp4")).toBeInTheDocument();
+  expect(await screen.findByText(clipRow("1. a.mp4"))).toBeInTheDocument();
   expect(a.createProject).toHaveBeenCalledWith("my-pham", ["/v/a.mp4", "/v/b.mov"], ["/v/x.png"], null, null, CTA, "medium");
   expect(await screen.findByText("x.png")).toBeInTheDocument();
-  expect(screen.getByText("2. b.mov")).toBeInTheDocument();
+  expect(screen.getByText(clipRow("2. b.mov"))).toBeInTheDocument();
 });
 
 test("images added first are held; the project is created when the first clip arrives", async () => {
@@ -89,7 +94,7 @@ test("images added first are held; the project is created when the first clip ar
   act(() => dropHandler!({ payload: { type: "drop", position: { x: 0, y: 0 }, paths: ["/v/x.png"] } }));
   expect(await screen.findByText("x.png")).toBeInTheDocument();
   expect(a.createProject).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByText("+ Thêm file"));
+  await userEvent.click(screen.getByText("Thêm file"));
   await waitFor(() => expect(a.createProject).toHaveBeenCalledWith("my-pham", ["/v/a.mp4"], ["/v/x.png"], null, null, CTA, "medium"));
 });
 
@@ -97,8 +102,8 @@ test("reorder and remove call set_project_media; the last clip cannot be removed
   mount();
   await addFirst();
   a.pickMedia.mockResolvedValue(["/v/b.mov", "/v/x.png"]);
-  await userEvent.click(screen.getByText("+ Thêm file"));
-  await screen.findByText("2. b.mov");
+  await userEvent.click(screen.getByText("Thêm file"));
+  await screen.findByText(clipRow("2. b.mov"));
   expect(a.setProjectMedia).toHaveBeenLastCalledWith("/proj/1", [inp("a.mp4"), "/v/b.mov"], ["/v/x.png"]);
   await waitFor(() => expect(screen.getByRole("button", { name: "Lên b.mov" })).toBeEnabled());
   await userEvent.click(screen.getByRole("button", { name: "Lên b.mov" }));
@@ -117,7 +122,7 @@ test("changing media clears shown suggestions", async () => {
   await userEvent.click(screen.getByRole("button", { name: AI }));
   await screen.findByText("Ý 1");
   a.pickMedia.mockResolvedValue(["/v/b.mov"]);
-  await userEvent.click(screen.getByText("+ Thêm file"));
+  await userEvent.click(screen.getByText("Thêm file"));
   await waitFor(() => expect(screen.queryByText("Ý 1")).toBeNull());
   expect(screen.getByRole("button", { name: AI })).toBeEnabled();
 });
@@ -186,7 +191,7 @@ test("opened for an existing project: loads clips/images and saved card, no auto
   a.getProject.mockResolvedValue(detail([inp("a.mp4"), inp("b.mp4")], [inp("x.png")], { dir: "/proj/9", scriptCard: cards[1] }));
   render(<StoreProvider><NewVideo niche="my-pham" dir="/proj/9" /><Probe /></StoreProvider>);
   expect(await screen.findByText("Ý 2")).toBeInTheDocument();
-  expect(screen.getByText("2. b.mp4")).toBeInTheDocument();
+  expect(screen.getByText(clipRow("2. b.mp4"))).toBeInTheDocument();
   expect(screen.getByText("x.png")).toBeInTheDocument();
   expect(screen.getByRole("textbox")).toHaveValue("Prompt 2");
   await userEvent.click(screen.getByRole("button", { name: "Dựng video" }));
@@ -199,7 +204,7 @@ test("opened for an existing project: loads clips/images and saved card, no auto
 test("existing project without a saved card does not auto-analyze", async () => {
   a.getProject.mockResolvedValue(detail([inp("a.mp4")], [], { dir: "/proj/9" }));
   render(<StoreProvider><NewVideo niche="my-pham" dir="/proj/9" /><Probe /></StoreProvider>);
-  expect(await screen.findByText("1. a.mp4")).toBeInTheDocument();
+  expect(await screen.findByText(clipRow("1. a.mp4"))).toBeInTheDocument();
   expect(e.analyze).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: AI })).toBeEnabled();
 });
@@ -220,7 +225,7 @@ test("build and AI are disabled while a media sync is pending", async () => {
   a.pickMedia.mockResolvedValue(["/v/big.mov"]);
   await userEvent.type(screen.getByRole("textbox"), "ngắn thôi");
   await waitFor(() => expect(screen.getByRole("button", { name: "Dựng video" })).toBeEnabled());
-  await userEvent.click(screen.getByText("+ Thêm file"));
+  await userEvent.click(screen.getByText("Thêm file"));
   await waitFor(() => expect(screen.getByRole("button", { name: "Dựng video" })).toBeDisabled());
   expect(screen.getByRole("button", { name: AI })).toBeDisabled();
   expect(screen.getAllByText("Đang chép file…").length).toBeGreaterThan(0);
@@ -235,7 +240,7 @@ test("a failed media sync blocks build and does not start the engine", async () 
   a.setProjectMedia.mockRejectedValueOnce({ code: "UNKNOWN", message: "đầy ổ đĩa", retry_at: null });
   a.pickMedia.mockResolvedValue(["/v/big.mov"]);
   await userEvent.type(screen.getByRole("textbox"), "ngắn thôi");
-  await userEvent.click(screen.getByText("+ Thêm file"));
+  await userEvent.click(screen.getByText("Thêm file"));
   await waitFor(() => expect(a.setProjectMedia).toHaveBeenCalled());
   await waitFor(() => expect(screen.getByRole("button", { name: "Dựng video" })).toBeEnabled());
   await userEvent.click(screen.getByRole("button", { name: "Dựng video" }));
@@ -258,7 +263,7 @@ test("analyze results for old media are dropped when media changes mid-run", asy
   await userEvent.click(screen.getByRole("button", { name: AI }));
   await screen.findByText(/AI đang xem clip/);
   a.pickMedia.mockResolvedValue(["/v/b.mov"]);
-  await userEvent.click(screen.getByText("+ Thêm file"));
+  await userEvent.click(screen.getByText("Thêm file"));
   expect(cancel).toHaveBeenCalled();
   await act(async () => { run.resolve(cards); });
   expect(screen.queryByText("Ý 1")).toBeNull();
@@ -274,7 +279,7 @@ test("analyze errors for old media are dropped too", async () => {
   await userEvent.click(screen.getByRole("button", { name: AI }));
   await screen.findByText(/AI đang xem clip/);
   a.pickMedia.mockResolvedValue(["/v/b.mov"]);
-  await userEvent.click(screen.getByText("+ Thêm file"));
+  await userEvent.click(screen.getByText("Thêm file"));
   await act(async () => { run.reject({ code: "AGENT_FAILED", message: "hỏng", retry_at: null }); });
   expect(screen.queryByText("Dựng lại")).toBeNull();
 });
@@ -285,16 +290,16 @@ test("sources added while create is in flight are mapped to input copies, and re
   mount();
   await addFirst();
   a.pickMedia.mockResolvedValue(["/v/b.mov"]);
-  await userEvent.click(screen.getByText("+ Thêm file"));
-  await screen.findByText("2. b.mov");
+  await userEvent.click(screen.getByText("Thêm file"));
+  await screen.findByText(clipRow("2. b.mov"));
   await act(async () => { create.resolve(summary); });
   await waitFor(() => expect(a.setProjectMedia).toHaveBeenCalled());
   expect(a.setProjectMedia).toHaveBeenLastCalledWith("/proj/1", [inp("a.mp4"), "/v/b.mov"], []);
   a.pickMedia.mockResolvedValue(["/v/a.mp4"]);
   const before = a.setProjectMedia.mock.calls.length;
-  await userEvent.click(screen.getByText("+ Thêm file"));
+  await userEvent.click(screen.getByText("Thêm file"));
   expect(a.setProjectMedia.mock.calls.length).toBe(before);
-  expect(screen.queryByText("3. a.mp4")).toBeNull();
+  expect(screen.queryByText(clipRow("3. a.mp4"))).toBeNull();
 });
 
 test("a logo picked while the project is being created is sent after create", async () => {
@@ -304,7 +309,7 @@ test("a logo picked while the project is being created is sent after create", as
   a.setProjectAsset.mockResolvedValue(detail([inp("a.mp4")], [], { logo: inp("logo.png") }));
   mount();
   await addFirst();
-  await userEvent.click(screen.getByText("Logo (tùy chọn)"));
+  await userEvent.click(screen.getByText("Logo"));
   await waitFor(() => expect(a.pickFile).toHaveBeenCalled());
   expect(a.setProjectAsset).not.toHaveBeenCalled();
   await act(async () => { create.resolve(summary); });
@@ -318,7 +323,7 @@ const VOICES = [
   { id: "v1", name: "Lan", labels: {}, previewUrl: null },
   { id: "v2", name: "Minh", labels: {}, previewUrl: null },
 ];
-const TOGGLE = "🎙 Lồng tiếng AI";
+const TOGGLE = "Lồng tiếng AI";
 
 test("voiceover toggle is disabled without a key and links to Settings", async () => {
   a.elevenStatus.mockResolvedValue({ hasKey: false });

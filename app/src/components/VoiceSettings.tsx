@@ -1,3 +1,4 @@
+import { Check, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../lib/api";
 import { describeError, toEngineError } from "../lib/errors";
@@ -97,30 +98,32 @@ export default function VoiceSettings() {
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
         <h3 style={{ margin: 0 }}>Lồng tiếng (ElevenLabs)</h3>
-        <button className="btn ghost" onClick={remove}>Xóa key</button>
+        <button className="btn ghost sm danger" onClick={remove}>Xóa key</button>
       </div>
       <div className="row" style={{ marginBottom: 8 }}>
-        <span className="pill ok">✓ Đã lưu key</span>
-        {status.remaining !== undefined && <span>Còn {status.remaining.toLocaleString("vi-VN")} ký tự</span>}
+        <span className="pill ok"><Check size={13} strokeWidth={3} aria-hidden />Đã lưu key</span>
+        {status.remaining !== undefined && <span className="hint">Còn {status.remaining.toLocaleString("vi-VN")} ký tự</span>}
       </div>
       {err && <div className="errline" style={{ marginBottom: 8 }}>{err}</div>}
       <div className="label">Giọng đọc</div>
       {voices.length === 0 && !err && <div className="hint">Đang tải danh sách giọng…</div>}
-      <div className="stack">
-        {voices.map((v) => (
-          <div key={v.id} className="row" style={{ justifyContent: "space-between" }}>
-            <span className="row">
-              <button className="btn ghost" aria-label={`Nghe thử ${v.name}`} disabled={!v.previewUrl}
-                onClick={() => v.previewUrl && preview(v.previewUrl)}>▶</button>
-              <b>{v.name}</b>
-              {Object.values(v.labels).length > 0 && <span className="hint">{Object.values(v.labels).join(" · ")}</span>}
-            </span>
-            {chosen === v.id
-              ? <span className="pill ok">✓ Mặc định</span>
-              : <button className="btn ghost" onClick={() => void choose(v)}>Chọn làm mặc định</button>}
-          </div>
-        ))}
-      </div>
+      {voices.length > 0 && (
+        <div className="voices">
+          {voices.map((v) => (
+            <div key={v.id} className="voice">
+              <button className="play" aria-label={`Nghe thử ${v.name}`} disabled={!v.previewUrl}
+                onClick={() => v.previewUrl && preview(v.previewUrl)}><Play fill="currentColor" aria-hidden /></button>
+              <div className="nm">
+                <b>{v.name}</b>
+                {Object.values(v.labels).length > 0 && <small>{Object.values(v.labels).join(" · ")}</small>}
+              </div>
+              {chosen === v.id
+                ? <span className="pill ok"><Check size={13} strokeWidth={3} aria-hidden />Mặc định</span>
+                : <button className="btn ghost sm" onClick={() => void choose(v)}>Chọn làm mặc định</button>}
+            </div>
+          ))}
+        </div>
+      )}
       <audio ref={audio} hidden />
     </div>
   );

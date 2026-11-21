@@ -1,3 +1,4 @@
+import { ChevronRight, FolderOpen, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import AgentFeed from "../components/AgentFeed";
 import PostCard from "../components/PostCard";
@@ -26,7 +27,10 @@ export default function Result({ detail, onRedo, onPosted }: { detail: ProjectDe
 
   return (
     <div>
-      <h1>{detail.title}</h1>
+      <div className="phead">
+        <h1>{detail.title}</h1>
+        <button className="btn ghost" onClick={() => api.revealInFolder(run.final)}><FolderOpen size={16} aria-hidden />Mở thư mục</button>
+      </div>
       {runs.length > 1 && (
         <div className="tabs">
           {runs.map((r) => (
@@ -43,21 +47,18 @@ export default function Result({ detail, onRedo, onPosted }: { detail: ProjectDe
             <h3>Đã làm gì</h3>
             <ul className="sum">{run.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
           </div>
-          <div className="actions">
-            <button className="btn dark" onClick={() => api.revealInFolder(run.final)}>Mở thư mục</button>
-          </div>
           <PostCard key={run.n} detail={detail} run={run} onPosted={onPosted} />
           <div className="card">
             <div className="label">Muốn sửa gì?</div>
             <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)}
               placeholder="Ví dụ: đưa giá lên đầu, cắt bớt đoạn cuối" />
-            <div className="buildrow" style={{ marginTop: 12 }}>
+            <div className="buildrow" style={{ marginTop: 12, justifyContent: "flex-end" }}>
               <button className="btn primary" disabled={!feedback.trim()}
-                onClick={() => { onRedo(feedback.trim()); setFeedback(""); }}>Dựng lại</button>
+                onClick={() => { onRedo(feedback.trim()); setFeedback(""); }}><RotateCcw size={16} aria-hidden />Dựng lại</button>
             </div>
           </div>
           <div className="proc">
-            <button onClick={toggle}>{open ? "▾" : "▸"} Xem quá trình AI</button>
+            <button onClick={toggle} aria-expanded={open}><ChevronRight size={16} aria-hidden style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }} />Xem quá trình AI</button>
             {open && (feed ? <AgentFeed items={feed} /> : <div className="hint">Đang tải…</div>)}
           </div>
         </div>

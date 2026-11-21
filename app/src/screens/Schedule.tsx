@@ -1,3 +1,4 @@
+import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import ErrorPanel from "../components/ErrorPanel";
@@ -55,7 +56,7 @@ export default function Schedule() {
     return (
       <div className="view on">
         <div className="lock">
-          <div className="big">📅</div>
+          <div className="lockic"><CalendarDays aria-hidden /></div>
           {accountErr ? (
             <>
               <h2>Chưa đọc được tài khoản bundle.social</h2>
@@ -79,7 +80,7 @@ export default function Schedule() {
     return (
       <div className="view on">
         <div className="lock">
-          <div className="big">📅</div>
+          <div className="lockic"><CalendarDays aria-hidden /></div>
           <h2>Chưa bật đăng bài tự động</h2>
           <p>Dán API key bundle.social để đăng và lên lịch video.</p>
           <button className="btn primary" onClick={() => go({ name: "settings", tab: "conn" })}>Nhập key bundle.social</button>

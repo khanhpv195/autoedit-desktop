@@ -147,7 +147,7 @@ test("ElevenLabs: preview plays, picking a default saves voiceId/voiceName, Xóa
   expect(play).toHaveBeenCalled();
   await userEvent.click(screen.getAllByRole("button", { name: "Chọn làm mặc định" })[0]);
   expect(a.saveSettings).toHaveBeenCalledWith({ ...base, voiceId: "v1", voiceName: "Lan" });
-  expect(await screen.findByText("✓ Mặc định")).toBeInTheDocument();
+  expect(await screen.findByText("Mặc định")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Xóa key" }));
   expect(a.clearElevenKey).toHaveBeenCalled();
   expect(await screen.findByLabelText("API key ElevenLabs")).toBeInTheDocument();

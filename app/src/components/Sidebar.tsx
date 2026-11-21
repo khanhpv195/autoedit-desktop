@@ -1,3 +1,4 @@
+import { CalendarDays, Clapperboard, Film, Play, Plus, Settings } from "lucide-react";
 import { useStore } from "../state/store";
 import { nicheLabel } from "../lib/format";
 import type { ProjectStatus } from "../lib/types";
@@ -12,24 +13,25 @@ export default function Sidebar() {
   const n = state.projects.length;
   return (
     <aside className="side" id="side">
-      <div className="brand"><div className="logo">▶</div><b>AutoEdit</b></div>
+      <div className="brand"><div className="logo"><Play aria-hidden /></div><b>AutoEdit</b></div>
       <div className="snav">
         <div className={"sn" + (state.route.name === "schedule" ? "" : " on")} role="button" tabIndex={0}
-          onClick={() => { if (state.route.name === "schedule") go({ name: "niche" }); }}>🎬 Video</div>
+          onClick={() => { if (state.route.name === "schedule") go({ name: "niche" }); }}><Clapperboard className="i" aria-hidden />Video</div>
         {state.hasSocialKey ? (
           <div className={"sn" + (state.route.name === "schedule" ? " on" : "")} role="button" tabIndex={0}
-            onClick={() => go({ name: "schedule" })} onKeyDown={(e) => { if (e.key === "Enter") go({ name: "schedule" }); }}>📅 Lịch đăng</div>
+            onClick={() => go({ name: "schedule" })} onKeyDown={(e) => { if (e.key === "Enter") go({ name: "schedule" }); }}><CalendarDays className="i" aria-hidden />Lịch đăng</div>
         ) : (
           <div className="sn off" aria-disabled="true" role="button" tabIndex={0} title="Nhập key bundle.social ở Cài đặt → Kết nối"
-            onClick={() => notify("Nhập key bundle.social ở Cài đặt → Kết nối")}>📅 Lịch đăng</div>
+            onClick={() => notify("Nhập key bundle.social ở Cài đặt → Kết nối")}><CalendarDays className="i" aria-hidden />Lịch đăng</div>
         )}
       </div>
-      <button className="newbtn" onClick={() => go({ name: "niche" })}>＋ Video mới</button>
+      <button className="newbtn" onClick={() => go({ name: "niche" })}><Plus size={17} strokeWidth={2.4} aria-hidden />Video mới</button>
       <div className="plist">
         {state.projects.map((p) => (
           <div key={p.dir} className={"pi" + (cur === p.dir ? " on" : "")} role="button" tabIndex={0}
             onClick={() => go({ name: "project", dir: p.dir })}
             onKeyDown={(e) => { if (e.key === "Enter") go({ name: "project", dir: p.dir }); }}>
+            <span className="av"><Film aria-hidden /></span>
             <div className="tx">
               <b>{p.title}</b>
               <span>{state.builds[p.dir] ? "đang dựng…" : `${nicheLabel(p.niche)} · ${p.created}`}</span>
@@ -42,7 +44,7 @@ export default function Sidebar() {
       <div className="sidefoot">
         <div className="ministat"><span>{n} video</span></div>
         <div className="pi" role="button" tabIndex={0} onClick={() => go({ name: "settings" })}>
-          ⚙ <div className="tx"><b>Cài đặt</b></div>
+          <Settings className="i" aria-hidden /><div className="tx"><b>Cài đặt</b></div>
         </div>
       </div>
     </aside>

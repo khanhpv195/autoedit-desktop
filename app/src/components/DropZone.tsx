@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { Music, Plus, Tag, UploadCloud } from "lucide-react";
 import * as api from "../lib/api";
 import { classify, type Classified } from "../lib/media";
 import { useStore } from "../state/store";
@@ -77,7 +78,7 @@ export default function DropZone({ kind, label, hint, accept = [], onFile, onMed
     return (
       <div ref={ref} className={"slot" + (value ? " set" : "")} role="button" tabIndex={0} onClick={pick}
         onKeyDown={(e) => { if (e.key === "Enter") pick(); }}>
-        <span className="ic">{kind === "logo" ? "🏷️" : "🎵"}</span>
+        <span className="ic">{kind === "logo" ? <Tag aria-hidden /> : <Music aria-hidden />}</span>
         <div><b>{label}</b><small>{value ? baseName(value) : hint}</small></div>
       </div>
     );
@@ -86,16 +87,17 @@ export default function DropZone({ kind, label, hint, accept = [], onFile, onMed
     return (
       <div ref={ref} className={"dropbar" + (over ? " over" : "")} role="button" tabIndex={0} onClick={pick}
         onKeyDown={(e) => { if (e.key === "Enter") pick(); }}>
-        <b>{label}</b>{hint && <small>{hint}</small>}
+        <Plus size={16} aria-hidden /><b>{label}</b>{hint && <small>· {hint}</small>}
       </div>
     );
   }
   return (
     <div ref={ref} className={"drop" + (over ? " over" : "")} role="button" tabIndex={0} onClick={pick}
       onKeyDown={(e) => { if (e.key === "Enter") pick(); }}>
-      <div className="ic">🎬</div>
+      <div className="ic"><UploadCloud aria-hidden /></div>
       <b>{label}</b>
       <small>{hint}</small>
+      <span className="btn ghost sm" style={{ marginTop: 16 }}>Chọn file</span>
     </div>
   );
 }

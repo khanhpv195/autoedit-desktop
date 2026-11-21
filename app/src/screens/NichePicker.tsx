@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import * as api from "../lib/api";
 import { NICHES } from "../lib/niches";
 import { useStore } from "../state/store";
@@ -21,9 +22,10 @@ export default function NichePicker() {
           <div key={n.id} className="catcard" role="button" tabIndex={0} onClick={() => choose(n.id)}
             onKeyDown={(e) => { if (e.key === "Enter") choose(n.id); }}>
             {state.settings?.lastNiche === n.id && <span className="last">Lần trước</span>}
-            <div className="big">{n.emoji}</div>
+            <div className="big" style={{ background: n.tint[0], color: n.tint[1] }}><n.Icon aria-hidden /></div>
             <b>{n.label}</b>
             <small>{n.hint}</small>
+            <ArrowRight className="go" size={18} aria-hidden />
           </div>
         ))}
       </div>
