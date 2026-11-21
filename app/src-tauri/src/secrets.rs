@@ -2,7 +2,6 @@
 pub const OAUTH_ACCOUNT: &str = "claude-oauth-token";
 pub const SOCIAL_ACCOUNT: &str = "bundle-social-key";
 pub const API_KEY_ACCOUNT: &str = "anthropic-api-key";
-#[allow(dead_code)]
 pub const LICENSE_ACCOUNT: &str = "license";
 const SERVICE: &str = "AutoEdit";
 

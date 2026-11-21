@@ -19,6 +19,7 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub jobs: Arc<Jobs>,
     pub login: LoginSlot,
+    pub gate: Arc<crate::license::Gate>,
 }
 
 static LOGIN_GEN: AtomicU64 = AtomicU64::new(1);
@@ -34,6 +35,30 @@ pub fn shutdown(state: &AppState) {
 #[tauri::command(async)]
 pub fn kill_all_jobs(state: State<'_, AppState>) {
     shutdown(&state);
+}
+
+#[tauri::command]
+pub fn license_status(state: State<'_, AppState>) -> serde_json::Value {
+    serde_json::json!({ "licensed": state.gate.is_licensed(), "name": state.gate.name() })
+}
+
+#[tauri::command]
+pub async fn license_activate(state: State<'_, AppState>, key: String) -> Result<serde_json::Value, String> {
+    use crate::license;
+    let machine = state.gate.machine().to_string();
+    if machine.is_empty() {
+        return Err("LICENSE_OFFLINE".into());
+    }
+    match license::activate(license::URL, &key, &machine, env!("CARGO_PKG_VERSION")).await {
+        license::Remote::Ok(token) => {
+            let l = state
+                .gate
+                .set(&*state.secrets, &token, license::PUBKEY)
+                .map_err(|_| "LICENSE_INVALID".to_string())?;
+            Ok(serde_json::json!({ "licensed": true, "name": l.name }))
+        }
+        other => Err(license::code(&other).into()),
+    }
 }
 
 #[tauri::command]

@@ -1,11 +1,13 @@
 //! License gate: machine hash, offline token verification, activation API calls (spec 2026-11-21).
-// Gate wiring lands in the next commit; until then the core is only exercised by tests.
-#![allow(dead_code)]
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD as B64URL};
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+
+use crate::secrets::{SecretStore, LICENSE_ACCOUNT};
 
 pub const URL: &str = env!("AUTOEDIT_LICENSE_URL");
 pub const PUBKEY: &str = env!("AUTOEDIT_LICENSE_PUBKEY");
@@ -140,6 +142,66 @@ pub async fn check(url: &str, key: &str, machine: &str) -> Remote {
     post(url, "/v1/check", serde_json::json!({"key": key, "machine": machine})).await
 }
 
+/// Commands that work while the app is locked.
+pub const OPEN_COMMANDS: &[&str] = &["license_status", "license_activate", "kill_all_jobs"];
+
+/// Plugin commands that do something for the user (files, links, relaunch, updates) are gated like
+/// app commands. The rest (event listen/emit, window and webview plumbing) must keep working so
+/// the activation screen can load and hear `license-revoked`.
+const GATED_PLUGINS: &[&str] = &["plugin:dialog|", "plugin:opener|", "plugin:process|", "plugin:updater|"];
+
+pub fn allowed(cmd: &str, licensed: bool) -> bool {
+    if licensed || OPEN_COMMANDS.contains(&cmd) {
+        return true;
+    }
+    cmd.starts_with("plugin:") && !GATED_PLUGINS.iter().any(|p| cmd.starts_with(p))
+}
+
+pub struct Gate {
+    licensed: AtomicBool,
+    license: Mutex<Option<License>>,
+    machine: String,
+}
+
+impl Gate {
+    pub fn load(store: &dyn SecretStore, pubkey: &str) -> Gate {
+        Self::load_for(store, pubkey, machine_hash().unwrap_or_default())
+    }
+
+    pub fn load_for(store: &dyn SecretStore, pubkey: &str, machine: String) -> Gate {
+        let lic = store.get(LICENSE_ACCOUNT).and_then(|t| verify_token(&t, pubkey, &machine).ok());
+        let dev = cfg!(debug_assertions) && std::env::var("AUTOEDIT_LICENSE_DEV").as_deref() == Ok("1");
+        Gate { licensed: AtomicBool::new(lic.is_some() || dev), license: Mutex::new(lic), machine }
+    }
+
+    pub fn is_licensed(&self) -> bool {
+        self.licensed.load(Ordering::SeqCst)
+    }
+    pub fn machine(&self) -> &str {
+        &self.machine
+    }
+    pub fn key(&self) -> Option<String> {
+        self.license.lock().unwrap().as_ref().map(|l| l.key.clone())
+    }
+    pub fn name(&self) -> Option<String> {
+        self.license.lock().unwrap().as_ref().map(|l| l.name.clone())
+    }
+
+    pub fn set(&self, store: &dyn SecretStore, token: &str, pubkey: &str) -> Result<License, String> {
+        let l = verify_token(token, pubkey, &self.machine)?;
+        store.set(LICENSE_ACCOUNT, token)?;
+        *self.license.lock().unwrap() = Some(l.clone());
+        self.licensed.store(true, Ordering::SeqCst);
+        Ok(l)
+    }
+
+    pub fn revoke(&self, store: &dyn SecretStore) {
+        let _ = store.delete(LICENSE_ACCOUNT);
+        *self.license.lock().unwrap() = None;
+        self.licensed.store(false, Ordering::SeqCst);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +281,74 @@ mod tests {
     #[tokio::test]
     async fn unreachable_server_is_offline() {
         assert!(matches!(activate("http://127.0.0.1:9", "AE-X", "m1", "0").await, Remote::Offline));
+    }
+
+    use crate::secrets::{MemoryStore, SecretStore, LICENSE_ACCOUNT};
+
+    fn gate_with(store: &MemoryStore, pk: &str, machine: &str) -> Gate {
+        Gate::load_for(store, pk, machine.to_string())
+    }
+
+    #[test]
+    fn gate_unlicensed_without_token_and_licensed_with_valid_one() {
+        let (sk, pk) = keypair();
+        let store = MemoryStore::default();
+        let g = gate_with(&store, &pk, "m1");
+        assert!(!g.is_licensed());
+        g.set(&store, &token(&sk, PAYLOAD), &pk).unwrap();
+        assert!(g.is_licensed());
+        assert_eq!(store.get(LICENSE_ACCOUNT).unwrap(), token(&sk, PAYLOAD));
+        assert!(gate_with(&store, &pk, "m1").is_licensed()); // next launch, offline
+        assert!(!gate_with(&store, &pk, "m2").is_licensed()); // copied Keychain to another machine
+    }
+
+    #[test]
+    fn gate_set_rejects_token_for_other_machine_and_revoke_clears() {
+        let (sk, pk) = keypair();
+        let store = MemoryStore::default();
+        let g = gate_with(&store, &pk, "m2");
+        assert!(g.set(&store, &token(&sk, PAYLOAD), &pk).is_err());
+        assert!(store.get(LICENSE_ACCOUNT).is_none());
+        let g1 = gate_with(&store, &pk, "m1");
+        g1.set(&store, &token(&sk, PAYLOAD), &pk).unwrap();
+        g1.revoke(&store);
+        assert!(!g1.is_licensed() && store.get(LICENSE_ACCOUNT).is_none() && g1.key().is_none());
+    }
+
+    #[test]
+    fn only_open_commands_pass_while_unlicensed() {
+        assert!(allowed("license_status", false));
+        assert!(allowed("license_activate", false));
+        assert!(allowed("kill_all_jobs", false));
+        assert!(!allowed("engine_run", false));
+        assert!(!allowed("create_project", false));
+        assert!(allowed("engine_run", true));
+    }
+
+    #[test]
+    fn plugin_commands_that_touch_the_user_are_gated_but_event_plumbing_is_not() {
+        assert!(allowed("plugin:event|listen", false)); // the activation screen listens for license-revoked
+        assert!(!allowed("plugin:dialog|open", false));
+        assert!(!allowed("plugin:opener|open_url", false));
+        assert!(!allowed("plugin:process|restart", false));
+        assert!(!allowed("plugin:updater|check", false));
+        assert!(allowed("plugin:dialog|open", true));
+    }
+
+    /// Every command in generate_handler! goes through the central gate in lib.rs; the only
+    /// way past it while unlicensed is OPEN_COMMANDS. Guards typos there and a command that
+    /// someone adds to the open list without it existing.
+    #[test]
+    fn every_registered_command_is_gated_except_the_open_ones() {
+        let lib = include_str!("lib.rs");
+        let list = lib.split("generate_handler![").nth(1).unwrap().split(']').next().unwrap();
+        let cmds: Vec<&str> = list.split(',').filter_map(|c| c.trim().strip_prefix("commands::")).collect();
+        assert!(cmds.len() > 20, "failed to parse the command list");
+        for c in OPEN_COMMANDS {
+            assert!(cmds.contains(c), "{c} is open but not a registered command");
+        }
+        for c in &cmds {
+            assert_eq!(allowed(c, false), OPEN_COMMANDS.contains(c), "{c}");
+        }
     }
 }
