@@ -426,3 +426,62 @@ test("an existing project loads its voiceover, product info and length", async (
   await waitFor(() => expect(screen.getByLabelText("Giọng đọc")).toHaveValue("v2"));
   expect(screen.getByRole("button", { name: "Ngắn 15–20s" })).toHaveAttribute("aria-pressed", "true");
 });
+
+const BUILD = "Dựng video";
+const VO_PROJECT = detail([inp("a.mp4")], [], {
+  prompt: "ngắn gọn", voiceover: { enabled: true, voiceId: "v2", voiceName: "Minh" }, productInfo: "Váy đỏ",
+});
+const openExisting = () => render(<StoreProvider><NewVideo niche="my-pham" dir="/proj/1" /><Probe /></StoreProvider>);
+
+test("build while the ElevenLabs key status is still loading does not touch the project's voiceover", async () => {
+  a.getSettings.mockResolvedValue(VOICE_SETTINGS);
+  const st = deferred<{ hasKey: boolean; remaining?: number }>();
+  a.elevenStatus.mockReturnValue(st.promise);
+  a.getProject.mockResolvedValue(VO_PROJECT);
+  a.setProjectVoiceover.mockResolvedValue(VO_PROJECT);
+  openExisting();
+  const build = await screen.findByRole("button", { name: BUILD });
+  await waitFor(() => expect(build).toBeEnabled());
+  await userEvent.click(build);
+  await waitFor(() => expect(JSON.parse(screen.getByTestId("r").textContent!)[0]).toEqual({ name: "project", dir: "/proj/1" }));
+  expect(a.setProjectVoiceover).not.toHaveBeenCalled();
+});
+
+test("an existing project keeps its own voice when Settings has no default voice", async () => {
+  a.elevenStatus.mockResolvedValue({ hasKey: true, remaining: 1000 });
+  a.elevenVoices.mockResolvedValue(VOICES);
+  a.getProject.mockResolvedValue(VO_PROJECT);
+  a.setProjectVoiceover.mockResolvedValue(VO_PROJECT);
+  openExisting();
+  const toggle = await screen.findByRole("checkbox", { name: TOGGLE });
+  await waitFor(() => expect(toggle).toBeChecked());
+  expect(toggle).toBeEnabled();
+  await waitFor(() => expect(screen.getByLabelText("Giọng đọc")).toHaveValue("v2"));
+  await userEvent.click(screen.getByRole("button", { name: BUILD }));
+  expect(a.setProjectVoiceover).toHaveBeenCalledWith("/proj/1", { enabled: true, voiceId: "v2", voiceName: "Minh" }, "Váy đỏ");
+});
+
+test("an existing project keeps its voiceover when the key is gone, until the toggle is turned off", async () => {
+  a.elevenStatus.mockResolvedValue({ hasKey: false });
+  a.getProject.mockResolvedValue(VO_PROJECT);
+  a.setProjectVoiceover.mockResolvedValue(VO_PROJECT);
+  openExisting();
+  await screen.findByRole("button", { name: "Nhập key ở Cài đặt" });
+  const build = screen.getByRole("button", { name: BUILD });
+  await waitFor(() => expect(build).toBeEnabled());
+  await userEvent.click(build);
+  expect(a.setProjectVoiceover).toHaveBeenCalledWith("/proj/1", { enabled: true, voiceId: "v2", voiceName: "Minh" }, "Váy đỏ");
+});
+
+test("turning the toggle off on an existing project clears its voiceover", async () => {
+  a.elevenStatus.mockResolvedValue({ hasKey: true, remaining: 1000 });
+  a.elevenVoices.mockResolvedValue(VOICES);
+  a.getProject.mockResolvedValue(VO_PROJECT);
+  a.setProjectVoiceover.mockResolvedValue(VO_PROJECT);
+  openExisting();
+  const toggle = await screen.findByRole("checkbox", { name: TOGGLE });
+  await waitFor(() => expect(toggle).toBeChecked());
+  await userEvent.click(toggle);
+  await userEvent.click(screen.getByRole("button", { name: BUILD }));
+  expect(a.setProjectVoiceover).toHaveBeenCalledWith("/proj/1", null, "Váy đỏ");
+});

@@ -52,6 +52,10 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   const [voiceId, setVoiceId] = useState<string>("");
   const [productInfo, setProductInfo] = useState("");
   const voiceTouched = useRef(false);
+  // The voiceover an existing project already had, kept as-is until the customer flips the toggle here.
+  const projectVoice = useRef<ProjectVoiceover | null>(null);
+  const toggleTouched = useRef(false);
+  const projectLoaded = useRef(!existingDir);
 
   useEffect(() => {
     if (!settings) return;
@@ -121,9 +125,11 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
         if (d.length) { lengthRef.current = d.length; setLength(d.length); }
         if (d.voiceover) {
           voiceTouched.current = true;
+          projectVoice.current = d.voiceover;
           setVoiceOn(d.voiceover.enabled); setVoiceId(d.voiceover.voiceId);
         }
         setProductInfo(d.productInfo ?? "");
+        projectLoaded.current = true;
         if (d.scriptCard) {
           shown.current = [d.scriptCard.title];
           setCards([d.scriptCard]); setPicked(0);
@@ -243,19 +249,33 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
     });
   }
 
-  const voiceReady = hasElevenKey === true && !!settings?.voiceId;
+  // A voice is either the Settings default or the one this project already uses.
+  const voiceReady = hasElevenKey === true && !!voiceId;
+  const fallbackName = (id: string) =>
+    id === projectVoice.current?.voiceId ? projectVoice.current.voiceName || id
+      : id === settings?.voiceId ? (settings?.voiceName ?? id) : id;
   const voiceList: Voice[] = voices.some((v) => v.id === voiceId) || !voiceId
     ? voices
-    : [{ id: voiceId, name: voiceId === settings?.voiceId ? (settings?.voiceName ?? voiceId) : voiceId, labels: {}, previewUrl: null }, ...voices];
+    : [{ id: voiceId, name: fallbackName(voiceId), labels: {}, previewUrl: null }, ...voices];
 
   /** The voiceover choice the engine reads (null = off). */
   function voiceChoice(): ProjectVoiceover | null {
-    if (!voiceOn || !voiceReady || !voiceId) return null;
+    const proj = projectVoice.current;
+    // An existing project's voiceover stays as it was unless the toggle was flipped on this screen.
+    if (proj && !toggleTouched.current) {
+      const id = voiceId || proj.voiceId;
+      const name = voiceList.find((v) => v.id === id)?.name ?? (id === proj.voiceId ? proj.voiceName : "");
+      return { enabled: proj.enabled, voiceId: id, voiceName: name };
+    }
+    if (!voiceOn || !voiceReady) return null;
     const name = voiceList.find((v) => v.id === voiceId)?.name ?? "";
     return { enabled: true, voiceId, voiceName: name };
   }
 
   async function saveVoice(d: string): Promise<boolean> {
+    // Key status or project still loading: the choice is unknown, so leave the project's voiceover alone.
+    // (The voiceover box, product info included, cannot be edited before both are known.)
+    if (hasElevenKey === null || !projectLoaded.current) return true;
     try { await api.setProjectVoiceover(d, voiceChoice(), productInfo.trim()); return true; }
     catch (e) { notify(toEngineError(e).message); return false; }
   }
@@ -346,13 +366,13 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
           <div className="card" style={{ padding: 12, marginBottom: 14 }}>
             <label className="row" style={{ gap: 8 }}>
               <input type="checkbox" checked={voiceOn && voiceReady} disabled={!voiceReady}
-                onChange={(e) => setVoiceOn(e.target.checked)} />
+                onChange={(e) => { toggleTouched.current = true; setVoiceOn(e.target.checked); }} />
               <b>🎙 Lồng tiếng AI</b>
             </label>
             {hasElevenKey === false && (
               <button className="linkbtn" onClick={() => go({ name: "settings", tab: "conn" })}>Nhập key ở Cài đặt</button>
             )}
-            {hasElevenKey === true && !settings?.voiceId && (
+            {hasElevenKey === true && !voiceId && (
               <button className="linkbtn" onClick={() => go({ name: "settings", tab: "conn" })}>Chọn giọng mặc định ở Cài đặt</button>
             )}
             {voiceOn && voiceReady && (
