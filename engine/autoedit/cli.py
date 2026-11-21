@@ -138,7 +138,7 @@ async def _analyze(args, events: Emitter) -> int:
     project = Project.load(Path(args.project))
     prepared = prepare(project, events)
     events.step("AI đang gợi ý kịch bản…", 0.6)
-    events.cards(await run_analyze(prepared, project.niche, agent_dir(), args.exclude or []))
+    events.cards(await run_analyze(prepared, project.niche, agent_dir(), args.exclude or [], project=project))
     return 0
 
 

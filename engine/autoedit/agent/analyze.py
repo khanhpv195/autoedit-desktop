@@ -10,6 +10,7 @@ from autoedit.agent.runner import _iso
 from autoedit.agent.sdk_errors import NO_AUTH_MSG, RATE_MSG, classify_result, classify_sdk_error
 from autoedit.errors import AgentFailed, NoAuth, RateLimited
 from autoedit.prep import Prepared
+from autoedit.project import Project
 from autoedit.transcript import format_phrases, pack_phrases
 
 CARDS_SCHEMA = {
@@ -29,14 +30,44 @@ mentioning which spoken line opens the video). Base every card on lines that exi
 Use the niche library for structure and hook style. The 3 cards must differ in hook and order.
 If several clips or images are given, say in each card how to order the clips and
 where the images work as b-roll while the speech continues.
-Never promise: giảm cân, cao thêm X cm, trị mụn dứt điểm, trắng da sau N ngày, chữa bệnh."""
+Never promise: giảm cân, cao thêm X cm, trị mụn dứt điểm, trắng da sau N ngày, chữa bệnh.
+
+What the editor can do (suggest nothing else - no transitions, speed ramps, beat-sync or effects):
+- một video đầu ra duy nhất cho mỗi thẻ;
+- cảnh xếp theo thứ tự tùy ý; số clip chỉ dùng để chỉ nguồn của cảnh ("cảnh xoay người ở clip 2");
+- một hook text tối đa 5 từ trong 2.5 s đầu;
+- b-roll ảnh sản phẩm 1.5–4 s mỗi ảnh, tối đa 1 ảnh mỗi 3 s;
+- chữ kêu gọi (CTA) trong 2 s cuối;
+- không bịa thông tin sản phẩm (chất liệu, giá, size, khuyến mãi) ngoài lời thoại và thông tin khách nhập."""
 
 
-def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclude: list[str]) -> dict:
+VISUAL_HINT = ("No speech: suggest visual-first scripts (Dựng theo hình) - open on the clearest full-body or moving "
+               "shot of the product, short shots of 1.2-3 s, product photos as b-roll after the product is seen, "
+               "hook text only about what is visible.")
+
+
+def project_lines(project: Project | None, has_speech: bool) -> list[str]:
+    lines = []
+    if project is not None:
+        lo, hi = project.length_range
+        lines.append(f"Target length: {lo:.0f}–{hi:.0f}s.")
+    if not has_speech:
+        lines.append(VISUAL_HINT)
+    if project is not None and project.voiceover_on:
+        lines.append("Lồng tiếng AI: bật (tiếng gốc bị tắt; một giọng đọc AI đọc lời viết từ thông tin sản phẩm). "
+                     "Thông tin sản phẩm (khách nhập): " + (project.product_info.strip() or "(trống)"))
+    return lines
+
+
+def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclude: list[str],
+                          project: Project | None = None) -> dict:
     transcript = format_phrases(pack_phrases(prepared.words)) or "(no speech - suggest visual-first scripts)"
     text = (f"{INSTRUCTIONS}\n\nNiche: {niche} ({NICHE_NAMES[niche]})\n"
             f"Niche library:\n{niche_section(niche, agent_dir)}\n\n"
             f"Total duration: {prepared.info.duration:.1f}s\n")
+    extra = project_lines(project, bool(prepared.words))
+    if extra:
+        text += "\n".join(extra) + "\n"
     spans = span_lines(prepared)
     if spans:
         text += "\n".join(spans) + "\n"
@@ -53,8 +84,8 @@ def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclu
 
 
 async def run_analyze(prepared: Prepared, niche: str, agent_dir: Path, exclude: list[str] | None = None,
-                      *, query_fn=query) -> list[dict]:
-    message = build_analyze_message(prepared, niche, agent_dir, exclude or [])
+                      *, project: Project | None = None, query_fn=query) -> list[dict]:
+    message = build_analyze_message(prepared, niche, agent_dir, exclude or [], project)
 
     async def stream():
         yield message

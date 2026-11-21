@@ -80,6 +80,15 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
     return "\n".join(lines)
 
 
+def visual_first_section(project: Project, prepared: Prepared, agent_dir: Path) -> list[str]:
+    """Visual-first skill in full when there is no speech; as a short conditional section when voiceover is on."""
+    if not prepared.words:
+        return ["## Skill: visual-first\n" + skill_body("visual-first", agent_dir)]
+    if project.voiceover_on:
+        return ["## Khi lời thoại yếu hoặc bật lồng tiếng:\n" + skill_body("visual-first", agent_dir)]
+    return []
+
+
 def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
                        previous: dict | None, agent_dir: Path, user_mcp: list[str] | None = None) -> dict:
     """First (streamed) user message: request + skill text + full transcript + word times + keyframes, so a
@@ -97,6 +106,7 @@ def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, f
         "## Skill: edit-video\n" + skill_body("edit-video", agent_dir),
         "## Skill: niche-hooks (" + project.niche + ")\n" + niche_intro(agent_dir) + "\n\n"
         + niche_section(project.niche, agent_dir),
+        *visual_first_section(project, prepared, agent_dir),
         f"## Transcript (phrases, source seconds; timeline {prepared.info.duration:.2f}s)\n{phrases}",
         "## Word times (source seconds; use them for caption_fixes/emphasis `at` and for cut edges)\n" + words,
         f"## Keyframes ({n} images follow, each preceded by its source time)",

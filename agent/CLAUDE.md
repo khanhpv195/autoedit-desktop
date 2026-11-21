@@ -28,7 +28,8 @@ Write it in Vietnamese, as one short sentence, with no jargon.
 ## Process
 
 Your first message already contains the transcript (phrases and per-word times), 6 keyframes and the
-cut-craft, Vietnamese-sales and niche-hook skills. Do not look for them again and do not call
+cut-craft, Vietnamese-sales and niche-hook skills (plus the visual-first skill when there is no
+speech or voiceover is on). Do not look for them again and do not call
 `get_transcript` or `view_frames` unless you need extra detail (a closer look at one moment).
 
 1. Read the first message. Decide the hook, the order and the cuts.
@@ -82,7 +83,9 @@ Normally: `set_edl` → `render_preview` → `finish`.
 - Never change product details, prices or colours. Keep the price line and the spoken CTA if present.
 - Length: aim for the target length given in the request (`Target length: …`). `set_edl` adds a note when the
   output is far outside it; adjust then. Keep at least 30% of the speech.
-- If the clip has no speech: choose the best visual moments with `view_frames`, `hook: null`.
+- If the clip has no speech (or voiceover is on): follow the visual-first skill ("Dựng theo hình") in your
+  first message: open on the clearest product shot, any shot order, a hook text about what is visible
+  (`{"text": ...}`, no `move_to_front` needed).
 - `finish` summary: plain Vietnamese, no jargon (no "EDL", "segment", "range").
   Example: "Bỏ 12 giây ngập ngừng ở đầu", "Đưa câu giá 189K lên mở đầu".
 - If the request conflicts with these rules, follow the rules and say so in the summary.
