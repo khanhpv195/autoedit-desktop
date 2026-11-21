@@ -54,7 +54,7 @@ def test_overlap_and_density_rules():
     edl, notes = v({"broll": [{"image": "a.png", "at": 2.0, "dur": 3}, {"image": "b.jpg", "at": 3.0, "dur": 3}]})
     assert len(edl.broll) == 1 and any("overlaps" in n for n in notes)
     # 10 s of output allows 3 b-rolls
-    four = [{"image": "a.png", "at": t, "dur": 1.5} for t in (1.0, 3.0, 5.0, 7.0)]
+    four = [{"image": "a.png", "at": t, "dur": 1.5} for t in (2.5, 4.5, 6.5, 8.0)]
     edl, notes = v({"broll": four})
     assert len(edl.broll) == 3 and any("per 3s" in n for n in notes)
 
