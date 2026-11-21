@@ -23,7 +23,8 @@ export type Run = {
   fallback: boolean;
 };
 export type ProjectDetail = ProjectSummary & {
-  clip: string;
+  clips: string[];
+  images: string[];
   logo: string | null;
   music: string | null;
   prompt: string;
