@@ -5,5 +5,5 @@ compatibility_date = "2026-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "autoedit-license"
-database_id = "REPLACE_AFTER_d1_create"
+database_id = "a74795b3-2041-438c-821d-a2d3e98468e6"
 migrations_dir = "migrations"
