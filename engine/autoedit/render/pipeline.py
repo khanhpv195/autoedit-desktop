@@ -102,7 +102,8 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
 
     once()
     windows = [(a, b) for _, a, b in broll]
-    cuts = cut_times(ranges)
+    # with voiceover the base is muted and the voice runs across cuts: a pop score on the mix would flag speech
+    cuts = [] if edl.voiceover else cut_times(ranges)
     if preview:
         return RenderResult(out, total, None, False, edit_checks(out, windows, cuts))
     qc = run_qc(out, total, broll=windows, cuts=cuts)
