@@ -93,3 +93,12 @@ def test_reversed_ranges_words_in_output_order():
     assert all(a.end <= b.start + 1e-9 for a, b in zip(cues, cues[1:]))
     assert cues[0].words[0].text == "son" and cues[-1].words[-1].text == "nhà"
     assert abs(next(w for w in tw if w.text == "chào").start - (1.0 - 0.9 + 1.5)) < 1e-6
+
+
+def test_word_mostly_outside_the_range_is_not_captioned():
+    from autoedit.edl import Range
+    from autoedit.render.captions import map_words
+    from autoedit.transcript import Word
+    ws = [Word("đủ", 1.0, 1.3), Word("size", 1.3, 1.6), Word("lẻ", 1.95, 2.6)]
+    tw = map_words([Range(1.0, 2.05)], ws, [], [])          # "lẻ" is only 0.1 s inside the range
+    assert [t.text for t in tw] == ["đủ", "size"]

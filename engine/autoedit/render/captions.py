@@ -53,8 +53,8 @@ def map_words(ranges: list[Range], words: list[Word], fixes: list[CaptionFix],
             ov = min(w.end, r.end) - max(w.start, r.start)
             if ov > best_ov:
                 best, best_ov = i, ov
-        if best < 0:
-            continue
+        if best < 0 or best_ov < 0.5 * (w.end - w.start):
+            continue        # mostly cut off (an edge moved into silence or onto the next word): not heard, not shown
         r = ranges[best]
         out.append(TimedWord(w.text, max(r.start, w.start) - r.start + offs[best],
                              min(r.end, w.end) - r.start + offs[best], w.start, groups[best], k in emph_idx))
