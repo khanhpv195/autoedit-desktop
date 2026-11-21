@@ -14,6 +14,7 @@ const base = { model: "claude-opus-5-5", projectsRoot: "/Users/x/Movies/AutoEdit
 
 beforeEach(() => {
   vi.clearAllMocks();
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue(base);
   a.listProjects.mockResolvedValue([]);
   a.saveSettings.mockResolvedValue(null);

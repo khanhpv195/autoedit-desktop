@@ -11,7 +11,8 @@ export type Route =
   | { name: "new"; niche: string; dir?: string }
   | { name: "project"; dir: string }
   | { name: "settings"; tab?: "gen" | "conn" | "agent" }
-  | { name: "schedule" };
+  | { name: "schedule" }
+  | { name: "activate"; reason?: string };
 
 /** An in-flight publish, keyed by `<project dir>#<run>`. */
 export type PublishState = { label: string; progress: number };
@@ -158,6 +159,8 @@ type Ctx = {
   cancelPublish(key: string): void;
   /** Run routine-sync. A second call while one is running returns the first one's result. */
   syncRoutine(team: string): Promise<SyncResult>;
+  /** Run the startup sequence: license check first, then settings and projects. */
+  boot(): Promise<void>;
 };
 const StoreCtx = createContext<Ctx | null>(null);
 
@@ -240,44 +243,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return p;
   }, []);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const settings = await api.getSettings();
-        if (!alive) return;
-        dispatch({ type: "settings", settings });
-        if (!settings.onboarded) {
-          dispatch({ type: "route", route: { name: "onboarding" } });
-        } else {
-          const projects = await api.listProjects();
-          if (!alive) return;
-          dispatch({ type: "projects", projects });
-          dispatch({ type: "route", route: { name: "niche" } });
-          let hasKey = false;
-          try { hasKey = !!(await api.socialKeyStatus())?.hasKey; } catch { /* no key info: treat as none */ }
-          if (!alive) return;
-          dispatch({ type: "socialKey", has: hasKey });
-          const team = settings.socialTeamId;
-          if (hasKey && team && (settings.routines ?? []).some((r) => r.enabled)) {
-            // Once per launch: create the next 7 days of routine posts. Failure is only a soft toast.
-            syncRoutine(team)
-              .then((r) => {
-                if (!alive) return;
-                if (r.skipped) notify(r.skipped);
-                else if (r.created.length) notify(`Routine đã tạo ${r.created.length} bài`);
-              })
-              .catch(() => { if (alive) notify("Chưa chạy được routine, thử lại ở tab Lịch đăng"); });
-          }
-        }
-      } catch {
-        // keep defaults; the screens surface their own errors
-      } finally {
-        if (alive) dispatch({ type: "ready" });
+  const aliveRef = useRef(true);
+  const boot = useCallback(async () => {
+    try {
+      let licensed = false;
+      try { licensed = !!(await api.licenseStatus())?.licensed; } catch { /* treat as unlicensed */ }
+      if (!aliveRef.current) return;
+      if (!licensed) {
+        dispatch({ type: "route", route: { name: "activate" } });
+        return;
       }
-    })();
-    return () => { alive = false; };
+      const settings = await api.getSettings();
+      if (!aliveRef.current) return;
+      dispatch({ type: "settings", settings });
+      if (!settings.onboarded) {
+        dispatch({ type: "route", route: { name: "onboarding" } });
+      } else {
+        const projects = await api.listProjects();
+        if (!aliveRef.current) return;
+        dispatch({ type: "projects", projects });
+        dispatch({ type: "route", route: { name: "niche" } });
+        let hasKey = false;
+        try { hasKey = !!(await api.socialKeyStatus())?.hasKey; } catch { /* no key info: treat as none */ }
+        if (!aliveRef.current) return;
+        dispatch({ type: "socialKey", has: hasKey });
+        const team = settings.socialTeamId;
+        if (hasKey && team && (settings.routines ?? []).some((r) => r.enabled)) {
+          // Once per launch: create the next 7 days of routine posts. Failure is only a soft toast.
+          syncRoutine(team)
+            .then((r) => {
+              if (!aliveRef.current) return;
+              if (r.skipped) notify(r.skipped);
+              else if (r.created.length) notify(`Routine đã tạo ${r.created.length} bài`);
+            })
+            .catch(() => { if (aliveRef.current) notify("Chưa chạy được routine, thử lại ở tab Lịch đăng"); });
+        }
+      }
+    } catch {
+      // keep defaults; the screens surface their own errors
+    } finally {
+      if (aliveRef.current) dispatch({ type: "ready" });
+    }
   }, [notify, syncRoutine]);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    void boot();
+    return () => { aliveRef.current = false; };
+  }, [boot]);
+
+  // The 6-hourly background check found the key revoked: lock the UI.
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    let gone = false;
+    void (async () => {
+      try {
+        const un = await api.onLicenseRevoked((reason) => dispatch({ type: "route", route: { name: "activate", reason } }));
+        if (gone) un?.(); else off = un;
+      } catch { /* no event bridge (tests) */ }
+    })();
+    return () => { gone = true; off?.(); };
+  }, []);
 
   useEffect(() => {
     if (!state.toast) return;
@@ -285,7 +311,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [state.toast]);
 
-  return <StoreCtx.Provider value={{ state, dispatch, refreshProjects, go, notify, startBuild, cancelBuild, startPublish, cancelPublish, syncRoutine }}>{children}</StoreCtx.Provider>;
+  return <StoreCtx.Provider value={{ state, dispatch, refreshProjects, go, notify, startBuild, cancelBuild, startPublish, cancelPublish, syncRoutine, boot }}>{children}</StoreCtx.Provider>;
 }
 
 export function useStore(): Ctx {

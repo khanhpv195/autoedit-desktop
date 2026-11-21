@@ -29,6 +29,7 @@ const account = (teams = 1): any => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue(base);
   a.listProjects.mockResolvedValue([]);
   a.saveSettings.mockResolvedValue(null);
@@ -67,6 +68,7 @@ test("SOCIAL_AUTH shows 'Key không đúng' and clears the key", async () => {
 
 test("several teams: picking one saves socialTeamId", async () => {
   a.socialKeyStatus.mockResolvedValue({ hasKey: true });
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ ...base, socialTeamId: "t1" });
   e.socialCheck.mockResolvedValue(account(2));
   mount();
@@ -77,6 +79,7 @@ test("several teams: picking one saves socialTeamId", async () => {
 
 test("portal button opens the url; remove key clears it", async () => {
   a.socialKeyStatus.mockResolvedValue({ hasKey: true });
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ ...base, socialTeamId: "t1" });
   e.socialCheck.mockResolvedValue(account());
   e.socialPortal.mockResolvedValue("https://portal.example/x");

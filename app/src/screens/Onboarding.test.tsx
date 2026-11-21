@@ -15,6 +15,7 @@ const e = vi.mocked(engine);
 let outCb: (o: any) => void; let doneCb: (o: any) => void;
 beforeEach(() => {
   vi.clearAllMocks();
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: false });
   a.listProjects.mockResolvedValue([]);
   a.onLoginOutput.mockImplementation(async (cb) => { outCb = cb; return () => {}; });

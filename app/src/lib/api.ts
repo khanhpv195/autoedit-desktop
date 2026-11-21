@@ -12,6 +12,10 @@ export const authStatus = () => invoke<{ source: AuthSource }>("auth_status");
 export const loginStart = (cliPath: string) => invoke<null>("login_start", { cliPath });
 export const loginInput = (text: string) => invoke<null>("login_input", { text });
 export const loginCancel = () => invoke<null>("login_cancel");
+export const licenseStatus = () => invoke<{ licensed: boolean; name: string | null }>("license_status");
+export const licenseActivate = (key: string) => invoke<{ licensed: true; name: string }>("license_activate", { key });
+export const onLicenseRevoked = async (cb: (reason: string) => void): Promise<() => void> =>
+  listen<{ reason: string }>("license-revoked", (e) => cb(e.payload.reason));
 export const killAllJobs = () => invoke<null>("kill_all_jobs");
 export const logout = () => invoke<null>("logout");
 export const setApiKey = (key: string) => invoke<null>("set_api_key", { key });

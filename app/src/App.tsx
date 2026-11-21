@@ -6,6 +6,7 @@ import NewVideo from "./screens/NewVideo";
 import ProjectView from "./screens/ProjectView";
 import Schedule from "./screens/Schedule";
 import Settings from "./screens/Settings";
+import Activate from "./screens/Activate";
 import UpdateBanner from "./components/UpdateBanner";
 
 function Screen() {
@@ -18,12 +19,14 @@ function Screen() {
     case "project": return <ProjectView key={r.dir} dir={r.dir} />;
     case "settings": return <Settings key={r.tab ?? "gen"} />;
     case "schedule": return <Schedule />;
+    case "activate": return null;
   }
 }
 
 function Shell() {
-  const { state } = useStore();
+  const { state, boot } = useStore();
   if (!state.ready) return null;
+  if (state.route.name === "activate") return <Activate reason={state.route.reason} onDone={() => void boot()} />;
   return (
     <div className="app">
       <UpdateBanner />

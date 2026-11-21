@@ -14,6 +14,7 @@ function Probe() {
 }
 
 test("lists projects, counts them and navigates on click", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
   m.listProjects.mockResolvedValue([
     { dir: "/a", title: "Váy hoa", niche: "thoi-trang", created: "2026-11-20", status: "done", runCount: 1 },
@@ -30,6 +31,7 @@ test("lists projects, counts them and navigates on click", async () => {
 });
 
 test("hidden during onboarding", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: false });
   render(<StoreProvider><Sidebar /><Probe /></StoreProvider>);
   await screen.findByText(/onboarding/);
@@ -37,6 +39,7 @@ test("hidden during onboarding", async () => {
 });
 
 test("shows a building marker for a project with a running job", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
   m.listProjects.mockResolvedValue([
     { dir: "/a", title: "Váy hoa", niche: "thoi-trang", created: "2026-11-20", status: "done", runCount: 1 },

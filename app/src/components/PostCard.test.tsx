@@ -36,6 +36,7 @@ const mount = (d = detail()) => render(<StoreProvider><PostCard detail={d} run={
 
 beforeEach(() => {
   vi.clearAllMocks();
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue(base);
   a.listProjects.mockResolvedValue([]);
   a.socialKeyStatus.mockResolvedValue({ hasKey: true });

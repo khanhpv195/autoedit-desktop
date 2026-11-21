@@ -15,6 +15,7 @@ const shop: any = { name: "shop", enabled: true, transport: "stdio", command: "n
 
 beforeEach(() => {
   vi.clearAllMocks();
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: false });
   a.mcpList.mockResolvedValue([]);
   a.mcpSave.mockResolvedValue(null);

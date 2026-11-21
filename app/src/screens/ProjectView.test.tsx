@@ -36,6 +36,7 @@ const mount = (edit?: { dir: string; prompt: string }) => render(<StoreProvider>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
   a.listProjects.mockResolvedValue([]);
   a.fileSrc.mockImplementation((p) => "asset://" + p);

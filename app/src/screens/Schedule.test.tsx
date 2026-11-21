@@ -33,6 +33,7 @@ const post = (over: any = {}): any => ({
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue(base);
   a.listProjects.mockResolvedValue([]);
   a.saveSettings.mockResolvedValue(null);
@@ -112,6 +113,7 @@ test("sidebar: Lịch đăng is dim without a key and enabled with one", async (
 
 test("key present but the account read failed: error panel, not the 'no key' screen", async () => {
   e.socialCheck.mockRejectedValue({ code: "SOCIAL_AUTH", message: "401", retry_at: null });
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ ...base, socialTeamId: null });
   mount();
   expect(await screen.findByText("Key bundle.social không dùng được")).toBeInTheDocument();
@@ -121,6 +123,7 @@ test("key present but the account read failed: error panel, not the 'no key' scr
 
 test("key present but zero teams: says so", async () => {
   e.socialCheck.mockResolvedValue({ ...account, teams: [] });
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ ...base, socialTeamId: null });
   mount();
   expect(await screen.findByText("Chưa có team trên bundle.social")).toBeInTheDocument();

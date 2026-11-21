@@ -12,6 +12,7 @@ const base = { model: "m", projectsRoot: "/p", lastNiche: "my-pham", onboarded: 
 function Probe() { const { state } = useStore(); return <div data-testid="r">{JSON.stringify(state.route)}</div>; }
 beforeEach(() => {
   vi.clearAllMocks();
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue(base);
   m.listProjects.mockResolvedValue([]);
   m.saveSettings.mockResolvedValue(null);

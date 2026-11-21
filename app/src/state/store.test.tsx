@@ -18,12 +18,14 @@ const settings = { model: "claude-opus-5-5", projectsRoot: "/p", lastNiche: null
 beforeEach(() => vi.clearAllMocks());
 
 test("not onboarded -> onboarding route", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ ...settings, onboarded: false });
   render(<StoreProvider><Probe /></StoreProvider>);
   expect(await screen.findByText(/route:onboarding/)).toBeInTheDocument();
   expect(m.listProjects).not.toHaveBeenCalled();
 });
 test("onboarded -> loads projects, route niche", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ ...settings, onboarded: true });
   m.listProjects.mockResolvedValue([{ dir: "/a", title: "A", niche: "chung", created: "2026-11-20", status: "new", runCount: 0 }]);
   render(<StoreProvider><Probe /></StoreProvider>);
@@ -33,6 +35,7 @@ test("onboarded -> loads projects, route niche", async () => {
 
 test("startup routine-sync runs once when there is a key, a team and an enabled routine", async () => {
   const routines = [{ id: "r", time: "19:30", channels: ["TIKTOK"], enabled: true }];
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ ...settings, onboarded: true, socialTeamId: "t1", routines });
   m.listProjects.mockResolvedValue([]);
   m.socialKeyStatus.mockResolvedValue({ hasKey: true });
@@ -53,6 +56,7 @@ test("startup does not sync without key, team or an enabled routine", async () =
   ];
   for (const [over, key] of cases) {
     vi.clearAllMocks();
+    m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
     m.getSettings.mockResolvedValue({ ...settings, onboarded: true, ...over });
     m.listProjects.mockResolvedValue([]);
     m.socialKeyStatus.mockResolvedValue({ hasKey: key });
@@ -65,6 +69,7 @@ test("startup does not sync without key, team or an enabled routine", async () =
 });
 
 test("syncRoutine shares one engine job: a second call while running gets the first result", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ ...settings, onboarded: false });
   let finish!: (r: any) => void;
   e.routineSync.mockReturnValue(new Promise((res) => { finish = res; }));
@@ -87,6 +92,7 @@ test("syncRoutine shares one engine job: a second call while running gets the fi
 
 test("startup sync shows a skipped message as a normal toast", async () => {
   const routines = [{ id: "r", time: "19:30", channels: ["TIKTOK"], enabled: true }];
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   m.getSettings.mockResolvedValue({ ...settings, onboarded: true, socialTeamId: "t1", routines });
   m.listProjects.mockResolvedValue([]);
   m.socialKeyStatus.mockResolvedValue({ hasKey: true });

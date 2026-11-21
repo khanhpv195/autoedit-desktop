@@ -32,6 +32,7 @@ const AI = "✨ AI gợi ý kịch bản";
 beforeEach(() => {
   vi.clearAllMocks();
   dropHandler = null;
+  a.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
   a.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
   a.listProjects.mockResolvedValue([]);
   a.pickMedia.mockResolvedValue(["/v/a.mp4"]);
