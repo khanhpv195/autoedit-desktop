@@ -10,6 +10,7 @@ from pathlib import Path
 from autoedit import __version__
 from autoedit.agent.analyze import run_analyze
 from autoedit.agent.auth import auth_check
+from autoedit.agent.chat import run_chat_turn
 from autoedit.agent.log import serialize_message
 from autoedit.agent.options import edit_options, model
 from autoedit.agent.prompt import build_edit_message
@@ -91,7 +92,8 @@ async def _edit(args, events: Emitter) -> int:
                 runlog.write(f"[claude] {line.rstrip()}\n")
                 runlog.flush()
 
-            session = EditSession(prepared=prepared, project=project, events=ev)
+            session = EditSession(prepared=prepared, project=project, events=ev,
+                                   target=project.target_range(user_prompt, args.feedback))
             usage = {"turns": 0, "fallback": False}
             ev.step("AI đang dựng…", 0.3)
             with contextlib.redirect_stderr(Tee(sys.stderr, runlog)):
@@ -157,6 +159,15 @@ async def _analyze(args, events: Emitter) -> int:
     return 0
 
 
+async def _chat(args, events: Emitter) -> int:
+    find_cli()
+    project = Project.load(Path(args.project))
+    prepared = prepare(project, events)
+    events.step("AI đang trả lời…", 0.6)
+    events.chat(await run_chat_turn(project, prepared, args.message or "", agent_dir()))
+    return 0
+
+
 async def _social(args, events: Emitter) -> int:
     from autoedit.social import commands as sc
     c = args.social_cmd
@@ -207,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--version", action="store_true")
     sub = p.add_subparsers(dest="cmd")
     a = sub.add_parser("analyze"); a.add_argument("--project", required=True); a.add_argument("--exclude", action="append")
+    c = sub.add_parser("chat"); c.add_argument("--project", required=True); c.add_argument("--message", default="")
     e = sub.add_parser("edit"); e.add_argument("--project", required=True); e.add_argument("--prompt"); e.add_argument("--feedback")
     sub.add_parser("auth-check")
     sub.add_parser("setup")
@@ -229,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         print(__version__)
         return 0
     events = Emitter()
-    handler = {"analyze": _analyze, "edit": _edit, "auth-check": _auth, "setup": _setup,
+    handler = {"analyze": _analyze, "chat": _chat, "edit": _edit, "auth-check": _auth, "setup": _setup,
                "setup-model": _setup_model, "social": _social, "mcp-check": _mcp_check}.get(args.cmd)
     if handler is None:
         p.print_help(sys.stderr)

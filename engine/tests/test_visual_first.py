@@ -52,11 +52,11 @@ def test_analyze_instructions_follow_editor_rules():
 
 
 def test_analyze_message_has_length_visual_hint_and_product_info(tmp_path):
-    proj = Project(dir=tmp_path, niche="thoi-trang", clips=["c.mp4"], length="short", voiceover=VO,
+    proj = Project(dir=tmp_path, niche="thoi-trang", clips=["c.mp4"], target_seconds=[15.0, 20.0], voiceover=VO,
                    product_info="Áo len cổ lọ, 199K")
     t = _text(build_analyze_message(_prep(tmp_path, []), "thoi-trang", agent_dir(), [], project=proj))
     assert "15–20s" in t and "Áo len cổ lọ, 199K" in t and "Lồng tiếng AI: bật" in t
     assert "Dựng theo hình" in t or "visual-first" in t
     proj2 = Project(dir=tmp_path, niche="thoi-trang", clips=["c.mp4"])
     t2 = _text(build_analyze_message(_prep(tmp_path, [Word("a", 0, 1)]), "thoi-trang", agent_dir(), [], project=proj2))
-    assert "20–35s" in t2 and "Lồng tiếng AI" not in t2 and "visual-first" not in t2
+    assert "Target length: not given" in t2 and "Lồng tiếng AI" not in t2 and "visual-first" not in t2

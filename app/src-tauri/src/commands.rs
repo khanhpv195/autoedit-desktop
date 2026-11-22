@@ -205,7 +205,7 @@ pub async fn create_project(
     logo: Option<String>,
     music: Option<String>,
     cta_text: Option<String>,
-    length: Option<String>,
+    name: Option<String>,
 ) -> Result<ProjectSummary, String> {
     let root = projects_root(&state);
     // Copying a multi-GB clip must not block the UI thread.
@@ -220,7 +220,7 @@ pub async fn create_project(
             logo.as_deref().map(Path::new),
             music.as_deref().map(Path::new),
             cta_text.as_deref().unwrap_or(""),
-            length.as_deref().unwrap_or(""),
+            name.as_deref().unwrap_or(""),
             &today,
         )
     })
@@ -241,6 +241,28 @@ pub fn get_project(dir: String) -> Result<ProjectDetail, String> {
 #[tauri::command]
 pub fn update_project(dir: String, patch: serde_json::Value) -> Result<(), String> {
     projects::update(Path::new(&dir), &patch)
+}
+
+#[tauri::command(async)]
+pub fn rename_project(dir: String, name: String) -> Result<ProjectSummary, String> {
+    projects::rename(Path::new(&dir), &name)
+}
+
+#[tauri::command]
+pub async fn delete_project(state: State<'_, AppState>, dir: String) -> Result<(), String> {
+    if state.jobs.busy_on(Path::new(&dir)) {
+        return Err("Video này đang được AI xử lý, hãy dừng hoặc chờ xong rồi xoá".into());
+    }
+    let root = projects_root(&state);
+    // A multi-GB folder can take a moment to remove.
+    tauri::async_runtime::spawn_blocking(move || projects::delete(&root, Path::new(&dir)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command(async)]
+pub fn read_chat(dir: String) -> serde_json::Value {
+    projects::chat(Path::new(&dir))
 }
 
 #[tauri::command(async)]

@@ -24,14 +24,18 @@ CARDS_SCHEMA = {
     "required": ["cards"], "additionalProperties": False,
 }
 
-INSTRUCTIONS = """You suggest 3 different edit scripts for a short vertical Vietnamese sales clip.
+NEVER_PROMISE = "Never promise: giảm cân, cao thêm X cm, trị mụn dứt điểm, trắng da sau N ngày, chữa bệnh."
+
+CARDS_INTRO = f"""You suggest 3 different edit scripts for a short vertical Vietnamese sales clip.
 Each card: title (≤6 words), hook (on-screen text, ≤5 words, faithful to what is said),
 outline (3-5 short steps in Vietnamese), prompt (one Vietnamese instruction an editor can follow).
 Base every card on lines that exist in the transcript. Use the niche library for structure and hook style.
-The 3 cards must differ in hook and angle. Never promise: giảm cân, cao thêm X cm, trị mụn dứt điểm,
-trắng da sau N ngày, chữa bệnh.
+The 3 cards must differ in hook and angle. {NEVER_PROMISE}
 
-Quality rules:
+"""
+
+# Shared with the chat (agent/chat.py): how a good cut is built, and what the editor can and cannot do.
+EDIT_RULES = """Quality rules:
 - Hook = the buyer's concrete problem or benefit in their own words, taken from the speech: a body worry
   ("Chân vòng kiềng vẫn đẹp"), a price, a result. Never a generic line ("Quần hot mùa thu đông", "Siêu phẩm",
   "Hàng mới về"). The video must open on the spoken line the hook comes from.
@@ -52,6 +56,8 @@ What the editor can do (suggest nothing else - no transitions, speed ramps, beat
 - chữ kêu gọi (CTA) ở góc dưới trái trong {cta:g} s cuối, trùng câu chốt;
 - không bịa thông tin sản phẩm (chất liệu, giá, size, khuyến mãi) ngoài lời thoại và thông tin khách nhập."""
 
+INSTRUCTIONS = CARDS_INTRO + EDIT_RULES
+
 FULL_SPEECH = """- Clip {silent} has no speech and clip {talk} has the talking: card 1 MUST be "Giữ trọn lời":
   picture of clip {silent} runs first, then clip {talk}'s own picture at the matching moment; sound = clip {talk}
   in full, from its first word to its last word {last!r}, no sentence cut; clip {silent}'s sound muted. Its
@@ -71,7 +77,7 @@ VISUAL_HINT = ("No speech: suggest visual-first scripts (Dựng theo hình) - op
                "hook text only about what is visible.")
 
 
-def full_speech_rule(prepared: Prepared) -> str:
+def full_speech_rule(prepared: Prepared, template: str | None = None) -> str:
     """The "Giữ trọn lời" card: one clip without speech (room noise) and one clip with all the talking."""
     if len(prepared.spans) < 2:
         return ""
@@ -84,14 +90,16 @@ def full_speech_rule(prepared: Prepared) -> str:
     if len(talk) != 1 or not silent:
         return ""
     t, own = talk[0]
-    return FULL_SPEECH.format(silent=silent[0], talk=t, last=own[-1].text)
+    return (template or FULL_SPEECH).format(silent=silent[0], talk=t, last=own[-1].text)
 
 
 def project_lines(project: Project | None, has_speech: bool) -> list[str]:
     lines = []
     if project is not None:
-        lo, hi = project.length_range
-        lines.append(f"Target length: {lo:.0f}–{hi:.0f}s.")
+        target = project.target_range()
+        lines.append(f"Target length: {target[0]:.0f}–{target[1]:.0f}s." if target else
+                     "Target length: not given. Choose each card's length from the content and end its outline "
+                     "with the length and why, e.g. \"Dài ~40s: đủ 4 ý chính\".")
     if not has_speech:
         lines.append(VISUAL_HINT)
     if project is not None and project.voiceover_on:
@@ -125,15 +133,13 @@ def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclu
             "parent_tool_use_id": None, "session_id": "default"}
 
 
-async def run_analyze(prepared: Prepared, niche: str, agent_dir: Path, exclude: list[str] | None = None,
-                      *, project: Project | None = None, query_fn=query) -> list[dict]:
-    message = build_analyze_message(prepared, niche, agent_dir, exclude or [], project)
-
+async def run_structured(message: dict, agent_dir: Path, schema: dict, query_fn=query) -> dict | None:
+    """One Claude call without tools whose answer must match `schema`; rate-limit / auth errors raised as ours."""
     async def stream():
         yield message
 
     opts = plain_options(agent_dir, model(), max_turns=3,
-                         output_format={"type": "json_schema", "schema": CARDS_SCHEMA})
+                         output_format={"type": "json_schema", "schema": schema})
     structured, reset_at = None, None
     try:
         async for msg in query_fn(prompt=stream(), options=opts):
@@ -157,7 +163,14 @@ async def run_analyze(prepared: Prepared, niche: str, agent_dir: Path, exclude: 
         if err is not None:
             raise err from e
         raise
-    cards = (structured or {}).get("cards") if isinstance(structured, dict) else None
+    return structured if isinstance(structured, dict) else None
+
+
+async def run_analyze(prepared: Prepared, niche: str, agent_dir: Path, exclude: list[str] | None = None,
+                      *, project: Project | None = None, query_fn=query) -> list[dict]:
+    message = build_analyze_message(prepared, niche, agent_dir, exclude or [], project)
+    structured = await run_structured(message, agent_dir, CARDS_SCHEMA, query_fn)
+    cards = (structured or {}).get("cards")
     if not cards or len(cards) != 3 or not all({"title", "hook", "outline", "prompt"} <= set(c) for c in cards):
         raise AgentFailed("AI không gợi ý được kịch bản, thử lại")
     return cards

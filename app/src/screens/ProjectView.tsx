@@ -1,5 +1,6 @@
 import { Clapperboard } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import EditableTitle from "../components/EditableTitle";
 import ErrorPanel from "../components/ErrorPanel";
 import * as api from "../lib/api";
 import { toEngineError, type AnyEngineError } from "../lib/errors";
@@ -61,12 +62,12 @@ export default function ProjectView({ dir }: { dir: string }) {
         </div>
       )}
       {detail && hasRuns && (
-        <Result detail={detail} onRedo={(fb) => startBuild(dir, detail.prompt, fb)} onPosted={() => void load()} />
+        <Result detail={detail} onRedo={(fb) => startBuild(dir, detail.prompt, fb)} onPosted={() => void load()} onRenamed={() => void load()} />
       )}
       {detail && !hasRuns && !error && !reloading && (
         <div className="lock">
           <div className="lockic"><Clapperboard aria-hidden /></div>
-          <h2>{detail.title}</h2>
+          <EditableTitle as="h2" dir={dir} title={detail.title} onRenamed={() => void load()} />
           <p>Video này chưa được dựng.</p>
           <button className="btn primary" onClick={() => go({ name: "new", niche: detail.niche, dir })}>Dựng video</button>
         </div>

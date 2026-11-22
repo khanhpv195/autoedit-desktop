@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Card, EngineError, EngineEvent, McpTool, Post, SocialAccount } from "./types";
+import type { Card, ChatMessage, EngineError, EngineEvent, McpTool, Post, SocialAccount } from "./types";
 
 export type EngineResult = { code: number | null; last: EngineEvent | null; error: EngineError | null };
 export type EngineJob = { result: Promise<EngineResult>; cancel(): Promise<void> };
@@ -102,6 +102,19 @@ export async function analyze(
   if (r.error) throw r.error;
   if (r.last?.type !== "cards") throw new Error("AI không gợi ý được kịch bản");
   return r.last.cards;
+}
+
+/** One chat turn (empty message = the opening turn). Resolves with the assistant's reply, already saved to chat.json. */
+export async function chat(
+  dir: string, message: string, onEvent?: (e: EngineEvent) => void, onJob?: (job: EngineJob) => void,
+): Promise<Extract<ChatMessage, { role: "assistant" }>> {
+  // --message=… keeps a text that starts with "-" from being read as a flag
+  const job = runEngine(["chat", "--project", dir, `--message=${message}`], onEvent);
+  onJob?.(job);
+  const r = await job.result;
+  if (r.error) throw r.error;
+  if (r.last?.type !== "chat") throw new Error("AI không trả lời được, thử gửi lại");
+  return r.last.message;
 }
 
 async function social<T extends EngineEvent["type"]>(

@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 
-use crate::settings::{DEFAULT_CTA, DEFAULT_LENGTH};
+use crate::settings::DEFAULT_CTA;
 
 pub const NICHES: [&str; 5] = ["thoi-trang", "my-pham", "do-an", "phu-kien", "chung"];
-pub const LENGTHS: [&str; 3] = ["short", "medium", "long"];
+pub const MAX_NAME: usize = 80;
 pub const MAX_PRODUCT_INFO: usize = 500;
 const MAX_CTA: usize = 30;
 
@@ -28,6 +28,8 @@ pub struct ProjectSummary {
     pub created: String,
     pub status: String,
     pub run_count: usize,
+    /// Posts still waiting on bundle.social (status SCHEDULED, date in the future): they post anyway after a delete.
+    pub scheduled_posts: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -57,7 +59,6 @@ pub struct ProjectDetail {
     pub runs: Vec<Run>,
     pub posts: Vec<Value>,
     pub cta_text: String,
-    pub length: String,
     pub voiceover: Option<Voiceover>,
     pub product_info: String,
 }
@@ -187,8 +188,16 @@ fn clean_cta(s: &str) -> String {
     if (1..=MAX_CTA).contains(&n) { t.to_string() } else { DEFAULT_CTA.to_string() }
 }
 
-fn clean_length(s: &str) -> String {
-    if LENGTHS.contains(&s) { s.to_string() } else { DEFAULT_LENGTH.to_string() }
+/// A project name: trimmed, 1..=MAX_NAME characters.
+fn clean_name(s: &str) -> Result<String, String> {
+    let t = s.trim();
+    if t.is_empty() {
+        return Err("Tên video không được để trống".into());
+    }
+    if t.chars().count() > MAX_NAME {
+        return Err(format!("Tên video tối đa {MAX_NAME} ký tự"));
+    }
+    Ok(t.to_string())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -200,7 +209,7 @@ pub fn create(
     logo: Option<&Path>,
     music: Option<&Path>,
     cta_text: &str,
-    length: &str,
+    name: &str,
     today: &str,
 ) -> Result<ProjectSummary, String> {
     if !NICHES.contains(&niche) {
@@ -212,6 +221,7 @@ pub fn create(
         return Err(format!("Không thấy file {}", p.display()));
     }
     let stem = first.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = if name.trim().is_empty() { clean_name(&stem).unwrap_or_else(|_| "Video".into()) } else { clean_name(name)? };
     let base = format!("{today}_{}", slugify(&stem));
     let mut dir = root.join(&base);
     let mut k = 2;
@@ -234,7 +244,7 @@ pub fn create(
         m.insert("script_card".into(), Value::Null);
         m.insert("runs".into(), json!([]));
         m.insert("cta_text".into(), json!(clean_cta(cta_text)));
-        m.insert("length".into(), json!(clean_length(length)));
+        m.insert("name".into(), json!(name));
         write_json(&dir, &m)?;
         summary(&dir, &m)
     })();
@@ -245,9 +255,29 @@ pub fn create(
 }
 
 fn summary(dir: &Path, m: &Map<String, Value>) -> Result<ProjectSummary, String> {
-    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let title = name.split_once('_').map_or(name.clone(), |(_, t)| t.to_string());
-    let created: String = name.chars().take(10).collect();
+    let folder = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    // Projects made before names existed show their folder name without the date prefix.
+    let title = opt_str(m, "name")
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| folder.split_once('_').map_or(folder.clone(), |(_, t)| t.to_string()));
+    let created: String = folder.chars().take(10).collect();
+    let now = chrono::Local::now().fixed_offset();
+    let scheduled_posts = m
+        .get("posts")
+        .and_then(Value::as_array)
+        .map(|ps| {
+            ps.iter()
+                .filter(|p| p.get("status").and_then(Value::as_str) == Some("SCHEDULED"))
+                .filter(|p| {
+                    p.get("postDate")
+                        .and_then(Value::as_str)
+                        .and_then(|d| chrono::DateTime::parse_from_rfc3339(d).ok())
+                        .is_none_or(|d| d > now)
+                })
+                .count()
+        })
+        .unwrap_or(0);
     let runs = m.get("runs").and_then(Value::as_array).cloned().unwrap_or_default();
     let status = match runs.last() {
         None => "new",
@@ -261,6 +291,7 @@ fn summary(dir: &Path, m: &Map<String, Value>) -> Result<ProjectSummary, String>
         created,
         status: status.into(),
         run_count: runs.len(),
+        scheduled_posts,
     })
 }
 
@@ -335,7 +366,6 @@ pub fn detail(dir: &Path) -> Result<ProjectDetail, String> {
         runs,
         posts: m.get("posts").and_then(Value::as_array).cloned().unwrap_or_default(),
         cta_text: clean_cta(m.get("cta_text").and_then(Value::as_str).unwrap_or("")),
-        length: clean_length(m.get("length").and_then(Value::as_str).unwrap_or("")),
         voiceover: read_voiceover(&m),
         product_info: m.get("product_info").and_then(Value::as_str).unwrap_or("").to_string(),
     })
@@ -371,18 +401,57 @@ pub fn update(dir: &Path, patch: &Value) -> Result<(), String> {
     let Some(p) = patch.as_object() else { return Err("patch không hợp lệ".into()) };
     with_lock(dir, || {
         let mut m = read_json(dir)?;
-        for key in ["niche", "prompt", "script_card", "length"] {
+        for key in ["niche", "prompt", "script_card", "target_seconds"] {
             let Some(v) = p.get(key) else { continue };
             if key == "niche" && !v.as_str().is_some_and(|n| NICHES.contains(&n)) {
                 return Err("Ngành không hợp lệ".into());
             }
-            if key == "length" && !v.as_str().is_some_and(|n| LENGTHS.contains(&n)) {
-                return Err("Độ dài không hợp lệ".into());
+            if key == "target_seconds" && !v.is_null() && !valid_target(v) {
+                return Err("Thời lượng không hợp lệ".into());
             }
             m.insert(key.into(), v.clone());
         }
         write_json(dir, &m)
     })
+}
+
+/// [lo, hi] seconds, 0 < lo <= hi <= 600.
+fn valid_target(v: &Value) -> bool {
+    match v.as_array().map(|a| a.iter().map(Value::as_f64).collect::<Vec<_>>()) {
+        Some(a) if a.len() == 2 => matches!((a[0], a[1]), (Some(lo), Some(hi)) if 0.0 < lo && lo <= hi && hi <= 600.0),
+        _ => false,
+    }
+}
+
+pub fn rename(dir: &Path, name: &str) -> Result<ProjectSummary, String> {
+    let name = clean_name(name)?;
+    with_lock(dir, || {
+        let mut m = read_json(dir)?;
+        m.insert("name".into(), json!(name));
+        write_json(dir, &m)?;
+        summary(dir, &m)
+    })
+}
+
+/// The chat with the agent (`chat.json`, written by the engine): [] when there is none yet or it is unreadable.
+pub fn chat(dir: &Path) -> Value {
+    std::fs::read_to_string(dir.join("chat.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v.get("messages").cloned())
+        .filter(Value::is_array)
+        .unwrap_or_else(|| json!([]))
+}
+
+/// Delete a whole project folder: input copies, work (cache, transcript, temp renders) and exported runs.
+/// The customer's original files live outside it. Only a direct child of `root` holding a project.json.
+pub fn delete(root: &Path, dir: &Path) -> Result<(), String> {
+    let root = root.canonicalize().map_err(|_| "Không thấy thư mục project".to_string())?;
+    let dir = dir.canonicalize().map_err(|_| "Không thấy project".to_string())?;
+    if dir.parent() != Some(root.as_path()) || !dir.join("project.json").is_file() {
+        return Err("Không phải thư mục project của AutoEdit".into());
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("Không xoá được project: {e}"))
 }
 
 pub fn set_asset(dir: &Path, kind: &str, path: Option<&Path>) -> Result<ProjectDetail, String> {
@@ -437,40 +506,44 @@ mod tests {
     fn touch(p: &Path) {
         std::fs::write(p, b"x").unwrap();
     }
-    fn new_project(root: &Path, cta: &str, length: &str) -> PathBuf {
+    fn new_project(root: &Path, cta: &str, name: &str) -> PathBuf {
         let clip = root.join("c.mp4");
         touch(&clip);
         let projects = root.join("p");
         std::fs::create_dir_all(&projects).unwrap();
-        PathBuf::from(create(&projects, "chung", &[clip], &[], None, None, cta, length, "2026-11-20").unwrap().dir)
+        PathBuf::from(create(&projects, "chung", &[clip], &[], None, None, cta, name, "2026-11-20").unwrap().dir)
     }
     fn raw(dir: &Path) -> Value {
         serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap()
     }
     #[test]
-    fn create_writes_cta_and_length() {
+    fn create_writes_cta_and_name() {
         let root = tempfile::tempdir().unwrap();
-        let dir = new_project(root.path(), "  MUA NGAY 👇 ", "short");
+        let dir = new_project(root.path(), "  MUA NGAY 👇 ", "  Quần ống rộng ");
         let j = raw(&dir);
         assert_eq!(j["cta_text"], "MUA NGAY 👇");
-        assert_eq!(j["length"], "short");
+        assert_eq!(j["name"], "Quần ống rộng");
+        assert!(j.get("length").is_none());
         let d = detail(&dir).unwrap();
-        assert_eq!((d.cta_text.as_str(), d.length.as_str()), ("MUA NGAY 👇", "short"));
+        assert_eq!((d.cta_text.as_str(), d.summary.title.as_str()), ("MUA NGAY 👇", "Quần ống rộng"));
         assert_eq!(d.voiceover, None);
         assert_eq!(d.product_info, "");
     }
     #[test]
     fn create_falls_back_to_defaults_for_bad_values() {
         let root = tempfile::tempdir().unwrap();
-        let dir = new_project(root.path(), "   ", "huge");
+        let dir = new_project(root.path(), "   ", "   ");
         assert_eq!(raw(&dir)["cta_text"], "BẤM GIỎ HÀNG 👇");
-        assert_eq!(raw(&dir)["length"], "medium");
-        let dir = new_project(root.path(), &"x".repeat(31), "long");
+        assert_eq!(raw(&dir)["name"], "c"); // empty name: the first clip's file name
+        let dir = new_project(root.path(), &"x".repeat(31), "Áo");
         assert_eq!(raw(&dir)["cta_text"], "BẤM GIỎ HÀNG 👇");
-        assert_eq!(raw(&dir)["length"], "long");
         // 30 characters (an emoji counts as one) is still fine
         let thirty = format!("{}👇", "a".repeat(29));
-        assert_eq!(raw(&new_project(root.path(), &thirty, "medium"))["cta_text"], thirty.as_str());
+        assert_eq!(raw(&new_project(root.path(), &thirty, ""))["cta_text"], thirty.as_str());
+        // a name over 80 characters is refused
+        let clip = root.path().join("c.mp4");
+        let long = "a".repeat(81);
+        assert!(create(&root.path().join("p"), "chung", &[clip], &[], None, None, "", &long, "2026-11-20").is_err());
     }
     #[test]
     fn old_project_detail_reads_defaults() {
@@ -480,13 +553,13 @@ mod tests {
         std::fs::write(dir.join("project.json"), r#"{"niche":"chung","clips":["a.mp4"],"prompt":"","runs":[]}"#).unwrap();
         let d = detail(&dir).unwrap();
         assert_eq!(d.cta_text, "BẤM GIỎ HÀNG 👇");
-        assert_eq!(d.length, "medium");
+        assert_eq!(d.summary.title, "old"); // no name: folder name without the date
         assert_eq!(d.voiceover, None);
         assert_eq!(d.product_info, "");
         // garbage values also read as defaults
         std::fs::write(dir.join("project.json"), r#"{"niche":"chung","cta_text":"","length":"xl","voiceover":"on","product_info":5}"#).unwrap();
         let d = detail(&dir).unwrap();
-        assert_eq!((d.cta_text.as_str(), d.length.as_str(), d.product_info.as_str()), ("BẤM GIỎ HÀNG 👇", "medium", ""));
+        assert_eq!((d.cta_text.as_str(), d.product_info.as_str()), ("BẤM GIỎ HÀNG 👇", ""));
         assert_eq!(d.voiceover, None);
     }
     #[test]
@@ -539,13 +612,104 @@ mod tests {
         assert_eq!(j["product_info"], "info");
     }
     #[test]
-    fn update_accepts_a_valid_length_only() {
+    fn update_accepts_a_valid_target_only() {
         let root = tempfile::tempdir().unwrap();
         let dir = new_project(root.path(), "", "");
+        update(&dir, &json!({"target_seconds": [40, 50]})).unwrap();
+        assert_eq!(raw(&dir)["target_seconds"], json!([40, 50]));
+        for bad in [json!([50, 40]), json!([0, 10]), json!("30"), json!([10]), json!([10, 700])] {
+            assert!(update(&dir, &json!({"target_seconds": bad})).is_err());
+        }
+        update(&dir, &json!({"target_seconds": null})).unwrap();
+        assert!(raw(&dir)["target_seconds"].is_null());
+        // the old preset is not writable any more
         update(&dir, &json!({"length": "long"})).unwrap();
-        assert_eq!(detail(&dir).unwrap().length, "long");
-        assert!(update(&dir, &json!({"length": "xl"})).is_err());
-        assert_eq!(raw(&dir)["length"], "long");
+        assert!(raw(&dir).get("length").is_none());
+    }
+    #[test]
+    fn rename_trims_and_validates() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = new_project(root.path(), "", "Cũ");
+        update(&dir, &json!({"prompt": "giữ"})).unwrap();
+        let s = rename(&dir, "  Váy hoa mùa hè ").unwrap();
+        assert_eq!(s.title, "Váy hoa mùa hè");
+        assert_eq!(raw(&dir)["name"], "Váy hoa mùa hè");
+        assert_eq!(raw(&dir)["prompt"], "giữ"); // other fields kept
+        assert!(rename(&dir, "   ").is_err());
+        assert!(rename(&dir, &"ạ".repeat(81)).is_err());
+        assert!(rename(&dir, &"ạ".repeat(80)).is_ok());
+        // the folder (the project's id) never changes
+        assert!(dir.is_dir());
+        assert_eq!(list(&root.path().join("p"))[0].title, "ạ".repeat(80));
+    }
+    #[test]
+    fn rename_old_project_without_name() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("2026-11-01_old");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), r#"{"niche":"chung","clips":["a.mp4"]}"#).unwrap();
+        assert_eq!(rename(&dir, "Mới").unwrap().title, "Mới");
+        assert!(rename(&root.path().join("missing"), "x").is_err());
+    }
+    #[test]
+    fn delete_removes_the_whole_project_but_not_the_source() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = new_project(root.path(), "", "");
+        let source = root.path().join("c.mp4");
+        std::fs::create_dir_all(dir.join("work")).unwrap();
+        std::fs::write(dir.join("work").join("transcript.json"), "{}").unwrap();
+        std::fs::create_dir_all(dir.join("runs").join("1")).unwrap();
+        std::fs::write(dir.join("runs").join("1").join("final.mp4"), "v").unwrap();
+        delete(&root.path().join("p"), &dir).unwrap();
+        assert!(!dir.exists());
+        assert!(source.is_file(), "the customer's original clip must stay");
+        assert!(list(&root.path().join("p")).is_empty());
+    }
+    #[test]
+    fn delete_refuses_anything_but_a_project_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let projects = root.path().join("p");
+        let dir = new_project(root.path(), "", "");
+        // outside the projects root
+        let other = root.path().join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("project.json"), "{}").unwrap();
+        assert!(delete(&projects, &other).is_err());
+        assert!(other.is_dir());
+        // the root itself, a nested folder, a folder without project.json, a missing one
+        assert!(delete(&projects, &projects).is_err());
+        assert!(delete(&projects, &dir.join("input")).is_err());
+        let plain = projects.join("notes");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(delete(&projects, &plain).is_err());
+        assert!(plain.is_dir());
+        assert!(delete(&projects, &projects.join("missing")).is_err());
+        // a path that climbs out through ".."
+        assert!(delete(&projects, &dir.join("..").join("..").join("other")).is_err());
+        assert!(other.is_dir() && dir.is_dir());
+    }
+    #[test]
+    fn summary_counts_future_scheduled_posts() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = new_project(root.path(), "", "");
+        let mut m = read_json(&dir).unwrap();
+        m.insert("posts".into(), json!([
+            {"id": "a", "status": "SCHEDULED", "postDate": "2999-01-01T10:00:00+07:00"},
+            {"id": "b", "status": "SCHEDULED", "postDate": "2000-01-01T10:00:00+07:00"},
+            {"id": "c", "status": "POSTED", "postDate": "2999-01-01T10:00:00+07:00"}
+        ]));
+        write_json(&dir, &m).unwrap();
+        assert_eq!(detail(&dir).unwrap().summary.scheduled_posts, 1);
+    }
+    #[test]
+    fn chat_reads_messages_or_empty() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = new_project(root.path(), "", "");
+        assert_eq!(chat(&dir), json!([]));
+        std::fs::write(dir.join("chat.json"), "not json").unwrap();
+        assert_eq!(chat(&dir), json!([]));
+        std::fs::write(dir.join("chat.json"), r#"{"v":1,"messages":[{"role":"user","text":"hi"}]}"#).unwrap();
+        assert_eq!(chat(&dir), json!([{"role": "user", "text": "hi"}]));
     }
     #[test]
     fn slug_strips_vietnamese() {

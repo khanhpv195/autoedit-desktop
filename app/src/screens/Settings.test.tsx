@@ -172,11 +172,9 @@ test("defaults card: CTA must be 1–30 characters and saves on Lưu", async () 
   expect(screen.queryByText("Chữ kêu gọi cần 1–30 ký tự")).toBeNull();
 });
 
-test("defaults card: length chips save defaultLength, Vừa is the default", async () => {
+test("defaults card: no video length setting any more (the length comes from the chat)", async () => {
   await open();
-  expect(screen.getByRole("button", { name: "Vừa 20–35s" })).toHaveAttribute("aria-pressed", "true");
-  await userEvent.click(screen.getByRole("button", { name: "Ngắn 15–20s" }));
-  expect(a.saveSettings).toHaveBeenCalledWith({ ...base, defaultLength: "short" });
+  expect(screen.queryByText("Độ dài video")).toBeNull();
 });
 
 test("defaults card: picking and removing the default logo call the commands", async () => {

@@ -3,9 +3,8 @@ export type Settings = {
   model: string; projectsRoot: string; lastNiche: string | null; onboarded: boolean;
   socialTeamId?: string | null; routines?: Routine[];
   voiceId?: string | null; voiceName?: string | null;
-  defaultLogo?: string | null; defaultCta?: string; defaultLength?: VideoLength;
+  defaultLogo?: string | null; defaultCta?: string;
 };
-export type VideoLength = "short" | "medium" | "long";
 export type ElevenStatus = { hasKey: boolean; remaining?: number };
 export type Voice = { id: string; name: string; labels: Record<string, string>; previewUrl: string | null };
 export type ProjectStatus = "new" | "done" | "needs_review";
@@ -16,6 +15,8 @@ export type ProjectSummary = {
   created: string;
   status: ProjectStatus;
   runCount: number;
+  /** Posts still waiting on bundle.social: they post anyway after a delete. */
+  scheduledPosts?: number;
 };
 export type Card = { title: string; hook: string; outline: string[] | string; prompt: string };
 export type Run = {
@@ -37,13 +38,22 @@ export type ProjectDetail = ProjectSummary & {
   runs: Run[];
   posts?: ProjectPost[];
   ctaText?: string;
-  length?: VideoLength;
   voiceover?: ProjectVoiceover | null;
   productInfo?: string;
 };
 export type ProjectVoiceover = { enabled: boolean; voiceId: string; voiceName: string };
 export type ProjectPost = { id: string; run: number; postDate: string; channels: string[]; status: string };
-export type ProjectPatch = { niche?: string; prompt?: string; script_card?: Card; length?: VideoLength };
+export type ProjectPatch = {
+  niche?: string; prompt?: string; script_card?: Card | null; target_seconds?: [number, number] | null;
+};
+/** The edit plan the chat agent agreed with the customer. */
+export type ChatPlan = {
+  summary: string[]; prompt: string; target_seconds: [number, number];
+  length_source: "customer" | "ai"; length_reason: string; hook: string; cta: string;
+};
+export type ChatMessage =
+  | { role: "user"; text: string; ts: number }
+  | { role: "assistant"; text: string; suggestions: string[]; plan: ChatPlan | null; ts: number };
 export type AuthSource = "app-token" | "claude-code" | "api-key" | null;
 export type FeedItem = { text: string; tool: string | null };
 
@@ -54,6 +64,7 @@ export type EngineEvent =
   | { type: "done"; final: string; summary: string[]; usage: { turns: number; fallback: boolean }; needs_review: boolean }
   | { type: "error"; code: string; message: string; retry_at: string | null }
   | { type: "cards"; cards: Card[] }
+  | { type: "chat"; message: Extract<ChatMessage, { role: "assistant" }> }
   | { type: "auth"; source: string }
   | { type: "setup"; claude_cli: string }
   | { type: "model"; path: string }

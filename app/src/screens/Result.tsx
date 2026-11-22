@@ -1,12 +1,15 @@
 import { ChevronRight, FolderOpen, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import AgentFeed from "../components/AgentFeed";
+import EditableTitle from "../components/EditableTitle";
 import PostCard from "../components/PostCard";
 import VideoPlayer from "../components/VideoPlayer";
 import * as api from "../lib/api";
 import type { FeedItem, ProjectDetail } from "../lib/types";
 
-export default function Result({ detail, onRedo, onPosted }: { detail: ProjectDetail; onRedo: (feedback: string) => void; onPosted?: () => void }) {
+export default function Result({ detail, onRedo, onPosted, onRenamed }: {
+  detail: ProjectDetail; onRedo: (feedback: string) => void; onPosted?: () => void; onRenamed?: () => void;
+}) {
   const runs = detail.runs;
   const [sel, setSel] = useState(runs[runs.length - 1].n);
   const run = runs.find((r) => r.n === sel) ?? runs[runs.length - 1];
@@ -28,7 +31,7 @@ export default function Result({ detail, onRedo, onPosted }: { detail: ProjectDe
   return (
     <div>
       <div className="phead">
-        <h1>{detail.title}</h1>
+        <EditableTitle dir={detail.dir} title={detail.title} onRenamed={onRenamed} />
         <button className="btn ghost" onClick={() => api.revealInFolder(run.final)}><FolderOpen size={16} aria-hidden />Mở thư mục</button>
       </div>
       {runs.length > 1 && (

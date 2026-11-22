@@ -139,20 +139,38 @@ fn node_version(p: &Path) -> Vec<u64> {
 }
 
 #[derive(Default)]
-pub struct Jobs(Mutex<HashMap<String, u32>>);
+/// job id -> (pid, the `--project` dir it works on).
+pub struct Jobs(Mutex<HashMap<String, (u32, Option<String>)>>);
+
+/// The value after `--project` in an engine command line.
+fn project_arg(args: &[String]) -> Option<String> {
+    args.iter().position(|a| a == "--project").and_then(|i| args.get(i + 1)).cloned()
+}
+
+fn same_dir(a: &str, b: &Path) -> bool {
+    let a = Path::new(a);
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
 
 impl Jobs {
-    fn insert(&self, id: &str, pid: u32) {
-        self.0.lock().unwrap().insert(id.into(), pid);
+    fn insert(&self, id: &str, pid: u32, project: Option<String>) {
+        self.0.lock().unwrap().insert(id.into(), (pid, project));
+    }
+    /// An engine job (edit, chat, analyze, publish...) is running on this project.
+    pub fn busy_on(&self, dir: &Path) -> bool {
+        self.0.lock().unwrap().values().any(|(_, p)| p.as_deref().is_some_and(|p| same_dir(p, dir)))
     }
     fn remove(&self, id: &str) {
         self.0.lock().unwrap().remove(id);
     }
     fn pid(&self, id: &str) -> Option<u32> {
-        self.0.lock().unwrap().get(id).copied()
+        self.0.lock().unwrap().get(id).map(|(pid, _)| *pid)
     }
     fn all(&self) -> Vec<(String, u32)> {
-        self.0.lock().unwrap().iter().map(|(k, v)| (k.clone(), *v)).collect()
+        self.0.lock().unwrap().iter().map(|(k, (pid, _))| (k.clone(), *pid)).collect()
     }
 }
 
@@ -217,7 +235,7 @@ where
     }
     let mut child = c.spawn()?;
     let id = uuid::Uuid::new_v4().to_string();
-    jobs.insert(&id, child.id());
+    jobs.insert(&id, child.id(), project_arg(args));
 
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
@@ -323,6 +341,26 @@ pub fn kill_all(jobs: &Jobs) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn busy_on_matches_the_project_arg() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("2026-11-20_a");
+        let b = d.path().join("2026-11-20_b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let args = |p: &Path| vec!["chat".to_string(), "--project".into(), p.to_string_lossy().into_owned()];
+        assert_eq!(project_arg(&args(&a)), Some(a.to_string_lossy().into_owned()));
+        assert_eq!(project_arg(&["setup".to_string()]), None);
+        let jobs = Jobs::default();
+        jobs.insert("j1", 1, project_arg(&args(&a)));
+        jobs.insert("j2", 2, None);
+        assert!(jobs.busy_on(&a));
+        assert!(jobs.busy_on(&b.join("..").join("2026-11-20_a")));
+        assert!(!jobs.busy_on(&b));
+        jobs.remove("j1");
+        assert!(!jobs.busy_on(&a));
+    }
     use crate::secrets::MemoryStore;
 
     fn fake() -> EngineCmd {

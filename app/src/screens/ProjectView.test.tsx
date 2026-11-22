@@ -139,3 +139,16 @@ test("NO_AUTH opens settings", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Mở Cài đặt" }));
   expect(screen.getByTestId("r").textContent).toContain("settings");
 });
+
+test("clicking the title renames the project and reloads it", async () => {
+  a.getProject.mockResolvedValue(detail([run1]));
+  a.renameProject.mockResolvedValue({ dir: "/p/1", title: "Váy hoa xanh", niche: "thoi-trang", created: "2026-11-20", status: "done", runCount: 1 });
+  mount();
+  await userEvent.click(await screen.findByRole("button", { name: "Váy hoa" }));
+  const input = screen.getByLabelText("Tên video");
+  a.getProject.mockResolvedValue({ ...detail([run1]), title: "Váy hoa xanh" });
+  await userEvent.clear(input);
+  await userEvent.type(input, "Váy hoa xanh{Enter}");
+  expect(a.renameProject).toHaveBeenCalledWith("/p/1", "Váy hoa xanh");
+  expect(await screen.findByRole("button", { name: "Váy hoa xanh" })).toBeInTheDocument();
+});

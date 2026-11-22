@@ -116,9 +116,10 @@ async def set_edl(s: EditSession, args: dict) -> dict:
     s.preview_of = s.output_checked = None      # a new EDL needs its own preview and check
     atomic_write_text(s.project.work_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
     d = edl.output_duration()
-    lo, hi = s.project.length_range
-    if not (lo * 0.8 <= d <= hi * 1.2):
-        notes.append(f"Lưu ý: video dài {d:.1f}s, mục tiêu {lo:.0f}–{hi:.0f}s — hãy chỉnh lại.")
+    target = s.target
+    if target and not (target[0] * 0.8 <= d <= target[1] * 1.2):
+        notes.append(f"Lưu ý: video dài {d:.1f}s, khách muốn {target[0]:.0f}–{target[1]:.0f}s — hãy chỉnh lại "
+                     "(trừ khi giữ trọn lời).")
     out_map, t = [], 0.0
     for r in edl.ordered():
         out_map.append({"timeline": [round(r.start, 2), round(r.end, 2)], "output": [round(t, 2), round(t + r.duration, 2)]})

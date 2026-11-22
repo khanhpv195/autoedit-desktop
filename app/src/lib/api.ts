@@ -4,7 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type {
   AuthSource, ElevenStatus, FeedItem, McpServer, LoginDone, LoginOutput, ProjectDetail, ProjectPatch, ProjectSummary,
-  ProjectVoiceover, Settings, VideoLength, Voice,
+  ProjectVoiceover, Settings, Voice, ChatMessage,
 } from "./types";
 
 export const getSettings = () => invoke<Settings>("get_settings");
@@ -36,8 +36,13 @@ export const mcpSave = (server: McpServer, secrets: Record<string, string>) => i
 export const mcpDelete = (name: string) => invoke<null>("mcp_delete", { name });
 export const createProject = (
   niche: string, clips: string[], images: string[], logo: string | null, music: string | null,
-  ctaText: string | null = null, length: VideoLength | null = null,
-) => invoke<ProjectSummary>("create_project", { niche, clips, images, logo, music, ctaText, length });
+  ctaText: string | null = null, name: string | null = null,
+) => invoke<ProjectSummary>("create_project", { niche, clips, images, logo, music, ctaText, name });
+/** Empty name = the first clip's file name. */
+export const renameProject = (dir: string, name: string) => invoke<ProjectSummary>("rename_project", { dir, name });
+/** Removes the whole project folder (copies, cache, exported videos). The customer's own files are not touched. */
+export const deleteProject = (dir: string) => invoke<null>("delete_project", { dir });
+export const readChat = (dir: string) => invoke<ChatMessage[]>("read_chat", { dir });
 export const listProjects = () => invoke<ProjectSummary[]>("list_projects");
 export const getProject = (dir: string) => invoke<ProjectDetail>("get_project", { dir });
 export const updateProject = (dir: string, patch: ProjectPatch) => invoke<null>("update_project", { dir, patch });

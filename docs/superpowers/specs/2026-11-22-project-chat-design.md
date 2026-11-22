@@ -26,7 +26,7 @@ Approved 2026-11-22.
   chosen length and why in its plan / summary. The full-speech rule still wins over any target.
 
 ## 3. Chat instead of the one-shot prompt
-- Engine `autoedit chat --project D --message-file F` (one turn; empty message = opening turn). Reads
+- Engine `autoedit chat --project D --message=TEXT` (one turn; empty message = opening turn). Reads
   `<project>/chat.json`, transcript, niche library; calls Claude (no tools, JSON schema) with the whole history.
   Reply: `{reply, suggestions[], plan|null}`; plan = `{summary, prompt, target_seconds|null, length_reason,
   hook, cta}`. Both messages are appended to chat.json atomically. The existing rules (hook never covers a face,
@@ -39,5 +39,5 @@ Approved 2026-11-22.
 
 ## Tests
 - engine: test_duration.py (table), test_chat.py (fake Claude: history round-trip, plan parsing, bad JSON).
-- Rust: rename (empty, too long, old project), delete (outside root, not a project, pending post, ok).
+- Rust: rename (empty, too long, old project), delete (outside root, not a project, ok; scheduled posts only warn in the confirm dialog, the job lock refuses a busy project).
 - UI: ChatPanel (send, plan button only on latest plan), Sidebar rename/delete confirm.

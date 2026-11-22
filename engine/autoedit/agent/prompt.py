@@ -81,6 +81,15 @@ def voiceover_lines(project: Project) -> list[str]:
     ]
 
 
+def target_line(target: tuple[float, float] | None) -> str:
+    if target:
+        return (f"Target length: {target[0]:.0f}–{target[1]:.0f}s (the customer asked for it; a full-speech edit "
+                "still keeps every sentence).")
+    return ("Target length: not given. Choose it from the content: the speech worth keeping, the number of key "
+            "points, and TikTok/Reels (most sales clips 20–60 s, never pad). Put the length you chose and why in "
+            "the first finish bullet, e.g. \"Dài 42s: giữ đủ 4 ý vòng kiềng, chất vải, giá, free ship\".")
+
+
 def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, feedback: str | None,
                       previous: dict | None, user_mcp: list[str] | None = None) -> str:
     lines = [
@@ -89,7 +98,7 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
         *span_lines(prepared),
         f"Logo: {'yes' if project.logo else 'no'}. Background music file: {'yes' if project.music else 'no'}.",
         "Customer request: " + (user_prompt.strip() or "(none - choose the strongest sales edit yourself)"),
-        "Target length: {:.0f}–{:.0f}s.".format(*project.length_range),
+        target_line(project.target_range(user_prompt, feedback)),
         f"CTA text: {project.cta_text} (use it unless the customer request asks for another CTA).",
     ]
     if project.script_card:

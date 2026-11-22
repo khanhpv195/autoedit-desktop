@@ -35,6 +35,9 @@ class Emitter:
     def cards(self, cards: list[dict]) -> None:
         self._emit({"type": "cards", "cards": cards})
 
+    def chat(self, message: dict) -> None:
+        self._emit({"type": "chat", "message": message})
+
     def auth(self, source: str) -> None:
         self._emit({"type": "auth", "source": source})
 

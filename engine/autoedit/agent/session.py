@@ -11,6 +11,7 @@ class EditSession:
     prepared: Prepared
     project: Project
     events: Emitter
+    target: tuple[float, float] | None = None     # the length the customer asked for (None: agent chooses)
     edl: Edl | None = None
     edl_errors: int = 0
     previews: int = 0

@@ -5,7 +5,7 @@ import SocialSettings from "../components/SocialSettings";
 import VoiceSettings from "../components/VoiceSettings";
 import * as api from "../lib/api";
 import * as engine from "../lib/engine";
-import { DEFAULT_CTA, DEFAULT_LENGTH, LENGTHS, ctaValid } from "../lib/defaults";
+import { DEFAULT_CTA, ctaValid } from "../lib/defaults";
 import { describeError, toEngineError } from "../lib/errors";
 import type { AuthSource, Settings as SettingsT } from "../lib/types";
 import { useStore } from "../state/store";
@@ -161,12 +161,11 @@ export default function Settings() {
   );
 }
 
-/** "Mặc định cho video mới": logo, CTA and target length that New Video starts with. */
+/** "Mặc định cho video mới": logo and CTA that New Video starts with. */
 function DefaultsCard({ settings, save }: { settings: SettingsT; save: (s: SettingsT) => Promise<void> }) {
   const { dispatch, notify } = useStore();
   const [cta, setCta] = useState(settings.defaultCta ?? DEFAULT_CTA);
   const [ctaErr, setCtaErr] = useState(false);
-  const length = settings.defaultLength ?? DEFAULT_LENGTH;
 
   async function saveCta() {
     if (!ctaValid(cta)) { setCtaErr(true); return; }
@@ -210,13 +209,6 @@ function DefaultsCard({ settings, save }: { settings: SettingsT; save: (s: Setti
             <button className="btn ghost" aria-label="Lưu chữ kêu gọi" onClick={() => void saveCta()}>Lưu</button>
           </span>
           {ctaErr && <div className="errline" style={{ marginTop: 6 }}>Chữ kêu gọi cần 1–30 ký tự</div>}
-        </span>
-        <span className="k">Độ dài video</span>
-        <span className="row">
-          {LENGTHS.map(([id, label]) => (
-            <button key={id} className={"chip" + (length === id ? " on" : "")} aria-pressed={length === id}
-              onClick={() => { if (id !== length) void save({ ...settings, defaultLength: id }); }}>{label}</button>
-          ))}
         </span>
       </div>
     </div>

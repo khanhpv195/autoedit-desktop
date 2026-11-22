@@ -1,21 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, ArrowUp, ChevronLeft, Image as ImageIcon, Mic, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, ChevronLeft, Image as ImageIcon, Mic, X } from "lucide-react";
 import * as api from "../lib/api";
-import * as engine from "../lib/engine";
-import type { EngineJob } from "../lib/engine";
+import ChatPanel from "../components/ChatPanel";
 import DropZone from "../components/DropZone";
 import ErrorPanel from "../components/ErrorPanel";
 import { toEngineError, type AnyEngineError } from "../lib/errors";
 import { nicheLabel } from "../lib/format";
 import { MAX_CLIPS, MAX_IMAGES, type Classified } from "../lib/media";
-import { DEFAULT_CTA, DEFAULT_LENGTH, LENGTHS, MAX_PRODUCT_INFO, ctaValid } from "../lib/defaults";
-import type { Card, ProjectVoiceover, VideoLength, Voice } from "../lib/types";
+import { DEFAULT_CTA, MAX_NAME, MAX_PRODUCT_INFO, ctaValid } from "../lib/defaults";
+import type { ChatPlan, ProjectVoiceover, Voice } from "../lib/types";
 import { useStore } from "../state/store";
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 type Media = { clips: string[]; images: string[] };
-/** Card outline: a list of steps; old cached cards may still hold one string. */
-const steps = (o: Card["outline"]) => (Array.isArray(o) ? o : String(o ?? "").split("\n")).filter((x) => x.trim() !== "");
 
 export default function NewVideo({ niche, dir: existingDir }: { niche: string; dir?: string }) {
   const { state, dispatch, go, refreshProjects, notify } = useStore();
@@ -30,22 +27,15 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   const musicRef = useRef<string | null>(null);
   const [pending, setPending] = useState(0);
   const syncFailed = useRef(false);
-  const gen = useRef(0);
   const srcToInput = useRef(new Map<string, string>());
   const [dir, setDir] = useState<string | null>(existingDir ?? null);
-  const [cards, setCards] = useState<Card[]>([]);
-  const [picked, setPicked] = useState<number | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [analyzing, setAnalyzing] = useState(false);
-  const [stepLabel, setStepLabel] = useState("");
   const [err, setErr] = useState<AnyEngineError | null>(null);
-  const shown = useRef<string[]>([]);
-  const job = useRef<EngineJob | null>(null);
+  // The video's name: sent with create, then saved on blur. Empty = the first clip's file name.
+  const [name, setName] = useState("");
+  const nameRef = useRef("");
+  const savedName = useRef("");
   // Defaults for a new video: pre-filled from Settings until the customer changes them here.
   const logoTouched = useRef(!!existingDir);
-  const [length, setLength] = useState<VideoLength>(DEFAULT_LENGTH);
-  const lengthRef = useRef<VideoLength>(DEFAULT_LENGTH);
-  const lengthTouched = useRef(!!existingDir);
   // Voiceover
   const [hasElevenKey, setHasElevenKey] = useState<boolean | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
@@ -61,10 +51,9 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   useEffect(() => {
     if (!settings) return;
     if (!logoTouched.current && !dirRef.current && settings.defaultLogo) setAsset("logo", settings.defaultLogo);
-    if (!lengthTouched.current && settings.defaultLength) { lengthRef.current = settings.defaultLength; setLength(settings.defaultLength); }
     if (!voiceTouched.current && settings.voiceId) setVoiceId(settings.voiceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.defaultLogo, settings?.defaultLength, settings?.voiceId]);
+  }, [settings?.defaultLogo, settings?.voiceId]);
 
   useEffect(() => {
     let alive = true;
@@ -79,9 +68,6 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
     return () => { alive = false; };
   }, []);
 
-  // Leaving the screen must not leave an analyze job burning a Claude turn.
-  useEffect(() => () => { void job.current?.cancel(); }, []);
-
   function setAsset(kind: "logo" | "music", v: string | null) {
     if (kind === "logo") { logoRef.current = v; setLogoState(v); } else { musicRef.current = v; setMusicState(v); }
   }
@@ -93,28 +79,7 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
     return dirRef.current;
   }
 
-  async function runAnalyze(exclude: string[]) {
-    const d = await settle();
-    if (!d) return;
-    if (syncFailed.current) { notify("Chép file chưa xong, hãy thêm lại clip rồi thử lại"); return; }
-    // Suggestions take the voiceover state and product info into account.
-    if (!(await saveVoice(d))) return;
-    const g = ++gen.current;
-    setAnalyzing(true); setErr(null); setPicked(null); setStepLabel("");
-    try {
-      const got = await engine.analyze(d, exclude, (e) => { if (g === gen.current && e.type === "step") setStepLabel(e.label); },
-        (j) => { job.current = j; });
-      if (g !== gen.current) return; // the media changed while this ran: these cards describe the old media
-      shown.current = [...shown.current, ...got.map((c) => c.title)];
-      setCards(got);
-    } catch (e) {
-      if (g === gen.current) setErr(toEngineError(e));
-    } finally {
-      if (g === gen.current) { job.current = null; setAnalyzing(false); }
-    }
-  }
-
-  // Opened from an existing, not-yet-built project: reuse its clip, assets, prompt and saved card.
+  // Opened from an existing, not-yet-built project: reuse its clips, assets and name (the chat loads itself).
   useEffect(() => {
     if (!existingDir) return;
     let alive = true;
@@ -123,7 +88,7 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
         const d = await api.getProject(existingDir);
         if (!alive) return;
         setMedia({ clips: d.clips, images: d.images }); setAsset("logo", d.logo); setAsset("music", d.music);
-        if (d.length) { lengthRef.current = d.length; setLength(d.length); }
+        nameRef.current = d.title; savedName.current = d.title; setName(d.title);
         if (d.voiceover) {
           voiceTouched.current = true;
           projectVoice.current = d.voiceover;
@@ -131,13 +96,6 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
         }
         setProductInfo(d.productInfo ?? "");
         projectLoaded.current = true;
-        if (d.scriptCard) {
-          shown.current = [d.scriptCard.title];
-          setCards([d.scriptCard]); setPicked(0);
-          setPrompt(d.prompt || d.scriptCard.prompt);
-        } else {
-          setPrompt(d.prompt);
-        }
       } catch (e) { if (alive) setErr(toEngineError(e)); }
     })();
     return () => { alive = false; };
@@ -165,9 +123,7 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   /** Apply a media change: update the UI now, then sync to the project (serialized, latest state wins). */
   function changeMedia(next: Media) {
     setMedia(next);
-    gen.current++; // drops the result of any analyze that is still running on the old media
-    void job.current?.cancel(); job.current = null; setAnalyzing(false);
-    setCards([]); setPicked(null); setErr(null); shown.current = [];
+    setErr(null);
     enqueue(async () => {
       const sent = mediaRef.current;
       try {
@@ -177,8 +133,11 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
           if (sent.clips.length === 0) return; // images wait for the first clip
           const sentAssets = { logo: logoRef.current, music: musicRef.current };
           const cta = settings?.defaultCta && ctaValid(settings.defaultCta) ? settings.defaultCta.trim() : DEFAULT_CTA;
-          const sentLength = lengthRef.current;
-          const p = await api.createProject(niche, sent.clips, sent.images, sentAssets.logo, sentAssets.music, cta, sentLength);
+          const sentName = nameRef.current.trim();
+          const p = await api.createProject(niche, sent.clips, sent.images, sentAssets.logo, sentAssets.music, cta, sentName || null);
+          savedName.current = sentName || p.title;
+          // No name typed: show the one the project got (the clip's file name) so it can be edited.
+          if (!sentName && !nameRef.current.trim()) { nameRef.current = p.title; setName(p.title); }
           // Assets picked while the project was being created: decide now, before any await, so none is sent twice.
           const late = (["logo", "music"] as const).filter((k) => {
             const cur = k === "logo" ? logoRef.current : musicRef.current;
@@ -188,7 +147,8 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
           for (const k of late) await api.setProjectAsset(d, k, (k === "logo" ? logoRef : musicRef).current);
           // A logo removed while the project was being created.
           if (sentAssets.logo && !logoRef.current) await api.setProjectAsset(d, "logo", null);
-          if (lengthRef.current !== sentLength) await api.updateProject(d, { length: lengthRef.current });
+          // A name typed while the project was being created.
+          if (nameRef.current.trim() !== sentName) await saveName();
           await refreshProjects();
           detail = await api.getProject(d);
         } else {
@@ -240,14 +200,17 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
     });
   }
 
-  function chooseLength(l: VideoLength) {
-    lengthTouched.current = true;
-    if (l === lengthRef.current) return;
-    lengthRef.current = l; setLength(l);
-    if (!dirRef.current) return; // createProject (or the check right after it) sends the latest value
-    enqueue(async () => {
-      try { await api.updateProject(dirRef.current!, { length: l }); } catch (e) { notify(toEngineError(e).message); }
-    });
+  /** Save the name if it changed (blur / Enter). Before the project exists, createProject sends it. */
+  async function saveName() {
+    const d = dirRef.current;
+    const n = nameRef.current.trim();
+    if (!d || n === savedName.current) return;
+    try {
+      const p = await api.renameProject(d, n);
+      savedName.current = p.title;
+      if (!n) { nameRef.current = p.title; setName(p.title); }
+      await refreshProjects();
+    } catch (e) { notify(toEngineError(e).message); }
   }
 
   // A voice is either the Settings default or the one this project already uses.
@@ -281,25 +244,23 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
     catch (e) { notify(toEngineError(e).message); return false; }
   }
 
-  async function pick(i: number) {
-    setPicked(i);
-    setPrompt(cards[i].prompt);
-    if (dir) { try { await api.updateProject(dir, { script_card: cards[i] }); } catch { /* non-fatal */ } }
+  /** Before each chat turn: the engine must see the final media and voiceover. */
+  async function prepareTurn(): Promise<string | null> {
+    const d = await settle();
+    if (!d) return null;
+    if (syncFailed.current) { notify("Chép file chưa xong, hãy thêm lại clip rồi thử lại"); return null; }
+    return (await saveVoice(d)) ? d : null;
   }
 
-  const canBuild = !!dir && pending === 0 && !analyzing && (prompt.trim() !== "" || picked !== null);
-
-  async function build() {
-    const dir = await settle();
-    if (!dir) return;
-    if (syncFailed.current) { notify("Chép file chưa xong, hãy thêm lại clip rồi thử lại"); return; }
-    const text = prompt.trim();
+  async function start(plan: ChatPlan) {
+    const d = await prepareTurn();
+    if (!d) return;
     try {
-      await api.updateProject(dir, { prompt: text });
+      // The plan replaces any old card; its length is the target the editor aims for.
+      await api.updateProject(d, { prompt: plan.prompt, target_seconds: plan.target_seconds, script_card: null });
     } catch (e) { notify(toEngineError(e).message); return; }
-    if (!(await saveVoice(dir))) return;
-    dispatch({ type: "pendingEdit", pendingEdit: { dir, prompt: text } });
-    go({ name: "project", dir });
+    dispatch({ type: "pendingEdit", pendingEdit: { dir: d, prompt: plan.prompt } });
+    go({ name: "project", dir: d });
   }
 
   return (
@@ -309,12 +270,19 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
         <span className="catbadge">{nicheLabel(niche)}</span>
       </div>
       <h1>Video mới</h1>
-      <div className="sub">Thả clip và ảnh vào, để AI gợi ý kịch bản (hoặc tự viết), rồi bấm dựng.</div>
+      <div className="sub">Thả clip và ảnh vào, trò chuyện với AI để chốt cách dựng, rồi bấm “Bắt đầu edit”.</div>
       <div className="newgrid">
         <div className="panel">
           <div className="ptitle"><span className="n">1</span><b>Clip & ảnh</b>
             {media.clips.length > 0 && <span className="right hint">{media.clips.length} clip{media.images.length > 0 ? ` · ${media.images.length} ảnh` : ""}</span>}
           </div>
+          <div className="label">Tên video</div>
+          <input className="nameinp" aria-label="Tên video" value={name} maxLength={MAX_NAME}
+            placeholder="Ví dụ: Áo len cổ lọ — live 20/11 (để trống = tên clip)"
+            onChange={(e) => { nameRef.current = e.target.value; setName(e.target.value); }}
+            onBlur={() => void saveName()}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur(); }} />
+          <div style={{ height: 12 }} />
           {media.clips.length === 0 && media.images.length === 0 ? (
             <DropZone kind="clip" variant="big" dragDrop onMedia={addMedia}
               label="Kéo clip và ảnh vào đây" hint="mp4, mov, png, jpg — chọn được nhiều file" />
@@ -349,10 +317,12 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
               <DropZone kind="clip" variant="bar" dragDrop onMedia={addMedia} label="Thêm file" hint="kéo thả hoặc bấm để chọn" />
             </>
           )}
+          {err && <div style={{ marginTop: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
+            onSetup={() => go({ name: "onboarding" })} /></div>}
         </div>
         <div>
           <div className="panel">
-            <div className="ptitle"><span className="n">2</span><b>Logo, nhạc & độ dài</b></div>
+            <div className="ptitle"><span className="n">2</span><b>Logo, nhạc & lồng tiếng</b></div>
             <div className="slots">
               <DropZone kind="logo" variant="slot" label="Logo" hint="Tùy chọn · PNG/JPG" accept={["png", "jpg", "jpeg"]}
                 value={logo} onFile={(p) => onAsset("logo", p)} />
@@ -364,13 +334,6 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
                 <button className="linkbtn" onClick={() => onAsset("logo", null)}>Bỏ logo</button>
               </div>
             )}
-            <div className="label" style={{ margin: "16px 0 8px" }}>Độ dài video</div>
-            <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-              {LENGTHS.map(([id, label]) => (
-                <button key={id} className={"chip" + (length === id ? " on" : "")} aria-pressed={length === id}
-                  onClick={() => chooseLength(id)}>{label}</button>
-              ))}
-            </div>
             <div className={"vobox" + (voiceOn && voiceReady ? " on" : "")} style={{ marginTop: 16 }}>
               <label className="switch">
                 <input type="checkbox" aria-label="Lồng tiếng AI" checked={voiceOn && voiceReady} disabled={!voiceReady}
@@ -406,43 +369,10 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
             </div>
           </div>
           <div className="panel">
-            <div className="ptitle"><span className="n">3</span><b>Kịch bản</b>
-              {cards.length > 0 && !analyzing && dir && pending === 0 && (
-                <button className="linkbtn" onClick={() => void runAnalyze(shown.current)}><RefreshCw size={13} aria-hidden />Gợi ý khác</button>
-              )}
-            </div>
-            {analyzing && (
-              <div className="sc-empty"><span className="spin" /> AI đang xem clip…{stepLabel && <div className="hint">{stepLabel}</div>}</div>
-            )}
-            {!analyzing && cards.length === 0 && (
-              <div className="sc-empty">
-                <button className="btn ghost" disabled={!dir || pending > 0} onClick={() => void runAnalyze([])}>
-                  <Sparkles size={16} aria-hidden style={{ color: "var(--accent)" }} />AI gợi ý kịch bản</button>
-                {!dir && <div className="hint">Thêm clip để AI gợi ý</div>}
-                {dir && pending > 0 && <div className="hint">Đang chép file…</div>}
-              </div>
-            )}
-            {err && <div style={{ marginBottom: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
-              onSetup={() => go({ name: "onboarding" })} onRetry={dir ? () => void runAnalyze(shown.current) : undefined} /></div>}
-            <div className="scripts">
-              {cards.map((c, i) => (
-                <div key={c.title + i} className={"sc" + (picked === i ? " on" : "")} role="button" tabIndex={0}
-                  onClick={() => pick(i)} onKeyDown={(e) => { if (e.key === "Enter") pick(i); }}>
-                  <div>
-                    <b>{c.title}</b>
-                    <span className="hk">{c.hook}</span>
-                    <ol className="outline">{steps(c.outline).map((st, k) => <li key={k}>{st}</li>)}</ol>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="label" style={{ marginTop: 14 }}>Mô tả muốn dựng</div>
-            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Ví dụ: làm ngắn gọn, mở đầu bằng câu chốt giá" />
-          </div>
-          <div className="buildrow">
-            <button className="btn primary big" disabled={!canBuild} onClick={build}><Wand2 size={18} aria-hidden />Dựng video</button>
-            <span className="hint">{!dir ? "Thêm clip để bắt đầu" : pending > 0 ? "Đang chép file…" : ""}</span>
+            <div className="ptitle"><span className="n">3</span><b>Trò chuyện với AI</b>
+              <span className="right hint">AI hỏi lại chỗ chưa rõ rồi đưa kế hoạch</span></div>
+            <ChatPanel dir={dir} busy={pending > 0} prepare={prepareTurn} onStart={(p) => void start(p)}
+              onSettings={() => go({ name: "settings" })} onSetup={() => go({ name: "onboarding" })} />
           </div>
         </div>
       </div>

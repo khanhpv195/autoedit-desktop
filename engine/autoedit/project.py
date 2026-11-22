@@ -5,6 +5,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from autoedit.duration import parse_duration
 from autoedit.errors import BadInput
 from autoedit.fsutil import atomic_write_text
 
@@ -69,17 +70,22 @@ def update_project(dir: Path, mutate) -> dict:
 NICHES = ("thoi-trang", "my-pham", "do-an", "phu-kien", "chung")
 MAX_CLIPS, MAX_IMAGES = 10, 20
 _FIELDS = ("niche", "clips", "images", "logo", "music", "prompt", "script_card", "runs", "posts",
-           "voiceover", "product_info", "cta_text", "length")
+           "voiceover", "product_info", "cta_text", "name", "target_seconds")
 DEFAULT_CTA = "BẤM GIỎ HÀNG 👇"
 CTA_MAX = 30
 PRODUCT_INFO_MAX = 500
-LENGTHS = {"short": (15.0, 20.0), "medium": (20.0, 35.0), "long": (35.0, 60.0)}
+NAME_MAX = 80
 
 
 def _sanitize(data: dict) -> None:
     """New optional keys (v0.3): bad or missing values fall back to defaults instead of failing the load."""
-    if data.get("length") not in LENGTHS:
-        data["length"] = "medium"
+    data.pop("length", None)        # v0.3 preset (short/medium/long): the length now comes from the request
+    t = data.get("target_seconds")
+    ok = (isinstance(t, (list, tuple)) and len(t) == 2 and all(isinstance(x, (int, float)) for x in t)
+          and 0 < t[0] <= t[1] <= 600)
+    data["target_seconds"] = [float(t[0]), float(t[1])] if ok else None
+    name = data.get("name")
+    data["name"] = name.strip()[:NAME_MAX] if isinstance(name, str) else ""
     cta = data.get("cta_text")
     cta = cta.strip() if isinstance(cta, str) else ""
     data["cta_text"] = cta if 0 < len(cta) <= CTA_MAX else DEFAULT_CTA
@@ -110,7 +116,8 @@ class Project:
     voiceover: dict | None = None      # {"enabled", "voice_id", "voice_name"}
     product_info: str = ""
     cta_text: str = DEFAULT_CTA
-    length: str = "medium"
+    name: str = ""
+    target_seconds: list[float] | None = None     # [lo, hi] fixed when an edit starts from a chat plan
 
     @classmethod
     def load(cls, dir: Path, require_media: bool = True) -> "Project":
@@ -159,9 +166,15 @@ class Project:
     def voice_id(self) -> str:
         return str((self.voiceover or {}).get("voice_id") or "")
 
-    @property
-    def length_range(self) -> tuple[float, float]:
-        return LENGTHS.get(self.length, LENGTHS["medium"])
+    def target_range(self, request: str | None = None, feedback: str | None = None) -> tuple[float, float] | None:
+        """The length the customer asked for: one named in re-edit feedback, else the plan's target_seconds, else
+        one named in the request text, else None (the agent chooses from the content)."""
+        asked = parse_duration(feedback)
+        if asked:
+            return asked
+        if self.target_seconds:
+            return float(self.target_seconds[0]), float(self.target_seconds[1])
+        return parse_duration(self.prompt if request is None else request)
 
     @property
     def input_dir(self) -> Path:

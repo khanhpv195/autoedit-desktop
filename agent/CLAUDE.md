@@ -134,8 +134,11 @@ Only when the request says `Lồng tiếng AI: BẬT` (otherwise the tool does n
 - Forbidden promises, even if spoken: giảm cân, cao thêm X cm, trị mụn dứt điểm, trắng da sau N ngày,
   chữa bệnh, an toàn tuyệt đối. Cut those lines out.
 - Never change product details, prices or colours. Keep the price line and the spoken CTA if present.
-- Length: aim for the target length given in the request (`Target length: …`). `set_edl` adds a note when the
-  output is far outside it; adjust then. Keep at least 30% of the speech. **When the customer asks for the
+- Length: there is no default length. When the request has `Target length: X–Ys` (the customer asked, or
+  confirmed it in the chat plan), aim for it; `set_edl` adds a note when the output is far outside it; adjust
+  then. When it says `Target length: not given`, choose the length from the content (the speech worth keeping,
+  the number of key points; most sales clips 20–60 s, never padded) and make the first `finish` bullet say the
+  length and why ("Dài 42s: giữ đủ 4 ý …"). Keep at least 30% of the speech. **When the customer asks for the
   speech in full ("đầy đủ", "đến từ cuối cùng"), the full speech beats the target length.**
 - If the clip has no speech (or voiceover is on): follow the visual-first skill ("Dựng theo hình") in your
   first message: open on the clearest product shot, any shot order, a hook text about what is visible

@@ -40,13 +40,10 @@ pub struct Settings {
     /// Absolute path of the app's own copy of the default logo (`<data_dir>/defaults/logo.<ext>`).
     pub default_logo: Option<String>,
     pub default_cta: String,
-    /// "short" | "medium" | "long".
-    pub default_length: String,
 }
 
 pub const DEFAULT_MODEL: &str = "claude-sonnet-5-5";
 pub const DEFAULT_CTA: &str = "BẤM GIỎ HÀNG 👇";
-pub const DEFAULT_LENGTH: &str = "medium";
 
 impl Default for Settings {
     fn default() -> Self {
@@ -61,7 +58,6 @@ impl Default for Settings {
             voice_name: None,
             default_logo: None,
             default_cta: DEFAULT_CTA.into(),
-            default_length: DEFAULT_LENGTH.into(),
         }
     }
 }
@@ -242,7 +238,6 @@ mod tests {
         assert_eq!(s.voice_name, None);
         assert_eq!(s.default_logo, None);
         assert_eq!(s.default_cta, "BẤM GIỎ HÀNG 👇");
-        assert_eq!(s.default_length, "medium");
     }
     #[test]
     fn old_settings_keep_saved_model_and_get_new_defaults() {
@@ -255,8 +250,10 @@ mod tests {
         let s = load(d.path());
         assert_eq!(s.model, "claude-opus-5-5");
         assert_eq!(s.default_cta, "BẤM GIỎ HÀNG 👇");
-        assert_eq!(s.default_length, "medium");
         assert_eq!(s.voice_id, None);
+        // a settings file from v0.3 with the removed length preset still loads
+        std::fs::write(d.path().join("settings.json"), r#"{"defaultLength":"short","defaultCta":"MUA"}"#).unwrap();
+        assert_eq!(load(d.path()).default_cta, "MUA");
     }
     #[test]
     fn new_fields_roundtrip_camel_case() {
@@ -266,12 +263,11 @@ mod tests {
             voice_name: Some("Lan".into()),
             default_logo: Some("/data/defaults/logo.png".into()),
             default_cta: "MUA NGAY".into(),
-            default_length: "short".into(),
             ..Default::default()
         };
         save(d.path(), &s).unwrap();
         let raw = std::fs::read_to_string(d.path().join("settings.json")).unwrap();
-        for k in ["\"voiceId\"", "\"voiceName\"", "\"defaultLogo\"", "\"defaultCta\"", "\"defaultLength\""] {
+        for k in ["\"voiceId\"", "\"voiceName\"", "\"defaultLogo\"", "\"defaultCta\""] {
             assert!(raw.contains(k), "{k}");
         }
         assert_eq!(load(d.path()), s);
