@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -43,6 +43,10 @@ jobs:
               printf '%s<<EOF_%s\n%s\nEOF_%s\n' "$name" "$name" "$value" "$name" >> "$GITHUB_ENV"
             fi
           done
+          # The updater key was generated with an empty password; tauri needs the variable set, even empty.
+          if [ -n "$(printenv S_TAURI_SIGNING_PRIVATE_KEY || true)" ] && [ -z "$(printenv S_TAURI_SIGNING_PRIVATE_KEY_PASSWORD || true)" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+          fi
 
       - uses: astral-sh/setup-uv@v5
       - name: Python 3.12
