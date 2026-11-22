@@ -17,6 +17,8 @@ export type ProjectSummary = {
   runCount: number;
   /** Posts still waiting on bundle.social: they post anyway after a delete. */
   scheduledPosts?: number;
+  /** Poster frame of the last run (absolute path), if one exists. */
+  thumb?: string | null;
 };
 export type Card = { title: string; hook: string; outline: string[] | string; prompt: string };
 export type Run = {
@@ -64,6 +66,8 @@ export type EngineEvent =
   | { type: "agent"; text: string; tool: string | null }
   | { type: "preview"; path: string; round: number }
   | { type: "done"; final: string; summary: string[]; usage: { turns: number; fallback: boolean }; needs_review: boolean }
+  | { type: "thumb"; dir: string }
+  | { type: "thumbs_done"; made: number }
   | { type: "error"; code: string; message: string; retry_at: string | null }
   | { type: "cards"; cards: Card[] }
   | { type: "chat"; message: Extract<ChatMessage, { role: "assistant" }> }

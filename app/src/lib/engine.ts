@@ -184,3 +184,8 @@ export async function listReferences(): Promise<Reference[]> {
 export async function deleteReference(id: string): Promise<Reference[]> {
   return (await social(["reference", "delete", "--id", id], "references", "Không bỏ được video mẫu")).references;
 }
+
+/** Make the missing poster frames of older runs; `onThumb` fires after each one. */
+export async function backfillThumbs(root: string, onThumb: () => void): Promise<void> {
+  await runEngine(["thumbs", "--root", root], (e) => { if (e.type === "thumb") onThumb(); }).result;
+}

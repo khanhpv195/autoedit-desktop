@@ -12,6 +12,7 @@ export type Route =
   | { name: "project"; dir: string }
   | { name: "settings"; tab?: "gen" | "conn" | "agent" }
   | { name: "schedule" }
+  | { name: "library" }
   | { name: "activate"; reason?: string };
 
 /** An in-flight publish, keyed by `<project dir>#<run>`. */

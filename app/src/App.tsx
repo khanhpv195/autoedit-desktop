@@ -19,6 +19,7 @@ function Screen() {
     case "project": return <ProjectView key={r.dir} dir={r.dir} />;
     case "settings": return <Settings key={r.tab ?? "gen"} />;
     case "schedule": return <Schedule />;
+    case "library": return null; // Task 5 replaces this
     case "activate": return null;
   }
 }
