@@ -49,6 +49,29 @@ def test_edit_happy_path(project, monkeypatch, capsys):
     assert pj["runs"][0]["n"] == 1 and pj["prompt"] == "gọn gàng"
 
 
+def _fake_agent_ok(session, prompt, options, **kw):
+    async def run():
+        session.edl, _ = validate_edl({"keep": [{"start": 0.6, "end": 1.8}, {"start": 3.2, "end": 4.4}]},
+                                      WORDS, session.prepared.info.duration)
+        session.summary, session.finished = ["ok"], True
+        return AgentOutcome(True, 1, None)
+    return run()
+
+
+def test_edit_writes_thumb(project, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_agent", _fake_agent_ok)
+    assert cli.main(["edit", "--project", str(project), "--prompt", "x"]) == 0
+    assert (project / "runs" / "1" / "thumb.jpg").exists()
+
+
+def test_edit_survives_thumb_failure(project, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_agent", _fake_agent_ok)
+    monkeypatch.setattr(cli, "make_thumb", lambda v, o: False)
+    assert cli.main(["edit", "--project", str(project), "--prompt", "x"]) == 0
+    pj = json.loads((project / "project.json").read_text())
+    assert pj["runs"][0]["n"] == 1 and not (project / "runs" / "1" / "thumb.jpg").exists()
+
+
 def test_edit_save_keeps_posts_published_during_the_run(project, monkeypatch, capsys):
     from autoedit.project import update_project
 

@@ -27,6 +27,7 @@ from autoedit.fallback import FALLBACK_SUMMARY, silence_cut_edl
 from autoedit.prep import prepare
 from autoedit.project import Project, update_project
 from autoedit.render.pipeline import render
+from autoedit.render.thumb import THUMB_NAME, backfill, make_thumb
 from autoedit.resources import agent_dir
 from autoedit.voice import eleven
 
@@ -129,6 +130,7 @@ async def _edit(args, events: Emitter) -> int:
                     usage["fallback"] = True
                 ev.step("Đang xuất video…", 0.9)
                 res, edl, summary = _render_with_retry(prepared, project, edl, summary, run_dir, ev, usage)
+                make_thumb(res.path, run_dir / THUMB_NAME)     # best effort: never fails the run
             atomic_write_text(run_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
             run_record = {"n": int(run_dir.name), "final": f"runs/{run_dir.name}/final.mp4",
                           "prompt": user_prompt, "feedback": args.feedback, "summary": summary,
@@ -206,6 +208,12 @@ async def _social(args, events: Emitter) -> int:
     return 0
 
 
+async def _thumbs(args, events: Emitter) -> int:
+    made = backfill(Path(args.root), lambda d: events.emit_raw({"type": "thumb", "dir": str(d)}))
+    events.emit_raw({"type": "thumbs_done", "made": made})
+    return 0
+
+
 async def _mcp_check(args, events: Emitter) -> int:
     cfg = mcp_user.load().get(args.name)
     if cfg is None:
@@ -245,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("chat"); c.add_argument("--project", required=True); c.add_argument("--message", default="")
     e = sub.add_parser("edit"); e.add_argument("--project", required=True); e.add_argument("--prompt"); e.add_argument("--feedback")
     sub.add_parser("auth-check")
+    t = sub.add_parser("thumbs"); t.add_argument("--root", required=True)
     sub.add_parser("setup")
     sub.add_parser("setup-model")
     m = sub.add_parser("mcp-check"); m.add_argument("--name", required=True)
@@ -270,7 +279,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     events = Emitter()
     handler = {"analyze": _analyze, "chat": _chat, "edit": _edit, "auth-check": _auth, "setup": _setup,
-               "setup-model": _setup_model, "social": _social, "mcp-check": _mcp_check, "reference": _reference}.get(args.cmd)
+               "setup-model": _setup_model, "social": _social, "mcp-check": _mcp_check, "reference": _reference,
+               "thumbs": _thumbs}.get(args.cmd)
     if handler is None:
         p.print_help(sys.stderr)
         return 1
