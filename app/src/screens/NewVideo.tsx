@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, ArrowUp, ChevronLeft, Image as ImageIcon, Mic, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, CheckCircle2, ChevronLeft, Clock, Film, Image as ImageIcon, Mic, Wand2, X } from "lucide-react";
 import * as api from "../lib/api";
 import ChatPanel from "../components/ChatPanel";
 import DropZone from "../components/DropZone";
@@ -47,6 +47,8 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
   const projectVoice = useRef<ProjectVoiceover | null>(null);
   const toggleTouched = useRef(false);
   const projectLoaded = useRef(!existingDir);
+  // The chat's latest plan and whether a turn is running: the header's "Bắt đầu edit" starts that plan.
+  const [chat, setChat] = useState<{ plan: ChatPlan | null; sending: boolean }>({ plan: null, sending: false });
 
   useEffect(() => {
     if (!settings) return;
@@ -263,70 +265,91 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
     go({ name: "project", dir: d });
   }
 
+  const copying = pending > 0;
+  const canStart = !!chat.plan && !!dir && !copying && !chat.sending;
+  const status = media.clips.length === 0 ? { ok: false, text: "Chờ thêm clip" }
+    : copying ? { ok: false, text: "Đang chép file…" }
+    : chat.sending ? { ok: false, text: "AI đang trả lời…" }
+    : chat.plan ? { ok: true, text: `Sẵn sàng dựng (${media.clips.length} clip)` }
+    : { ok: false, text: "Chờ kế hoạch từ AI" };
+
   return (
-    <div className="view on">
-      <div className="backrow">
-        <button className="backbtn" onClick={() => go({ name: "niche" })}><ChevronLeft size={16} aria-hidden />Đổi ngành</button>
-        <span className="catbadge">{nicheLabel(niche)}</span>
-      </div>
-      <h1>Video mới</h1>
-      <div className="sub">Thả clip và ảnh vào, trò chuyện với AI để chốt cách dựng, rồi bấm “Bắt đầu edit”.</div>
-      <div className="newgrid">
-        <div className="panel">
-          <div className="ptitle"><span className="n">1</span><b>Clip & ảnh</b>
-            {media.clips.length > 0 && <span className="right hint">{media.clips.length} clip{media.images.length > 0 ? ` · ${media.images.length} ảnh` : ""}</span>}
+    <div className="view on nv">
+      <div className="newhead">
+        <div className="newhead-l">
+          <div className="backrow">
+            <button className="backbtn" onClick={() => go({ name: "niche" })}><ChevronLeft size={16} aria-hidden />Đổi ngành</button>
+            <span className="catbadge">{nicheLabel(niche)}</span>
           </div>
-          <div className="label">Tên video</div>
-          <input className="nameinp" aria-label="Tên video" value={name} maxLength={MAX_NAME}
-            placeholder="Ví dụ: Áo len cổ lọ — live 20/11 (để trống = tên clip)"
-            onChange={(e) => { nameRef.current = e.target.value; setName(e.target.value); }}
-            onBlur={() => void saveName()}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur(); }} />
-          <div style={{ height: 12 }} />
-          {media.clips.length === 0 && media.images.length === 0 ? (
-            <DropZone kind="clip" variant="big" dragDrop onMedia={addMedia}
-              label="Kéo clip và ảnh vào đây" hint="mp4, mov, png, jpg — chọn được nhiều file" />
-          ) : (
-            <>
-              {media.clips.length > 0 ? (
-                <div className="medialist">
-                  {media.clips.map((c, i) => (
-                    <div className="row" key={i}>
-                      <span className="num">{i + 1}</span>
-                      <span className="nm" title={c}>{baseName(c)}</span>
-                      <button aria-label={`Lên ${baseName(c)}`} disabled={i === 0} onClick={() => moveClip(i, -1)}><ArrowUp aria-hidden /></button>
-                      <button aria-label={`Xuống ${baseName(c)}`} disabled={i === media.clips.length - 1} onClick={() => moveClip(i, 1)}><ArrowDown aria-hidden /></button>
-                      <button aria-label={`Xóa ${baseName(c)}`} disabled={media.clips.length <= 1} onClick={() => removeClip(i)}><X aria-hidden /></button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="sc-empty">Thêm ít nhất 1 clip video để bắt đầu</div>
-              )}
-              {media.images.length > 0 && (
-                <div className="imgstrip">
-                  {media.images.map((im, i) => (
-                    <div className="imgchip" key={i} title={im}>
-                      <ImageIcon size={14} aria-hidden style={{ color: "var(--muted)", flexShrink: 0 }} />
-                      <span>{baseName(im)}</span>
-                      <button aria-label={`Xóa ảnh ${baseName(im)}`} onClick={() => removeImage(i)}><X aria-hidden /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <DropZone kind="clip" variant="bar" dragDrop onMedia={addMedia} label="Thêm file" hint="kéo thả hoặc bấm để chọn" />
-            </>
-          )}
-          {err && <div style={{ marginTop: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
-            onSetup={() => go({ name: "onboarding" })} /></div>}
+          <h1>Video mới</h1>
+          <div className="sub">Thả clip và ảnh vào, trò chuyện với AI để chốt cách dựng, rồi bấm “Bắt đầu edit”.</div>
         </div>
-        <div>
+        <div className="newhead-r">
+          <span className={"statuspill" + (status.ok ? " ok" : "")} role="status">
+            {status.ok ? <CheckCircle2 size={14} aria-hidden /> : <Clock size={14} aria-hidden />}{status.text}
+          </span>
+          <button className="btn primary" disabled={!canStart} onClick={() => chat.plan && void start(chat.plan)}>
+            <Wand2 size={16} aria-hidden />Bắt đầu edit
+          </button>
+        </div>
+      </div>
+      <div className="newgrid">
+        <div className="newcol">
           <div className="panel">
-            <div className="ptitle"><span className="n">2</span><b>Logo, nhạc & lồng tiếng</b></div>
+            <div className="ptitle"><span className="n">1</span><b>Clip & ảnh</b>
+              {media.clips.length > 0 && <span className="right hint">{media.clips.length} clip{media.images.length > 0 ? ` · ${media.images.length} ảnh` : ""}</span>}
+            </div>
+            <div className="label">Tên video</div>
+            <input className="nameinp" aria-label="Tên video" value={name} maxLength={MAX_NAME}
+              placeholder="Ví dụ: Áo len cổ lọ — live 20/11 (để trống = tên clip)"
+              onChange={(e) => { nameRef.current = e.target.value; setName(e.target.value); }}
+              onBlur={() => void saveName()}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur(); }} />
+            <div style={{ height: 12 }} />
+            {media.clips.length === 0 && media.images.length === 0 ? (
+              <DropZone kind="clip" variant="big" dragDrop onMedia={addMedia}
+                label="Kéo clip và ảnh vào đây" hint="mp4, mov, png, jpg — chọn được nhiều file" />
+            ) : (
+              <>
+                {media.clips.length > 0 ? (
+                  <div className="medialist">
+                    {media.clips.map((c, i) => (
+                      <div className="row" key={i}>
+                        <span className="num">{i + 1}</span>
+                        <span className="fic" aria-hidden><Film size={16} /></span>
+                        <span className="nm" title={c}>{baseName(c)}</span>
+                        <button aria-label={`Lên ${baseName(c)}`} disabled={i === 0} onClick={() => moveClip(i, -1)}><ArrowUp aria-hidden /></button>
+                        <button aria-label={`Xuống ${baseName(c)}`} disabled={i === media.clips.length - 1} onClick={() => moveClip(i, 1)}><ArrowDown aria-hidden /></button>
+                        <button aria-label={`Xóa ${baseName(c)}`} disabled={media.clips.length <= 1} onClick={() => removeClip(i)}><X aria-hidden /></button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="sc-empty">Thêm ít nhất 1 clip video để bắt đầu</div>
+                )}
+                {media.images.length > 0 && (
+                  <div className="imgstrip">
+                    {media.images.map((im, i) => (
+                      <div className="imgchip" key={i} title={im}>
+                        <ImageIcon size={14} aria-hidden style={{ color: "var(--muted)", flexShrink: 0 }} />
+                        <span>{baseName(im)}</span>
+                        <button aria-label={`Xóa ảnh ${baseName(im)}`} onClick={() => removeImage(i)}><X aria-hidden /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <DropZone kind="clip" variant="bar" dragDrop onMedia={addMedia} label="Thêm file" hint="kéo thả hoặc bấm để chọn" />
+              </>
+            )}
+            {err && <div style={{ marginTop: 8 }}><ErrorPanel compact error={err} onSettings={() => go({ name: "settings" })}
+              onSetup={() => go({ name: "onboarding" })} /></div>}
+          </div>
+          <div className="panel">
+            <div className="ptitle"><span className="n">2</span><b>Logo, nhạc & lồng tiếng</b><span className="right hint">Tùy chọn</span></div>
             <div className="slots">
-              <DropZone kind="logo" variant="slot" label="Logo" hint="Tùy chọn · PNG/JPG" accept={["png", "jpg", "jpeg"]}
+              <DropZone kind="logo" variant="slot" label="Logo" hint="PNG/JPG" accept={["png", "jpg", "jpeg"]}
                 value={logo} onFile={(p) => onAsset("logo", p)} />
-              <DropZone kind="music" variant="slot" label="Nhạc nền" hint="Tùy chọn · MP3/M4A/WAV" accept={["mp3", "m4a", "wav"]}
+              <DropZone kind="music" variant="slot" label="Nhạc nền" hint="MP3/M4A/WAV" accept={["mp3", "m4a", "wav"]}
                 value={music} onFile={(p) => onAsset("music", p)} />
             </div>
             {logo && (
@@ -368,12 +391,12 @@ export default function NewVideo({ niche, dir: existingDir }: { niche: string; d
               )}
             </div>
           </div>
-          <div className="panel">
-            <div className="ptitle"><span className="n">3</span><b>Trò chuyện với AI</b>
-              <span className="right hint">AI hỏi lại chỗ chưa rõ rồi đưa kế hoạch</span></div>
-            <ChatPanel dir={dir} busy={pending > 0} prepare={prepareTurn} onStart={(p) => void start(p)}
-              onSettings={() => go({ name: "settings" })} onSetup={() => go({ name: "onboarding" })} />
-          </div>
+        </div>
+        <div className="panel chatpanel">
+          <div className="ptitle"><span className="n">3</span><b>Trò chuyện với AI</b>
+            <span className="right hint">AI hỏi lại chỗ chưa rõ rồi đưa kế hoạch dựng</span></div>
+          <ChatPanel dir={dir} busy={copying} prepare={prepareTurn} onState={setChat}
+            onSettings={() => go({ name: "settings" })} onSetup={() => go({ name: "onboarding" })} />
         </div>
       </div>
     </div>

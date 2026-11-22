@@ -180,7 +180,7 @@ button.chip:disabled{cursor:default;opacity:.5}
 .cardhead h3{margin:0!important}
 .stack>*+*{margin-top:16px}
 .row{display:flex;gap:10px;align-items:center}
-.row>input,.row>select{flex:1}
+.row>input:not([type=radio]):not([type=checkbox]),.row>select{flex:1}
 .actions{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
 .errline{color:var(--err);font-size:13px;margin-top:8px}
 .okline{color:var(--ok);font-size:13px}
@@ -211,7 +211,7 @@ button.chip:disabled{cursor:default;opacity:.5}
 .panel{background:#fff;border:1px solid var(--line);border-radius:var(--r-xl);box-shadow:var(--sh-sm);padding:20px}
 .panel+.panel{margin-top:16px}
 .ptitle{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.ptitle .n{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:11.5px;font-weight:700;display:grid;place-items:center;flex-shrink:0}
+.ptitle .n{width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:11.5px;font-weight:700;display:grid;place-items:center;flex-shrink:0;margin-right:6px}
 .ptitle b{font-size:14.5px;font-weight:650;letter-spacing:-.01em}
 .ptitle .linkbtn,.ptitle .right{margin-left:auto}
 .drop{border:1.5px dashed var(--line2);border-radius:var(--r-lg);background:var(--sunken);min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -514,3 +514,70 @@ details.proc .feed,.proc .feed{border:0;padding:0;margin-top:8px;max-height:260p
 
 .reflist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .reflist li { padding: 6px 0; border-top: 1px solid var(--line); }
+
+/* New Video: header with status + start, media column (steps 1-2) and a full-height chat (step 3) */
+.newhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px 24px;flex-wrap:wrap;margin-bottom:24px}
+.newhead-l{min-width:0}
+.newhead-l .sub{margin-bottom:0}
+.newhead-r{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.statuspill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:99px;background:var(--sunken);border:1px solid var(--line);
+  color:var(--muted);font-size:12.5px;font-weight:500;white-space:nowrap}
+.statuspill.ok{background:var(--ok-soft);border-color:#bbf7d0;color:var(--ok)}
+.newgrid{grid-template-columns:minmax(0,5fr) minmax(0,7fr);align-items:stretch}
+.newcol{display:flex;flex-direction:column;gap:16px;min-width:0}
+.newcol .panel+.panel{margin-top:0}
+.newgrid .drop{min-height:240px}
+.newgrid .medialist .fic{width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex-shrink:0;margin-right:6px}
+.chatpanel{display:flex;flex-direction:column;min-width:0}
+.chatpanel>.ptitle{padding-bottom:14px;border-bottom:1px solid var(--line)}
+.chatpanel .chat{flex:1;min-height:0}
+.chatpanel .chatlog{flex:1;min-height:260px;max-height:none}
+.chatpanel .chatin{padding-top:12px;border-top:1px solid var(--line)}
+.chatempty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;padding:28px 12px}
+.chatempty>.ic{width:48px;height:48px;border-radius:50%;background:var(--sunken);border:1px solid var(--line);display:grid;place-items:center;color:var(--accent);margin-bottom:6px}
+.chatempty>.ic svg{width:22px;height:22px}
+.chatempty>b{font-size:15px;font-weight:650}
+.chatempty>p{color:var(--muted);font-size:13px;max-width:420px;margin:0}
+.chatempty .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;max-width:520px;margin-top:14px;text-align:left}
+.chatempty .tile{background:var(--sunken);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px;display:flex;flex-direction:column;gap:4px}
+.chatempty .tile svg{width:18px;height:18px;color:var(--accent)}
+.chatempty .tile b{font-size:13px;font-weight:600}
+.chatempty .tile small{font-size:11.5px;color:var(--muted);line-height:1.4}
+@media (max-width:960px){
+  .newgrid{grid-template-columns:minmax(0,1fr)}
+  .chatempty .tiles{grid-template-columns:minmax(0,1fr)}
+}
+
+/* New Video: warm look from the design (Video mới — cấu trúc mới) */
+.main:has(.view.nv.on){background:#fff8f7}
+.nv{--nv-line:#f1d6d4;--nv-soft:#fff0ef;--nv-red:#d93843}
+.nv .newhead{background:#fff;border-bottom:1px solid var(--nv-line);margin:-32px -40px 28px;padding:24px 40px 22px;align-items:center}
+.nv .panel{border-color:var(--nv-line);border-radius:20px;box-shadow:none;padding:24px}
+.nv .statuspill{background:#fff;border-color:var(--nv-line)}
+.nv .statuspill.ok{background:var(--ok-soft);border-color:#bbf7d0}
+.nv .newhead .btn.primary{border-radius:99px;padding:0 22px}
+.nv .newhead .btn.primary:disabled{background:#f8dcdb;color:#8e706e}
+.nv .backbtn{border-color:var(--nv-line)}
+.nv input.nameinp,.nv textarea{border-color:var(--nv-line)}
+.nv .drop{border:2px dashed var(--nv-red);background:var(--nv-soft);min-height:220px}
+.nv .drop:hover,.nv .drop.over{background:#ffe4e2}
+.nv .drop .ic{width:48px;height:48px;border-radius:14px;border:1px solid #ffdad8;box-shadow:none}
+.nv .drop .ic svg{width:22px;height:22px}
+.nv .drop .btn{border-radius:99px}
+.nv .dropbar{border-color:var(--nv-line)}
+.nv .medialist{border-color:var(--nv-line)}
+.nv .slot{border-color:var(--nv-line);padding:14px}
+.nv .slot>div{flex:1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0 8px}
+.nv .slot b{white-space:nowrap}
+.nv .slot small{min-width:0;max-width:100%}
+.nv .slot .ic{background:var(--nv-soft);color:var(--nv-red);width:32px;height:32px}
+.nv .slot.set{border-color:#bbf7d0}
+.nv .vobox{border-color:var(--nv-line)}
+.nv .vobox .switch{flex-direction:row-reverse;justify-content:space-between}
+.nv .chatpanel>.ptitle,.nv .chatpanel .chatin{border-color:var(--nv-line)}
+.nv .chatempty>.ic{background:var(--nv-soft);border-color:#ffdad8;color:var(--nv-red)}
+.nv .chatempty .tile{background:var(--nv-soft);border-color:#ffdad8}
+.nv .chatempty .tile svg{color:var(--nv-red)}
+.nv .chatin textarea{background:#fff8f7}
+.nv .chatin textarea:disabled{background:var(--nv-soft)}
+.nv .chatin .btn.primary:disabled{background:#f8dcdb;color:#8e706e}

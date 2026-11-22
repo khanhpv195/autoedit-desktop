@@ -380,3 +380,18 @@ test("turning the toggle off on an existing project clears its voiceover", async
   await userEvent.click(screen.getByRole("button", { name: BUILD }));
   expect(a.setProjectVoiceover).toHaveBeenCalledWith("/proj/1", null, "Váy đỏ");
 });
+
+test("header: Bắt đầu edit stays off until the AI gives a plan; the status pill follows", async () => {
+  mount();
+  expect(await screen.findByRole("status")).toHaveTextContent("Chờ thêm clip");
+  expect(screen.getByRole("button", { name: START })).toBeDisabled();
+  await addFirst();
+  expect(await screen.findByText(OPENING.text)).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Chờ kế hoạch từ AI"));
+  expect(screen.getByRole("button", { name: START })).toBeDisabled();
+  e.chat.mockResolvedValueOnce({ role: "assistant", text: "Kế hoạch đây ạ.", suggestions: [], plan: PLAN, ts: 3 });
+  await userEvent.type(screen.getByLabelText("Tin nhắn cho AI"), "30s{Enter}");
+  await waitFor(() => expect(screen.getByRole("button", { name: START })).toBeEnabled());
+  expect(screen.getByRole("status")).toHaveTextContent("Sẵn sàng dựng (1 clip)");
+  expect(screen.getAllByRole("button", { name: START })).toHaveLength(1); // the plan card points to the header button
+});
