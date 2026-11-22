@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 from autoedit import cli
-from autoedit.render import thumb as thumb_mod
 from autoedit.render.thumb import backfill, make_thumb
 from tests.conftest import _make
 
@@ -62,3 +61,19 @@ def test_thumbs_command_events(clip, tmp_path, capsys):
     assert cli.main(["thumbs", "--root", str(root)]) == 0
     ev = [json.loads(l) for l in capsys.readouterr().out.splitlines()]
     assert ev == [{"type": "thumb", "dir": str(a)}, {"type": "thumbs_done", "made": 1}]
+
+
+def test_backfill_skips_non_int_run_number(clip, tmp_path):
+    root = tmp_path / "root"; root.mkdir()
+    for name, n in (("a", "../x"), ("b", True), ("c", "2")):
+        d = root / name; d.mkdir()
+        (d / "project.json").write_text(json.dumps({"runs": [{"n": n}]}))
+    (root / "a" / "runs").mkdir()
+    (root / "a" / "x").mkdir()   # what "../x" resolves to under runs/
+    (root / "a" / "x" / "final.mp4").write_bytes(clip.read_bytes())
+    (root / "b" / "runs" / "True").mkdir(parents=True)
+    (root / "b" / "runs" / "True" / "final.mp4").write_bytes(clip.read_bytes())
+    made = []
+    assert backfill(root, made.append) == 0
+    assert made == []
+    assert not list(root.rglob("thumb.jpg"))

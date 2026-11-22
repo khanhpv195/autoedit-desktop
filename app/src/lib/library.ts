@@ -16,7 +16,7 @@ export function recentProjects(projects: ProjectSummary[], builds: Record<string
 
 /** Lower-case, no Vietnamese tone/vowel marks: "Váy ĐỎ" → "vay do". */
 export function foldVi(s: string): string {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "d").toLowerCase();
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLowerCase();
 }
 
 export function filterProjects(projects: ProjectSummary[], builds: Record<string, unknown>, f: LibraryFilter): ProjectSummary[] {

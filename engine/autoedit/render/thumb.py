@@ -51,7 +51,7 @@ def backfill(root: Path, on_made: Callable[[Path], None]) -> int:
             n = runs[-1].get("n") if runs else None
         except (OSError, ValueError, AttributeError):
             continue
-        if n is None:
+        if not isinstance(n, int) or isinstance(n, bool):
             continue
         run_dir = d / "runs" / str(n)
         final, thumb = run_dir / "final.mp4", run_dir / THUMB_NAME

@@ -24,7 +24,7 @@ export default function Library() {
     const root = state.settings?.projectsRoot;
     if (backfillStarted || !root || !all.some((p) => p.runCount > 0 && !p.thumb)) return;
     backfillStarted = true;
-    backfillThumbs(root, () => void refreshProjects()).then(() => refreshProjects()).catch(() => {});
+    backfillThumbs(root, () => { refreshProjects().catch(() => {}); }).then(() => refreshProjects()).catch(() => {});
   }, [all, state.settings, refreshProjects]);
 
   if (all.length === 0) {
