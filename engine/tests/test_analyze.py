@@ -93,11 +93,19 @@ def test_silent_clip_plus_talking_clip_asks_for_a_full_speech_card(tmp_path):
     p.spans = [("a", 0.0, 10.0), ("b", 10.0, 30.0)]
     p.words = [Word("Mà", 10.2, 10.4), Word("quần", 10.4, 10.8), Word("đẹp", 11.0, 11.3), Word("nhà", 28.0, 28.3)]
     text = build_analyze_message(p, "thoi-trang", agent_dir(), exclude=[])["message"]["content"][0]["text"]
-    assert "Giữ trọn lời" in text and "lồng tiếng clip 2 đầy đủ đến từ cuối cùng 'nhà'" in text
+    assert 'Card 1 MUST be "Như video mẫu"' in text and "nền là clip 2 (khớp khẩu hình)" in text
+    assert "chèn cảnh clip 1 2.5-3.5s mỗi 8-10s" in text
+    assert 'Card 2 MUST be\n  "Giữ trọn lời"' in text and "lồng tiếng clip 2 đầy đủ đến từ cuối cùng 'nhà'" in text
     assert "bỏ tiếng clip 1" in text and "3.5 s cuối" in text
     assert 'Clip 1 "a": 0.00-10.00s, no speech' in text and "last word 'nhà'" in text
 
 
 def test_single_clip_has_no_full_speech_card(tmp_path):
     text = build_analyze_message(prep(tmp_path), "my-pham", agent_dir(), exclude=[])["message"]["content"][0]["text"]
-    assert "Giữ trọn lời" not in text and "Keep the speaker's order" in text
+    assert "Card 1 MUST" not in text and "Keep the speaker's order" in text
+
+
+def test_cards_prompt_includes_the_reference_edit(tmp_path):
+    text = build_analyze_message(prep(tmp_path), "my-pham", agent_dir(), exclude=[])["message"]["content"][0]["text"]
+    assert "Video mẫu" in text and "Clip-chuan" in text and '"shot": 26.5' in text
+    assert "name: reference-edits" not in text

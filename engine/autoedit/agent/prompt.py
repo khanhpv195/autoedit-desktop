@@ -144,6 +144,8 @@ def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, f
         "## Skill: edit-video\n" + skill_body("edit-video", agent_dir),
         "## Skill: niche-hooks (" + project.niche + ")\n" + niche_intro(agent_dir) + "\n\n"
         + niche_section(project.niche, agent_dir),
+        "## Skill: reference-edits (video mẫu the customer approved: copy the structure, not the facts)\n"
+        + skill_body("reference-edits", agent_dir),
         *visual_first_section(project, prepared, agent_dir),
         f"## Transcript (phrases, source seconds; timeline {prepared.info.duration:.2f}s)\n{phrases}",
         "## Word times (source seconds; use them for caption_fixes/emphasis `at` and for cut edges)\n" + words,

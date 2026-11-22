@@ -3,7 +3,7 @@ from pathlib import Path
 
 from claude_agent_sdk import AssistantMessage, RateLimitEvent, ResultMessage, query
 
-from autoedit.agent.library import NICHE_NAMES, niche_section
+from autoedit.agent.library import NICHE_NAMES, niche_section, skill_body
 from autoedit.agent.options import model, plain_options
 from autoedit.agent.prompt import image_blocks, span_lines
 from autoedit.agent.runner import _iso
@@ -58,14 +58,18 @@ What the editor can do (suggest nothing else - no transitions, speed ramps, beat
 
 INSTRUCTIONS = CARDS_INTRO + EDIT_RULES
 
-FULL_SPEECH = """- Clip {silent} has no speech and clip {talk} has the talking: card 1 MUST be "Giữ trọn lời":
-  picture of clip {silent} runs first, then clip {talk}'s own picture at the matching moment; sound = clip {talk}
-  in full, from its first word to its last word {last!r}, no sentence cut; clip {silent}'s sound muted. Its
-  prompt must say: "clip {silent} chạy, lồng tiếng clip {talk} đầy đủ đến từ cuối cùng {last!r}, bỏ tiếng clip
-  {silent}". Its length is the speech length, whatever the target. Its opening line is fixed (nothing is
-  moved), so its hook is the strongest buyer problem or benefit said ANYWHERE in the speech (e.g. a body worry
-  or the price), not the generic first line ("bản mới", "rất hot"). Cards 2 and 3 are shorter cut-downs that
-  still use clip {talk}'s sound only and mute clip {silent}; their hooks differ from card 1's.
+FULL_SPEECH = """- Clip {silent} has no speech and clip {talk} has the talking: follow "Mẫu 1" of the video mẫu below.
+  Card 1 MUST be "Như video mẫu": base picture = clip {talk} (the speaker, lip-synced to her own words); sound =
+  clip {talk} only, clip {silent} muted; the strongest buyer problem or benefit said ANYWHERE (e.g. a body worry
+  or the price, not the generic first line "bản mới", "rất hot") moved to the front as the hook, then the
+  speaker's order; cut only filler and side lines, keep every product fact, the price and the spoken CTA, end on
+  the last spoken line; clip {silent}'s shots as cutaways of 2.5-3.5 s about every 8-10 s while she talks about
+  the fit, legs, colour or size. Its prompt must say: "nền là clip {talk} (khớp khẩu hình), tắt tiếng clip
+  {silent}, chèn cảnh clip {silent} 2.5-3.5s mỗi 8-10s, đưa câu ... lên đầu, chỉ bỏ câu thừa". Card 2 MUST be
+  "Giữ trọn lời": picture of clip {silent} first, then clip {talk}'s own picture at the matching moment; sound =
+  clip {talk} in full, from its first word to its last word {last!r}, no sentence cut, nothing moved; its prompt
+  must say "clip {silent} chạy, lồng tiếng clip {talk} đầy đủ đến từ cuối cùng {last!r}, bỏ tiếng clip
+  {silent}"; its length is the speech length. Card 3 is a shorter cut-down of card 1 with a different hook.
 """
 
 
@@ -78,7 +82,7 @@ VISUAL_HINT = ("No speech: suggest visual-first scripts (Dựng theo hình) - op
 
 
 def full_speech_rule(prepared: Prepared, template: str | None = None) -> str:
-    """The "Giữ trọn lời" card: one clip without speech (room noise) and one clip with all the talking."""
+    """The "Như video mẫu" / "Giữ trọn lời" cards: one clip without speech (room noise) and one clip with all the talking."""
     if len(prepared.spans) < 2:
         return ""
     counts = []
@@ -114,6 +118,8 @@ def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclu
     broll = BROLL_IMAGES if prepared.images else BROLL_NONE
     text = (f"{INSTRUCTIONS.format(broll=broll, full_speech=full_speech_rule(prepared), cta=CTA_SECONDS)}\n\nNiche: {niche} ({NICHE_NAMES[niche]})\n"
             f"Niche library:\n{niche_section(niche, agent_dir)}\n\n"
+            f"Video mẫu (edits the customer approved; copy the structure, not the facts):\n"
+            f"{skill_body('reference-edits', agent_dir)}\n\n"
             f"Total duration: {prepared.info.duration:.1f}s\n")
     extra = project_lines(project, bool(prepared.words))
     if extra:

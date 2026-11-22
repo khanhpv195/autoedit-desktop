@@ -31,7 +31,8 @@ Write it in Vietnamese, as one short sentence, with no jargon.
 ## Process
 
 Your first message already contains the transcript (phrases and per-word times), 6 keyframes and the
-cut-craft, Vietnamese-sales and niche-hook skills (plus the visual-first skill when there is no
+cut-craft, Vietnamese-sales and niche-hook skills, the video mẫu (reference-edits: edits the customer approved,
+follow their structure when the clips have the same shape unless the request says otherwise) (plus the visual-first skill when there is no
 speech or voiceover is on). Do not look for them again and do not call
 `get_transcript` or `view_frames` unless you need extra detail (a closer look at one moment).
 
@@ -89,9 +90,10 @@ Normally: `set_edl` → `render_preview` → `transcribe_output` → `finish`.
   onward) while the speech goes on. `shot` = timeline second where that shot starts; it need not be in `keep`.
   `at` (for images and cutaways) is a TIMELINE second inside a kept range — the source time of the words it
   should cover — NOT an output second. To cover the words said at 40.6 s, use `"at": 40.6`.
-  Use it when one clip has the talking and another clip has silent product/try-on shots: cut away to a full-body
-  or detail shot every 3–6 s while the speaker talks about that thing, so the picture never sits on one framing
-  for more than ~6 s. Pick shots that are clear and steady (check the keyframes / `view_frames`).
+  Use it when one clip has the talking and another clip has silent product/try-on shots: keep the speaker as the
+  base picture and cut away to a full-body, back-view or detail shot for 2.5–3.5 s about every 8–10 s, while the
+  speaker talks about the fit, legs, colour or size (as in the video mẫu "Mẫu 1"). Pick shots that are clear and
+  steady (check the keyframes / `view_frames`).
 - `cta_text`: shown for the last 3.5 s (bottom-left, pointing at the cart link; captions hide meanwhile). Use the `CTA text` from the request unless the customer asks for another
   CTA; omit it to use that default. Keep it short; an emoji is fine.
 - `music.use`: false if the clip already has music or the speech is quiet.

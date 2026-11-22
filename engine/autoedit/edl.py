@@ -494,7 +494,7 @@ def keep_short_heads(kept: list[Range], words: list[Word], dur: float) -> tuple[
 HOOK_POSITIONS = ("top", "middle", "lower")
 
 
-STATIC_MAX = 7.0        # seconds of one framing before a note asks for a cutaway
+STATIC_MAX = 11.0       # seconds of one framing before a note asks for a cutaway (video mẫu: one every ~8-10 s)
 
 
 def static_notes(edl: "Edl") -> list[str]:
@@ -506,7 +506,7 @@ def static_notes(edl: "Edl") -> list[str]:
         for a, e in covered + [(r.end, r.end)]:
             if a - t > STATIC_MAX:
                 notes.append(f"timeline {t:.2f}-{a:.2f} shows one framing for {a - t:.1f}s: lay a cutaway over it "
-                             "(`broll` with `shot` from another clip, or an image) every 3-6 s")
+                             "(`broll` with `shot` from another clip, or an image) about every 8-10 s")
             t = max(t, e)
     return notes
 

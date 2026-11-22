@@ -126,6 +126,7 @@ def test_message_mentions_full_speech_offer_and_voiceover(tmp_path):
     pr.spans = [("a.mp4", 0.0, 10.0), ("b.mp4", 10.0, 30.0)]
     pr.words = [Word("x", 12.0, 12.3), Word("y", 12.3, 12.6), Word("nhà", 13.0, 13.4)]
     text = build_chat_message(p, pr, [], "", agent_dir())["message"]["content"][0]["text"]
-    assert 'offer "Giữ trọn lời" first' in text and "'nhà'" in text
+    assert 'Offer "Như video mẫu" first' in text and 'Also offer "Giữ trọn lời"' in text and "'nhà'" in text
+    assert "Clip-chuan" in text and "Mẫu 1" in text
     assert "Lồng tiếng AI: bật" in text and "Quần ống rộng 159K" in text
     assert "card 1 MUST" not in text

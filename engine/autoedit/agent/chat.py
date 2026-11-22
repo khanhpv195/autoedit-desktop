@@ -13,7 +13,7 @@ from claude_agent_sdk import query
 
 from autoedit.agent.analyze import (BROLL_IMAGES, BROLL_NONE, EDIT_RULES, NEVER_PROMISE, VISUAL_HINT,
                                     full_speech_rule, run_structured)
-from autoedit.agent.library import NICHE_NAMES, niche_section
+from autoedit.agent.library import NICHE_NAMES, niche_section, skill_body
 from autoedit.agent.prompt import image_blocks, span_lines
 from autoedit.errors import AgentFailed, BadInput
 from autoedit.fsutil import atomic_write_text
@@ -61,7 +61,7 @@ Each turn answer as JSON:
 - reply: Vietnamese, warm and short (at most 90 words, plain text, no markdown headings). Address the customer
   as "anh/chị". Quote the spoken lines you mean with their timeline second ("chân vòng kiềng" 88.4s).
 - suggestions: 2-4 quick replies the customer can tap, written as the customer would say them (each at most
-  40 characters), e.g. "Giữ trọn lời", "Rút còn ~30s", "Mở bằng câu giá". [] only when a plan is given.
+  40 characters), e.g. "Như video mẫu", "Giữ trọn lời", "Rút còn ~30s", "Mở bằng câu giá". [] only when a plan is given.
 - plan: null while something important is still open. When the customer has answered enough (or says ok / làm
   đi / được), give the full plan and say in reply that they can press "Bắt đầu edit" or keep chatting to change
   it. A new plan replaces the previous one; always give the whole plan, never a diff.
@@ -95,10 +95,12 @@ automatically from the speech. {NEVER_PROMISE}
 
 """
 
-FULL_SPEECH_CHAT = """- Clip {silent} has no speech and clip {talk} has all the talking: offer "Giữ trọn lời" first -
-  picture of clip {silent} first, then clip {talk}'s own picture at the matching moment; sound = clip {talk} in
-  full, from its first word to its last word {last!r}; clip {silent}'s sound muted. Its length is the speech
-  length.
+FULL_SPEECH_CHAT = """- Clip {silent} has no speech and clip {talk} has all the talking: this is the shape of "Mẫu 1" in the
+  video mẫu. Offer "Như video mẫu" first: clip {talk}'s picture as the base (lip-synced), clip {silent} muted and
+  used as 2.5-3.5 s cutaways about every 8-10 s, the strongest buyer problem/benefit line moved to the front as
+  the hook, then the speaker's order, only filler cut, every product fact kept, ending on the last word
+  {last!r}. Also offer "Giữ trọn lời" (picture of clip {silent} first, then clip {talk}; sound = clip {talk} in
+  full to {last!r}; length = the speech length) for a customer who wants every word.
 """
 
 
@@ -160,6 +162,8 @@ def build_chat_message(project: Project, prepared: Prepared, history: list[dict]
     body = "\n\n".join([
         CHAT_INTRO + rules,
         "Niche library:\n" + niche_section(project.niche, agent_dir),
+        "Video mẫu (edits the customer approved; copy the structure, not the facts):\n"
+        + skill_body("reference-edits", agent_dir),
         "\n".join(facts),
         "Transcript (timeline seconds):\n" + transcript,
         "Conversation so far:\n" + (_history_text(history) or "(none)"),

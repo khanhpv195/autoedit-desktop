@@ -40,6 +40,7 @@ def test_first_message_has_transcript_skills_words_and_frames(tmp_path):
     assert "## Skill: video-use" in text and "Cut craft" in text       # video-use body
     assert "## Skill: edit-video" in text and "Whisper quirks" in text
     assert "## Skill: niche-hooks (my-pham)" in text and "Swatch thật" in text   # niche section
+    assert "## Skill: reference-edits" in text and "Clip-chuan" in text and '"mute": [1]' in text   # video mẫu
     assert "name: video-use" not in text and "description:" not in text   # frontmatter stripped
     assert "## thoi-trang" not in text and "## do-an" not in text         # only this niche
     images = [c for c in content if c["type"] == "image"]
