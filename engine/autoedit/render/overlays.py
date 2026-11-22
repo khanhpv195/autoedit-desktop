@@ -97,6 +97,65 @@ def text_card(text: str, out: Path, size: int = 84, bg: tuple = (254, 44, 85, 23
     return out
 
 
+CTA_MAX_W = 700        # bottom-left card: clear of the right icon column (x > 930) on a 1080 canvas
+CTA_PAD_X, CTA_PAD_Y = 28, 20
+ARROWS = "\U0001F447\u2199\u2B07\u2193\u2198\uFE0F \t"     # 👇 ↙ ⬇ ↓ ↘ (drawn as a vector arrow instead)
+
+
+def _arrow(size: int) -> Image.Image:
+    """A down-left arrow (↙) drawn as shapes: the font may not have the glyph, and emoji differ by platform."""
+    n = int(size * 0.9)
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    w = max(4, size // 7)
+    m = w                       # margin so the round caps stay inside
+    tip = (m, n - m)
+    d.line([(n - m, m), tip], fill=(255, 255, 255, 255), width=w)
+    head = int(n * 0.55)
+    d.line([tip, (tip[0] + head, tip[1])], fill=(255, 255, 255, 255), width=w)
+    d.line([tip, (tip[0], tip[1] - head)], fill=(255, 255, 255, 255), width=w)
+    for x, y in ((n - m, m), tip, (tip[0] + head, tip[1]), (tip[0], tip[1] - head)):
+        d.ellipse((x - w // 2, y - w // 2, x + w // 2, y + w // 2), fill=(255, 255, 255, 255))
+    return img
+
+
+def cta_card(text: str, out: Path, size: int = 64, bg: tuple = (0, 0, 0, 200)) -> Path:
+    """CTA for the bottom-left corner, pointing at TikTok's product link below it: the text (a trailing 👇/↙ is
+    dropped) followed by a drawn ↙ arrow, at most CTA_MAX_W wide."""
+    words = text.strip().rstrip(ARROWS).strip().upper() or "BẤM GIỎ HÀNG"
+    font = ImageFont.truetype(str(font_path()), size)
+    arrow = _arrow(size)
+    gap = size // 4
+    room = CTA_MAX_W - 2 * CTA_PAD_X - arrow.width - gap
+    lines, cur = [], ""
+    for word in words.split():
+        trial = f"{cur} {word}".strip()
+        if cur and font.getlength(trial) > room:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = trial
+    lines += [cur] if cur else []
+    rendered = [_render_line(l, font, size) for l in lines]
+    text_w = max(r.width for r in rendered)
+    text_h = sum(r.height for r in rendered)
+    w = min(CTA_MAX_W, text_w + gap + arrow.width + 2 * CTA_PAD_X)
+    h = max(text_h, arrow.height) + 2 * CTA_PAD_Y
+    card = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(card).rounded_rectangle((0, 0, w - 1, h - 1), radius=24, fill=bg)
+    y = CTA_PAD_Y + (h - 2 * CTA_PAD_Y - text_h) // 2
+    for r in rendered:
+        card.alpha_composite(r, (CTA_PAD_X, y))
+        y += r.height
+    last = rendered[-1]
+    ax = min(w - CTA_PAD_X - arrow.width, CTA_PAD_X + last.width + gap)
+    ay = y - last.height + (last.height - arrow.height) // 2
+    card.alpha_composite(arrow, (ax, max(0, ay)))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    card.save(out)
+    return out
+
+
 def prepare_logo(src: Path, out: Path, max_w: int = 200) -> Path:
     with Image.open(src) as opened:
         im = opened.convert("RGBA")

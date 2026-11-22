@@ -43,3 +43,9 @@ def test_edge_inside_speech_looks_wider_for_a_pause():
     x = _signal([(0.28, 0.33)])                 # the only pause is 200 ms before the start the snap gave
     [r] = refine_ranges(x, [Range(0.5, 0.9)], 1.0)
     assert 0.27 <= r.start <= 0.34
+
+
+def test_end_never_moves_earlier_even_when_the_quiet_spot_is_before_it():
+    x = _signal([(0.40, 0.48)])                 # quiet only before the end: the end must stay, not cut the word
+    [r] = refine_ranges(x, [Range(0.1, 0.5)], 1.0)
+    assert r.end >= 0.5 - 1e-9

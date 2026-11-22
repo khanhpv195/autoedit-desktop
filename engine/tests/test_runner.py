@@ -79,7 +79,7 @@ def test_edit_options_lock_down_tools(tmp_path, monkeypatch):
     monkeypatch.setattr(opt, "find_cli", lambda: tmp_path / "claude")
     o = edit_options(tmp_path, {"type": "sdk", "name": "autoedit"}, "claude-opus-5-5")
     assert o.tools == [] and not o.skills and o.setting_sources == ["project"]
-    assert o.allowed_tools == EDIT_TOOLS and o.max_turns == 15 and o.cwd == str(tmp_path)
+    assert o.allowed_tools == EDIT_TOOLS and o.max_turns == 20 and o.cwd == str(tmp_path)
     assert o.cli_path == tmp_path / "claude" and o.env == {"DISABLE_AUTOUPDATER": "1"}
     assert o.strict_mcp_config is True and o.max_buffer_size >= 16 * 1024 * 1024
 

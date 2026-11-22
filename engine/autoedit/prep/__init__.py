@@ -153,6 +153,25 @@ def _prepare_images(project: Project) -> list[PreparedImage]:
     return out
 
 
+def transcribe_clips(parts: list[Path], spans: list[tuple[str, float, float]], work_dir: Path) -> list[Word]:
+    """Transcribe every normalized clip on its own (cached per clip), then shift its words onto the joined timeline:
+    one clip of room noise can never make Whisper repeat an invented line through the next clip's speech."""
+    root = work_dir / "transcripts"
+    out: list[Word] = []
+    for part, (_, a, b) in zip(parts, spans):
+        for w in transcribe(part, root / part.stem):
+            s, e = round(w.start + a, 3), round(min(w.end + a, b), 3)
+            if s < b:
+                out.append(Word(w.text, s, max(s, e)))
+    if root.exists():       # transcripts of clips that left the project
+        keep = {p.stem for p in parts}
+        for d in root.iterdir():
+            if d.is_dir() and d.name not in keep:
+                shutil.rmtree(d, ignore_errors=True)
+    (work_dir / "transcript.json").unlink(missing_ok=True)     # joined-timeline cache of older versions
+    return out
+
+
 def prepare(project: Project, events: Emitter) -> Prepared:
     events.step("Đang kiểm tra file…", 0.02)
     clips = project.clip_paths
@@ -173,7 +192,7 @@ def prepare(project: Project, events: Emitter) -> Prepared:
         spans[-1] = (n, a, round(max(a, info.duration), 3))
 
     events.step("Đang nghe lời thoại…", 0.15)
-    words = transcribe(timeline, project.work_dir)
+    words = transcribe_clips(parts, spans, project.work_dir)
 
     n_frames = max(6, min(12, 2 * len(clips)))
     frames_dir = project.work_dir / "frames"

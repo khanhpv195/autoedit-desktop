@@ -22,17 +22,31 @@ def extract_segment(src: Path, rng: Range, niche: str, out: Path, preview: bool,
     return out
 
 
+def extract_audio(src: Path, start: float, dur: float, out: Path) -> Path:
+    """One continuous stretch of the timeline's sound (an EDL audio track): 30 ms fade in, END_FADE fade out."""
+    from autoedit.edl import END_FADE
+    bins.run([bins.tool_path("ffmpeg"), "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", str(src),
+              "-t", f"{dur:.3f}", "-vn",
+              "-af", f"afade=t=in:st=0:d={FADE},afade=t=out:st={max(0.0, dur - END_FADE):.3f}:d={END_FADE}",
+              "-c:a", "pcm_s16le", "-ar", "48000", "-ac", "2", str(out)])
+    return out
+
+
 def _quote(path: str) -> str:
     """Concat demuxer: inside '...' only the quote itself needs escaping, as '\\''."""
     return path.replace("'", "'\\''")
 
 
-def render_base(src: Path, ranges: list[Range], niche: str, work: Path, preview: bool, mute: bool = False) -> Path:
+def render_base(src: Path, ranges: list[Range], niche: str, work: Path, preview: bool,
+                mute: bool | list[bool] = False) -> Path:
+    """mute: True silences every range; a list silences range i when mute[i] (a muted clip)."""
+    flags = list(mute) if isinstance(mute, (list, tuple)) else [bool(mute)] * len(ranges)
     seg_dir = work / ("segs_preview" if preview else "segs")
     seg_dir.mkdir(parents=True, exist_ok=True)
     for old in seg_dir.glob("seg_*.mov"):
         old.unlink()
-    segs = [extract_segment(src, r, niche, seg_dir / f"seg_{i:02d}.mov", preview, mute) for i, r in enumerate(ranges)]
+    segs = [extract_segment(src, r, niche, seg_dir / f"seg_{i:02d}.mov", preview, flags[i])
+            for i, r in enumerate(ranges)]
     lst = seg_dir / "concat.txt"
     lst.write_text("".join(f"file '{_quote(p.resolve().as_posix())}'\n" for p in segs), encoding="utf-8")
     base = work / ("base_preview.mov" if preview else "base.mov")

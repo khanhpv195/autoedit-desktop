@@ -9,17 +9,45 @@ from autoedit.errors import RenderFailed
 from autoedit.fsutil import atomic_write_text
 from autoedit.transcript import Word, pack_phrases, words_from_json, words_to_json
 
-WHISPER_LAG = 0.10
+WHISPER_LAG = 0.0       # DTW token times are aligned to the audio: no fixed shift any more
+DTW_PRESET = "large.v3.turbo"   # alignment heads of bins.MODEL_NAME (whisper.cpp -dtw preset)
+DTW_TAIL = 0.30         # a word's last DTW time marks its last token; the sound runs on about this long after it
+CACHE_VERSION = 3       # bump when the whisper flags or the parser change: older caches are transcribed again
+
+
+def _token_times(seg: dict) -> list[float]:
+    """DTW times (s) of the segment's text tokens; [] when whisper ran without -dtw (t_dtw missing or -1)."""
+    out = []
+    for tok in seg.get("tokens") or []:
+        text = tok.get("text") or ""
+        if text.startswith("[_") or not text.strip():
+            continue        # [_BEG_], [_TT_123] timestamps and blanks carry no sound
+        t = tok.get("t_dtw", -1)
+        if t is None or t < 0:
+            return []
+        out.append(t / 100)
+    return out
 
 
 def parse_whisper_json(data: dict, lag: float = WHISPER_LAG) -> list[Word]:
-    words = []
+    """One Word per -ml 1 segment. With -dtw (full JSON) a word starts at its first token's DTW time and ends at the
+    next word's start, at most DTW_TAIL after its last token; otherwise the segment offsets are used."""
+    segs = []
     for seg in data.get("transcription", []):
         text = (seg.get("text") or "").strip()
-        if not text:
-            continue
-        off = seg["offsets"]
-        start, end = off["from"] / 1000 + lag, off["to"] / 1000 + lag
+        if text:
+            segs.append((text, seg, _token_times(seg)))
+    dtw = bool(segs) and all(times for _, _, times in segs)
+    words = []
+    for i, (text, seg, times) in enumerate(segs):
+        if dtw:
+            start = times[0]
+            nxt = segs[i + 1][2][0] if i + 1 < len(segs) else float("inf")
+            end = min(max(times[-1], start) + DTW_TAIL, nxt)
+        else:
+            off = seg["offsets"]
+            start, end = off["from"] / 1000, off["to"] / 1000
+        start, end = start + lag, end + lag
         words.append(Word(text, round(start, 3), round(max(end, start), 3)))
     return words
 
@@ -137,10 +165,13 @@ def _run_whisper(video: Path, work_dir: Path, language: str) -> list[Word]:
         bins.run([bins.tool_path("ffmpeg"), "-y", "-v", "error", "-i", str(video),
                   "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", str(wav)])
         base = Path(tmp) / "out"
+        # -mc 0: no text carried from one window to the next, so a line invented over silence (one clip of room
+        # noise) cannot repeat through the real speech after it. -dtw needs flash attention off (-nfa).
         bins.run([bins.tool_path("whisper-cli"), "-m", str(model), "-f", str(wav), "-l", language,
-                  "-ml", "1", "-sow", "-oj", "-of", str(base)])
+                  "-ml", "1", "-sow", "-mc", "0", "-nfa", "-dtw", DTW_PRESET, "-ojf", "-of", str(base)])
         data = json.loads((base.with_suffix(".json")).read_text(encoding="utf-8"))
-    return drop_closing_lines(drop_hallucinations(parse_whisper_json(data)))
+    # closing lines first: the DTW-collapsed words of an invented outro would otherwise leave a stray "Hãy … Gõ"
+    return drop_closing_lines(drop_hallucinations(drop_closing_lines(parse_whisper_json(data))))
 
 
 def transcribe(video: Path, work_dir: Path, language: str = "vi") -> list[Word]:
@@ -149,11 +180,12 @@ def transcribe(video: Path, work_dir: Path, language: str = "vi") -> list[Word]:
     if cache.exists():
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
-            if data.get("sha256") == digest:
+            if data.get("sha256") == digest and data.get("v") == CACHE_VERSION:
                 return drop_closing_lines(words_from_json(data["words"]))    # filters improve; caches stay
         except (ValueError, KeyError, TypeError):
             pass    # corrupt or half-written cache: transcribe again
     words = _run_whisper(video, work_dir, language)
     work_dir.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(cache, json.dumps({"sha256": digest, "words": words_to_json(words)}, ensure_ascii=False))
+    atomic_write_text(cache, json.dumps({"sha256": digest, "v": CACHE_VERSION, "words": words_to_json(words)}, ensure_ascii=False))
     return words
+

@@ -67,7 +67,8 @@ def voiceover_lines(project: Project) -> list[str]:
         "line is the cart CTA (giỏ hàng). Short Vietnamese sentences, at most 120 characters each.",
         "Order: decide the shots, call `voiceover` with your lines ({at, text}, `at` = timeline second inside a kept "
         "range), read back the real durations, then call `set_edl` with the same lines in `voiceover`, then "
-        "`render_preview` and `finish`. The 30% speech rule does not apply.",
+        "`render_preview` and `finish` (transcribe_output is not needed with voiceover). The 30% speech rule does "
+        "not apply.",
     ]
 
 

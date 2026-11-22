@@ -69,11 +69,29 @@ async def test_preview_requires_edl_and_limit(session):
     assert (await tools.render_preview(session, {}))["is_error"]
 
 
-async def test_finish(session):
+HEARD_OK = [Word("chào", 0.1, 0.4), Word("cả", 0.45, 0.7), Word("nhà", 0.8, 1.2), Word("giá", 1.6, 2.0),
+            Word("189K", 2.1, 2.8)]
+
+
+async def test_finish_is_locked_until_the_output_check_passes(session, monkeypatch):
+    import importlib
+    tr = importlib.import_module("autoedit.prep.transcribe")
     assert (await tools.finish(session, {"summary": ["x"]}))["is_error"]
     await tools.set_edl(session, {"edl": EDL})
+    assert "locked" in text_of(await tools.finish(session, {"summary": ["x"]}))
+    assert "render_preview" in text_of(await tools.transcribe_output(session, {}))     # no preview yet
+    await tools.render_preview(session, {})
+    monkeypatch.setattr(tr, "_run_whisper", lambda v, w, l: HEARD_OK[:-1])           # "189K" cut off
+    bad = json.loads(text_of(await tools.transcribe_output(session, {})))
+    assert not bad["ok"] and [m["text"] for m in bad["missing"]] == ["189K"]
+    assert (await tools.finish(session, {"summary": ["x"]}))["is_error"]
+    monkeypatch.setattr(tr, "_run_whisper", lambda v, w, l: HEARD_OK)
+    good = json.loads(text_of(await tools.transcribe_output(session, {})))
+    assert good["ok"] and [e["text"] for e in good["expected"]] == ["nhà", "189K"]
     res = await tools.finish(session, {"summary": ["Bỏ đoạn lặng", "Kết bằng giá"]})
     assert not res.get("is_error") and session.finished and session.summary == ["Bỏ đoạn lặng", "Kết bằng giá"]
+    await tools.set_edl(session, {"edl": EDL})                  # a new EDL needs a new preview and check
+    assert session.output_checked is None
 
 
 async def test_build_server(session):
@@ -81,7 +99,7 @@ async def test_build_server(session):
     assert cfg["name"] == "autoedit"
     handler = cfg["instance"]._request_handlers["tools/list"].handler
     listed = (await handler(None, None)).tools
-    assert [t.name for t in listed] == list(tools.TOOL_NAMES) and len(listed) == 5
+    assert [t.name for t in listed] == list(tools.TOOL_NAMES) and len(listed) == 6
     assert "keep" in next(t for t in listed if t.name == "set_edl").input_schema["properties"]["edl"]["properties"]
 
 

@@ -25,6 +25,53 @@ def test_parse_applies_lag_and_skips_blank():
     assert tr.parse_whisper_json(data, lag=0.1) == [Word("Chào", 1.1, 1.5), Word("cả", 1.6, 1.9)]
 
 
+def test_parse_uses_dtw_token_times_when_present():
+    def seg(text, frm, to, toks):
+        return {"offsets": {"from": frm, "to": to}, "text": text,
+                "tokens": [{"text": t, "t_dtw": d} for t, d in toks]}
+    data = {"transcription": [
+        {"offsets": {"from": 0, "to": 0}, "text": "", "tokens": [{"text": "[_BEG_]", "t_dtw": -1}]},
+        seg(" Mà", 0, 80, [(" M", 14), ("à", 14)]),
+        seg(" quần", 80, 280, [(" qu", 32), ("ần", 38)]),
+        seg(" nhà", 66900, 67080, [(" nhà", 6706), ("[_TT_869]", -1)]),
+    ]}
+    # start = first token's DTW time; end = next word's start, or last token + DTW_TAIL; no fixed lag
+    assert tr.parse_whisper_json(data) == [Word("Mà", 0.14, 0.32), Word("quần", 0.32, 0.68),
+                                          Word("nhà", 67.06, 67.36)]
+
+
+def test_parse_falls_back_to_offsets_without_dtw_and_has_no_lag():
+    data = {"transcription": [{"offsets": {"from": 1000, "to": 1400}, "text": " Chào",
+                               "tokens": [{"text": " Chào", "t_dtw": -1}]}]}
+    assert tr.parse_whisper_json(data) == [Word("Chào", 1.0, 1.4)]
+
+
+def test_whisper_runs_without_context_and_with_dtw(tmp_path, monkeypatch):
+    model = tmp_path / "m.bin"; model.write_bytes(b"x")
+    monkeypatch.setattr(tr.bins, "model_path", lambda: model)
+    monkeypatch.setattr(tr.bins, "tool_path", lambda n: n)
+    cmds = []
+
+    def fake_run(cmd, **kw):
+        cmds.append(cmd)
+        if cmd[0] == "whisper-cli":
+            out = Path(cmd[cmd.index("-of") + 1]).with_suffix(".json")
+            out.write_text(json.dumps({"transcription": []}), encoding="utf-8")
+    monkeypatch.setattr(tr.bins, "run", fake_run)
+    tr._run_whisper(tmp_path / "v.mp4", tmp_path, "vi")
+    w = cmds[-1]
+    assert w[w.index("-mc") + 1] == "0" and "-nfa" in w and "-ojf" in w
+    assert w[w.index("-dtw") + 1] == tr.DTW_PRESET
+
+
+def test_old_cache_version_is_transcribed_again(tmp_path, monkeypatch):
+    video = tmp_path / "v.mp4"; video.write_bytes(b"abc")
+    (tmp_path / "transcript.json").write_text(json.dumps(
+        {"sha256": tr._sha256(video), "words": [{"text": "cũ", "start": 0, "end": 1}]}), encoding="utf-8")
+    monkeypatch.setattr(tr, "_run_whisper", lambda v, wd, lang: [Word("mới", 0, 1)])
+    assert tr.transcribe(video, tmp_path) == [Word("mới", 0, 1)]
+
+
 def test_drop_hallucinations():
     real = [Word("a", 0, 0.3), Word("b", 0.4, 0.7)]
     fake = [Word("Cảm", 5.0, 5.01), Word("ơn", 5.01, 5.02), Word("các", 5.02, 5.03), Word("bạn", 5.03, 5.04)]

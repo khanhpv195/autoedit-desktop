@@ -11,10 +11,10 @@ SR = 16000
 WIN = 0.02          # RMS window
 HOP = 0.005
 START_SEARCH = (-0.10, 0.03)    # a start may move a little earlier (catch the onset), barely later
-END_SEARCH = (-0.03, 0.12)      # an end mostly later: whisper ends words early
+END_SEARCH = (0.0, 0.12)        # an end only later: the end pad already sits after the word, never cut into it
 LOUD_DB = -32.0                 # still this loud at the best point: the edge sits inside speech, look wider
 WIDE_START = (-0.25, 0.06)
-WIDE_END = (-0.10, 0.20)
+WIDE_END = (0.0, 0.20)
 
 
 def _rms_db(x: array, t: float) -> float:

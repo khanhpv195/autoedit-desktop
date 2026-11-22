@@ -127,6 +127,30 @@ def _cues(tw: list[TimedWord], total: float) -> list[Cue]:
     return cues
 
 
+def hide_cues(cues: list[Cue], windows: list[tuple[float, float]]) -> list[Cue]:
+    """Drop captions inside the windows (hook card, CTA) and cut those that run into one; a cue left shorter than
+    0.25 s is dropped."""
+    out = []
+    for c in cues:
+        pieces = [(c.start, c.end)]
+        for a, b in windows:
+            nxt = []
+            for s, e in pieces:
+                if e <= a or s >= b:
+                    nxt.append((s, e))
+                    continue
+                if s < a:
+                    nxt.append((s, a))
+                if e > b:
+                    nxt.append((b, e))
+            pieces = nxt
+        for s, e in pieces:
+            if e - s >= 0.25:
+                out.append(Cue(s, e, c.words))
+                break       # one piece per cue: the words are not split in two
+    return out
+
+
 def speech_intervals(ranges: list[Range], words: list[Word], pad: float = 0.15) -> list[tuple[float, float]]:
     iv: list[list[float]] = []
     for w in map_words(ranges, words, [], []):
@@ -146,15 +170,25 @@ def _ts(t: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def write_ass(cues: list[Cue], path: Path) -> Path:
+# (font size, alignment, margin left, right, vertical). "bottom": above TikTok's caption block. "fashion": a band
+# at y ~620-790 from the top, off the outfit and clear of the product link / CTA in the lower third.
+STYLES = {"bottom": (78, 2, 90, 150, 540), "fashion": (70, 8, 90, 130, 620)}
+
+
+def caption_band(niche: str) -> str:
+    return "fashion" if niche == "thoi-trang" else "bottom"
+
+
+def write_ass(cues: list[Cue], path: Path, band: str = "bottom") -> Path:
+    size, align, ml, mr, mv = STYLES.get(band, STYLES["bottom"])
     head = (
         "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\n\n"
         "[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
         "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
         "MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Caption,{FONT_NAME},78,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,2,"
-        "90,150,540,1\n\n"
+        f"Style: Caption,{FONT_NAME},{size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,5,0,"
+        f"{align},{ml},{mr},{mv},1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
     lines = []

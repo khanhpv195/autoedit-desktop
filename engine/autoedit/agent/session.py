@@ -14,6 +14,8 @@ class EditSession:
     edl: Edl | None = None
     edl_errors: int = 0
     previews: int = 0
+    preview_of: Edl | None = None       # the EDL the latest preview.mp4 was rendered from
+    output_checked: Edl | None = None   # the EDL whose preview passed transcribe_output
     frames_viewed: int = 0
     finished: bool = False
     aborted: bool = False

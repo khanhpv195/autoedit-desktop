@@ -6,8 +6,15 @@ from autoedit.project import DEFAULT_CTA
 from autoedit.render.compose import HOOK_SECONDS
 from autoedit.transcript import Word, resolve_edits, speech_duration
 
-PAD_BEFORE = 0.05
-PAD_AFTER = 0.08
+PAD_BEFORE = 0.08
+PAD_AFTER = 0.20
+# How close to a word an edge must be to count as meant for it. Kept apart from the padding: in glued speech an
+# end 120 ms into the next word means "keep that word", even though the pad after the previous one is 200 ms.
+INTENT_BEFORE = 0.05
+INTENT_AFTER = 0.08
+TAIL = 0.4          # silent picture after the last word (the voice fades out over END_FADE before it)
+END_FADE = 0.15
+SYNC_TOLERANCE = 0.1    # picture of the audio clip this far off its own sound reads as bad lip sync
 MIN_SEGMENT = 0.4
 TOUCH = 0.05        # ranges whose edges are this close count as touching
 MIN_KEEP_RATIO = 0.30
@@ -85,6 +92,22 @@ class VoiceLine:
     words: list = field(default_factory=list)     # [(text, start, end)] relative to the line start
 
 
+@dataclass
+class AudioTrack:
+    """One clip's sound played without a break under the picture (`audio_source`): the keep ranges are then
+    picture only. a_in/a_out are seconds inside that clip (a_out defaults to its last word); start/end the same
+    moments on the timeline."""
+    source: int         # 1-based clip number
+    a_in: float
+    a_out: float
+    start: float
+    end: float
+
+    @property
+    def duration(self) -> float:
+        return self.end - self.start
+
+
 def voice_key(at: float, text: str) -> tuple[float, str]:
     return round(float(at), 3), str(text).strip()
 
@@ -100,8 +123,35 @@ class Edl:
     music_use: bool = True
     music_duck_db: float = -14.0
     voiceover: list[VoiceCue] = field(default_factory=list)
+    audio: AudioTrack | None = None
+    mute: list[int] = field(default_factory=list)       # 1-based clips whose own sound is silenced
+    muted_spans: list[tuple[float, float]] = field(default_factory=list)   # those clips on the timeline
 
     def to_dict(self) -> dict:
+        d = self._base_dict()
+        if self.audio:
+            d.update(audio_source=self.audio.source, audio_in=self.audio.a_in, audio_out=self.audio.a_out)
+        if self.mute:
+            d["mute"] = list(self.mute)
+        return d
+
+    def speech_ranges(self) -> list["Range"]:
+        """Timeline ranges whose sound is heard, in output order: the audio track, or the kept ranges."""
+        if self.audio:
+            return [Range(self.audio.start, self.audio.end, "audio")]
+        return self.ordered()
+
+    def heard_words(self, words: list[Word]) -> list[Word]:
+        """Words that can be heard: not in a muted clip (the audio track's own clip is never muted)."""
+        if self.audio:
+            return [w for w in words if self.audio.start - 1e-6 <= (w.start + w.end) / 2 <= self.audio.end + 1e-6]
+        return [w for w in words if not _in_spans(w, self.muted_spans)]
+
+    def audio_end(self) -> float:
+        """Output second where the sound stops (then END_FADE before it, silence after)."""
+        return self.audio.duration if self.audio else self.output_duration()
+
+    def _base_dict(self) -> dict:
         return {
             "keep": [asdict(r) for r in self.keep],
             "hook": self._hook_dict(),
@@ -158,6 +208,99 @@ class Edl:
 FPS = 30
 
 
+def _in_spans(w: Word, spans: list[tuple[float, float]]) -> bool:
+    mid = (w.start + w.end) / 2
+    return any(a - 1e-6 <= mid < b + 1e-6 for a, b in spans)
+
+
+def _clip_spans(spans, clip_duration: float) -> list[tuple[str, float, float]]:
+    return list(spans) or [("clip", 0.0, clip_duration)]
+
+
+def _clip_number(value, n: int, field_name: str) -> int:
+    try:
+        k = int(value)
+    except (TypeError, ValueError):
+        raise EdlError(f"{field_name} must be a clip number 1-{n}") from None
+    if not (1 <= k <= n) or float(value) != k:
+        raise EdlError(f"{field_name} must be a clip number 1-{n} (got {value})")
+    return k
+
+
+def _audio_track(raw: dict, words: list[Word], spans: list, notes: list[str]) -> AudioTrack:
+    """audio_source = clip number; audio_in/audio_out = seconds inside that clip (default: the whole clip). Edges
+    snap to words like a cut (padded), never past the clip. Words of that clip left outside get a note."""
+    n = _clip_number(raw["audio_source"], len(spans), "audio_source")
+    _, a, b = spans[n - 1]
+    length = b - a
+    own = sorted((w for w in words if a - 1e-6 <= (w.start + w.end) / 2 < b), key=lambda w: w.start)
+    shifted = [Word(w.text, w.start - a, w.end - a) for w in own]
+    a_in = float(raw.get("audio_in") or 0.0)
+    if raw.get("audio_out") is not None:
+        a_out = float(raw["audio_out"])
+    else:       # default: up to the clip's last word (padded); what follows is the silent tail
+        a_out = min(length, shifted[-1].end + PAD_AFTER) if shifted else length
+    if not (0 <= a_in < a_out <= length + 0.05):
+        raise EdlError(f"audio_in/audio_out {a_in}-{a_out} must be inside clip {n} (0-{length:.2f}s, seconds "
+                       "inside that clip)")
+    s = max(0.0, _snap_start(a_in, shifted, length))
+    e = min(length, _snap_end(min(a_out, length), shifted, length))
+    if e - s < MIN_SEGMENT:
+        raise EdlError(f"audio track {a_in}-{a_out} is shorter than {MIN_SEGMENT}s")
+    after = [w for w in shifted if (w.start + w.end) / 2 > e]
+    before = [w for w in shifted if (w.start + w.end) / 2 < s]
+    if after:
+        notes.append(f"audio_out {e:.2f} cuts {len(after)} words of clip {n} (from {after[0].text!r}); its last word "
+                     f"{after[-1].text!r} ends at {after[-1].end:.2f}: set audio_out {after[-1].end + PAD_AFTER:.2f} "
+                     "to keep every word")
+    if before:
+        notes.append(f"audio_in {s:.2f} skips {len(before)} words of clip {n} (its speech starts at "
+                     f"{before[0].start:.2f})")
+    return AudioTrack(n, round(s, 3), round(e, 3), round(a + s, 3), round(a + e, 3))
+
+
+def _fit_picture(kept: list[Range], need: float, audio: AudioTrack, notes: list[str]) -> list[Range]:
+    """With an audio track the picture must last the audio plus the silent tail: cut it at `need`; a picture
+    shorter than the audio is an error, one shorter than audio + tail just gets a shorter tail."""
+    total = sum(r.duration for r in kept)
+    if total < audio.duration - 0.05:
+        raise EdlError(f"the picture lasts {total:.2f}s but the audio track runs {audio.duration:.2f}s: keep "
+                       f"{audio.duration + TAIL - total:.2f}s more footage (picture must cover audio + {TAIL}s tail)")
+    if total < need - 1e-6:
+        notes.append(f"the picture ends {total - audio.duration:.2f}s after the audio; {TAIL}s of silent picture is "
+                     "the target tail")
+        return kept
+    out, t = [], 0.0
+    for r in kept:
+        if t + r.duration <= need + 1e-6:
+            out.append(r)
+            t += r.duration
+            continue
+        if need - t >= MIN_SEGMENT:
+            out.append(Range(r.start, round(r.start + need - t, 3), r.reason))
+        elif out:       # a sliver is not worth a cut: stretch the previous range is impossible; end a hair early
+            pass
+        break
+    if total - need > 0.05:
+        notes.append(f"picture trimmed to {need:.2f}s: the audio track ({audio.duration:.2f}s) plus the {TAIL}s tail")
+    return out
+
+
+def _sync_notes(edl_ranges: list[Range], audio: AudioTrack, spans: list) -> list[str]:
+    """Picture of the audio's own clip shows the speaker: it should play at the moment its sound plays."""
+    _, a, b = spans[audio.source - 1]
+    notes, t = [], 0.0
+    for r in edl_ranges:
+        if a - 1e-6 <= r.start < b:
+            want = audio.start + t
+            if abs(r.start - want) > SYNC_TOLERANCE and want < b:
+                notes.append(f"picture {r.start:.2f}-{r.end:.2f} is clip {audio.source} (whose sound is the audio "
+                             f"track) but plays {r.start - want:+.2f}s off its own sound: start it at {want:.2f} "
+                             "for lip sync")
+        t += r.duration
+    return notes
+
+
 def _grid(t: float, lo: float, hi: float, dur: float) -> float:
     """Nearest 1/30 s frame boundary inside [lo, hi] (never into a neighbouring word); t itself if none fits."""
     hi = min(hi, dur)
@@ -182,9 +325,9 @@ def _snap_start(a: float, words: list[Word], dur: float) -> float:
     midpoint of the gap before it. An edge that is both inside a word and inside a neighbour's pad goes to the
     neighbour ("stop after 'hình'" given 30 ms into the next word). An edge in silence stays where the agent put it (frame-aligned)."""
     for i, w in enumerate(words):
-        if i + 1 < len(words) and w.start < a and words[i + 1].start - PAD_BEFORE <= a:
+        if i + 1 < len(words) and w.start < a and words[i + 1].start - INTENT_BEFORE <= a:
             continue          # also inside the next word's pad: the agent meant the next word, not this tail
-        if w.start - PAD_BEFORE <= a < w.end:
+        if w.start - INTENT_BEFORE <= a < w.end:
             lo = 0.0 if i == 0 else min(w.start, (words[i - 1].end + w.start) / 2)
             lo = max(lo, 0.0)
             return _grid(max(w.start - PAD_BEFORE, lo), lo, w.start, dur)
@@ -195,9 +338,9 @@ def _snap_start(a: float, words: list[Word], dur: float) -> float:
 def _snap_end(b: float, words: list[Word], dur: float) -> float:
     for i in range(len(words) - 1, -1, -1):
         w = words[i]
-        if i > 0 and b < w.end and b <= words[i - 1].end + PAD_AFTER:
+        if i > 0 and b < w.end and b <= words[i - 1].end + INTENT_AFTER:
             continue          # also inside the previous word's pad: the agent meant to stop after that word
-        if w.start < b <= w.end + PAD_AFTER:
+        if w.start < b <= w.end + INTENT_AFTER:
             hi = dur if i + 1 == len(words) else max(w.end, (w.end + words[i + 1].start) / 2)
             hi = min(hi, dur)
             return _grid(min(w.end + PAD_AFTER, hi), w.end, hi, dur)
@@ -497,6 +640,20 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
     keep_raw = raw.get("keep") or []
     if not keep_raw:
         raise EdlError("keep must contain at least one range")
+    clips = _clip_spans(spans, clip_duration)
+    mute = sorted({_clip_number(x, len(clips), "mute") for x in (raw.get("mute") or [])})
+    muted_spans = [(clips[k - 1][1], clips[k - 1][2]) for k in mute]
+    audio = None
+    if raw.get("audio_source") is not None:
+        if voiceover_on:
+            raise EdlError("audio_source cannot be used with AI voiceover (the voiceover is the sound)")
+        audio = _audio_track(raw, words, clips, notes)
+        if audio.source in mute:
+            raise EdlError(f"clip {audio.source} is the audio_source: it cannot also be muted")
+    all_words = words
+    words = [w for w in words if not _in_spans(w, muted_spans)]
+    if audio:       # the keep ranges are picture only: nothing to snap to, no speech rules
+        words = []
     ranges: list[Range] = []
     for k in keep_raw:
         a, b = float(k["start"]), float(k["end"])
@@ -516,6 +673,9 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
     if not kept:
         raise EdlError("every range is shorter than 0.4s")
 
+    if audio:
+        kept = _fit_picture(kept, audio.duration + TAIL, audio, notes)
+        notes += _sync_notes(kept, audio, clips)
     total_speech = speech_duration(words)
     if total_speech > 0 and not voiceover_on:      # with voiceover the original audio is muted
         ratio = _speech_in(kept, words) / total_speech
@@ -550,7 +710,11 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
     if any(not e.word for e in emph):
         raise EdlError("emphasis needs a non-empty word")
 
-    if not voiceover_on:    # with voiceover, fixes/emphasis apply to the voiceover words (matched at render)
+    if audio:
+        heard = [w for w in all_words if audio.start - 1e-6 <= (w.start + w.end) / 2 <= audio.end + 1e-6]
+        notes += resolve_edits(heard, fixes, emph)[2]
+        notes += sentence_edge_notes([Range(audio.start, audio.end)], heard)
+    elif not voiceover_on:    # with voiceover, fixes/emphasis apply to the voiceover words (matched at render)
         notes += resolve_edits(words, fixes, emph)[2]
         kept, head_notes = keep_short_heads(kept, words, clip_duration)
         kept, tail_notes = keep_short_tails(kept, words, clip_duration)
@@ -572,6 +736,9 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         cta_text=str(raw.get("cta_text") or "").strip() or default_cta,
         music_use=bool(music.get("use", True)),
         music_duck_db=min(-6.0, max(-24.0, duck)),
+        audio=audio,
+        mute=mute,
+        muted_spans=muted_spans,
     )
     if len(spans) > 1 or image_names:      # something to cut away to
         notes += static_notes(edl)

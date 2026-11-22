@@ -7,6 +7,7 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from autoedit import __version__
 from autoedit.agent.session import EditSession
+from autoedit.agent.verify import check_output, expected_words
 from autoedit.edl import EdlError, VoiceLine, validate_edl, voice_key
 from autoedit.errors import AutoeditError, VoiceAuth, VoiceError, VoiceMissing, VoiceQuota
 from autoedit.fsutil import atomic_write_text
@@ -21,7 +22,7 @@ MAX_PREVIEWS = 3
 MAX_EDL_ERRORS = 3
 MAX_FRAMES = 6          # per view_frames call
 MAX_VIEWED_FRAMES = 12  # per session: keeps the whole conversation far below the API's 100-images-per-request limit
-TOOL_NAMES = ("get_transcript", "view_frames", "set_edl", "render_preview", "finish")
+TOOL_NAMES = ("get_transcript", "view_frames", "set_edl", "render_preview", "transcribe_output", "finish")
 VOICE_TOOL = "voiceover"
 VOICE_LINE_MAX = 120
 VOICE_CALL_CHARS = 600
@@ -112,6 +113,7 @@ async def set_edl(s: EditSession, args: dict) -> dict:
             s.aborted = True
         return _text(f"Invalid EDL: {e}", error=True)
     s.edl = edl
+    s.preview_of = s.output_checked = None      # a new EDL needs its own preview and check
     atomic_write_text(s.project.work_dir / "edl.json", json.dumps(edl.to_dict(), ensure_ascii=False, indent=2))
     d = edl.output_duration()
     lo, hi = s.project.length_range
@@ -145,13 +147,52 @@ async def render_preview(s: EditSession, args: dict) -> dict:
     except AutoeditError as e:
         return _text(f"Preview failed: {e.message}", error=True)
     s.previews += 1
+    s.preview_of, s.output_checked = s.edl, None
     s.events.preview(str(res.path), s.previews)
     frames = await asyncio.to_thread(preview_frames, res.path, s.edl, s.project.work_dir / "frames")
     text = f"Preview {s.previews}/{MAX_PREVIEWS}: {res.duration:.2f}s. Frames: start, then just after each cut."
     if res.checks:
         text += "\nKiểm tra: " + "; ".join(res.checks)
+    if needs_output_check(s):
+        text += "\nNext: call transcribe_output (finish is locked until it passes)."
     content = [{"type": "text", "text": text}]
     return {"content": content + [_image(p) for p in frames]}
+
+
+def needs_output_check(s: EditSession) -> bool:
+    """With the voiceover the words are the AI lines (checked by the voiceover tool); without speech, nothing to
+    hear."""
+    return not s.project.voiceover_on and bool(s.edl and s.edl.heard_words(s.prepared.words))
+
+
+async def transcribe_output(s: EditSession, args: dict) -> dict:
+    from autoedit.prep.transcribe import _run_whisper
+    if s.edl is None:
+        return _text("Call set_edl first.", error=True)
+    if not needs_output_check(s):
+        s.output_checked = s.edl
+        return _text(json.dumps({"ok": True, "note": "nothing to check: no heard speech (voiceover or silent "
+                                 "video)"}, ensure_ascii=False))
+    video = s.project.work_dir / "preview.mp4"
+    if s.preview_of is not s.edl or not video.exists():
+        return _text("Call render_preview for the current EDL first, then transcribe_output.", error=True)
+    try:
+        heard = await asyncio.to_thread(_run_whisper, video, s.project.work_dir, "vi")
+    except AutoeditError as e:
+        return _text(f"Could not transcribe the preview: {e.message}", error=True)
+    expected = expected_words(s.edl, s.prepared.words)
+    missing = check_output(expected, heard)
+    ok = not missing
+    if ok:
+        s.output_checked = s.edl
+    msg = {"ok": ok, "expected": expected, "missing": missing,
+           "output_transcript": " ".join(w.text for w in heard),
+           "output_last_words": [{"text": w.text, "at": round(w.start, 2)} for w in heard[-6:]]}
+    if not ok:
+        msg["fix"] = ("These words are cut off in the output. Move that range's end (or audio_out) later past the "
+                      "word, set_edl, render_preview, then transcribe_output again.")
+    atomic_write_text(s.project.work_dir / "output_check.json", json.dumps(msg, ensure_ascii=False, indent=2))
+    return _text(json.dumps(msg, ensure_ascii=False))
 
 
 async def voiceover(s: EditSession, args: dict) -> dict:
@@ -229,6 +270,9 @@ async def finish(s: EditSession, args: dict) -> dict:
     if s.project.voiceover_on and not s.edl.voiceover:
         return _text("Voiceover is on: call voiceover, then set_edl with `voiceover` lines, before finish.",
                      error=True)
+    if needs_output_check(s) and s.output_checked is not s.edl:
+        return _text("finish is locked: render_preview the current EDL, then transcribe_output must pass (every "
+                     "part's last word and the video's last word heard in the output).", error=True)
     summary = [str(x).strip() for x in args.get("summary", []) if str(x).strip()][:4]
     if not summary:
         return _text("summary must have 1-4 short Vietnamese bullets", error=True)
@@ -264,6 +308,14 @@ EDL_SCHEMA = {
             "required": ["at", "dur"]}},
         "cta_text": {"type": "string"},
         "music": {"type": "object", "properties": {"use": {"type": "boolean"}, "duck_db": _NUM}},
+        "audio_source": {"type": "integer", "minimum": 1, "description": "clip number whose sound plays unbroken "
+                         "under the whole picture (\"lồng tiếng clip X\"); keep ranges are then picture only"},
+        "audio_in": {"type": "number", "description": "seconds inside the audio_source clip where its sound starts "
+                     "(default 0)"},
+        "audio_out": {"type": "number", "description": "seconds inside the audio_source clip where its sound ends "
+                      "(default: just after its last word)"},
+        "mute": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                 "description": "clip numbers whose own sound is silenced (\"bỏ tiếng clip Y\")"},
         "voiceover": {"type": "array", "description": "only when voiceover is on: lines made by the voiceover tool",
                       "items": {"type": "object", "properties": {"at": _NUM, "text": {"type": "string"}},
                                 "required": ["at", "text"]}},
@@ -284,6 +336,9 @@ SCHEMAS = {
                 {"type": "object", "properties": {"edl": EDL_SCHEMA}, "required": ["edl"]}),
     "render_preview": ("Render a 540p preview of the current EDL and return frames at the start and each cut.",
                        {"type": "object", "properties": {}}),
+    "transcribe_output": ("Transcribe the latest preview and compare it with the EDL: the last word of every part "
+                          "and the video's last word must be heard. finish is locked until this passes for the "
+                          "current EDL.", {"type": "object", "properties": {}}),
     "finish": ("Lock the current EDL. summary = 1-4 short customer-facing Vietnamese bullets.",
                {"type": "object", "properties": {"summary": {"type": "array", "items": {"type": "string"},
                                                              "minItems": 1, "maxItems": 4}},
@@ -297,7 +352,8 @@ SCHEMAS[VOICE_TOOL] = (
         "type": "object", "properties": {"at": _NUM, "text": {"type": "string"}}, "required": ["at", "text"]}}},
      "required": ["lines"]})
 HANDLERS = {"get_transcript": get_transcript, "view_frames": view_frames, "set_edl": set_edl,
-            "render_preview": render_preview, "finish": finish, VOICE_TOOL: voiceover}
+            "render_preview": render_preview, "transcribe_output": transcribe_output, "finish": finish,
+            VOICE_TOOL: voiceover}
 
 
 def build_server(session: EditSession):

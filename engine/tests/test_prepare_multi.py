@@ -48,7 +48,19 @@ def test_multi_clip_prepare_spans_cache_and_images(clip, landscape_clip, tmp_pat
     assert img.name == "p.png" and img.path == d / "input" / "p.png" and max(Image.open(img.small).size) <= 768
     prepare(Project.load(d), Emitter(buf))
     assert len(norm_calls) == 2 and len(concat_calls) == 1       # everything cached on the second run
-    assert seen[0] == seen[1] == p1.normalized
+    # each clip is transcribed on its own (never the joined timeline), and its words land in that clip's span
+    norm = sorted((d / "work" / "norm").glob("*.mp4"))
+    assert len(seen) == 4 and set(seen) == set(norm) and p1.normalized not in seen
+    b_start = p1.spans[1][1]
+    assert [(w.start, w.end) for w in p1.words] == [(0.1, 0.4), (round(0.1 + b_start, 3), round(0.4 + b_start, 3))]
+
+
+def test_transcribe_clips_offsets_and_clips_words_to_their_clip(tmp_path, monkeypatch):
+    a, b = tmp_path / "a.mp4", tmp_path / "b.mp4"
+    by_clip = {a: [Word("ồn", 0.5, 0.9)], b: [Word("Mà", 0.14, 0.4), Word("nhà", 67.0, 67.4)]}
+    monkeypatch.setattr(prep, "transcribe", lambda v, wd: by_clip[v])
+    words = prep.transcribe_clips([a, b], [("a", 0.0, 44.233), ("b", 44.233, 111.4)], tmp_path)
+    assert words == [Word("ồn", 0.5, 0.9), Word("Mà", 44.373, 44.633), Word("nhà", 111.233, 111.4)]
 
 
 def test_changing_clip_order_rebuilds_timeline_and_frames(clip, landscape_clip, tmp_path, monkeypatch):

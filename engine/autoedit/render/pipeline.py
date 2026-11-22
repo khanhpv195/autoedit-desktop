@@ -2,19 +2,20 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from autoedit.edl import Edl, Range
+from autoedit.edl import TAIL, Edl, Range
 from autoedit.fsutil import part_path
 from autoedit.prep import Prepared
 from autoedit.prep.keyframes import downscale_image, frame_at
 from autoedit.project import Project
 from autoedit.errors import RenderFailed, VoiceMissing
-from autoedit.render.captions import build_cues, build_voice_cues, speech_intervals, write_ass
-from autoedit.render.compose import compose
+from autoedit.render.captions import (build_cues, build_voice_cues, caption_band, hide_cues, speech_intervals,
+                                      write_ass)
+from autoedit.render.compose import CTA_SECONDS, HOOK_SECONDS, compose
 from autoedit.render.loudness import loudnorm
-from autoedit.render.overlays import prepare_logo, text_card
+from autoedit.render.overlays import cta_card, prepare_logo, text_card
 from autoedit.render.qc import QcReport, edit_checks, run_qc
 from autoedit.render.seams import refine_edl
-from autoedit.render.segments import extract_segment, render_base
+from autoedit.render.segments import extract_audio, extract_segment, render_base
 from autoedit.voice import eleven
 from autoedit.voice.lines import audio_duration
 
@@ -75,35 +76,76 @@ def cut_times(ranges) -> list[float]:
     return out
 
 
+def with_tail(ranges: list[Range], spans, duration: float, tail: float = TAIL) -> list[Range]:
+    """The last range runs on up to `tail` s of silent picture, never past its clip or into another range."""
+    if not ranges:
+        return ranges
+    last = ranges[-1]
+    hi = duration
+    for _, a, b in spans or []:
+        if a - 1e-6 <= last.start < b:
+            hi = min(hi, b)
+    for r in ranges[:-1]:
+        if r.start >= last.end - 1e-6:
+            hi = min(hi, r.start)
+    end = min(hi, last.end + tail)
+    if end <= last.end + 1e-3:
+        return ranges
+    return ranges[:-1] + [Range(last.start, round(end, 3), last.reason)]
+
+
+def _muted(ranges: list[Range], spans: list[tuple[float, float]]) -> list[bool]:
+    return [any(a - 1e-6 <= r.start < b for a, b in spans) for r in ranges]
+
+
 def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: bool) -> RenderResult:
     work = project.work_dir / ("render_preview" if preview else "render")
     work.mkdir(parents=True, exist_ok=True)
-    if not edl.voiceover:       # with voiceover the base audio is muted: nothing to protect at the seams
+    if not edl.voiceover and not edl.audio:     # voiceover / audio track: the cuts carry no sound to protect
         edl = refine_edl(edl, prepared.normalized, prepared.info.duration)
-    ranges = edl.ordered()
-    total = sum(r.duration for r in ranges)
     voice = voice_inputs(project, edl)
-    base = render_base(prepared.normalized, ranges, project.niche, work, preview, mute=bool(voice))
+    heard = edl.heard_words(prepared.words)
+    if edl.audio:       # picture as cut, silent; one clip's sound plays unbroken under it, then the tail
+        ranges = edl.ordered()
+        audio_end = edl.audio.duration
+        track = extract_audio(prepared.normalized, edl.audio.start, edl.audio.duration, work / "audio_track.wav")
+        voice_files = [(track, 0.0)]
+        mute: bool | list[bool] = True
+    else:
+        speech_cut = edl.ordered()
+        audio_end = sum(r.duration for r in speech_cut)
+        ranges = with_tail(speech_cut, prepared.spans, prepared.info.duration) if not voice else speech_cut
+        voice_files = [(p, s) for p, s, _, _, _ in voice]
+        mute = bool(voice) or _muted(ranges, edl.muted_spans)
+        if voice:
+            audio_end = None    # the voiceover may run to the end
+    total = sum(r.duration for r in ranges)
+    base = render_base(prepared.normalized, ranges, project.niche, work, preview, mute=mute)
     if voice:
         cues = build_voice_cues([(s, at, ws) for _, s, _, at, ws in voice], edl.caption_fixes, edl.emphasis, total)
     else:
-        cues = build_cues(ranges, prepared.words, edl.caption_fixes, edl.emphasis, total)
-    ass = write_ass(cues, work / "captions.ass")
+        cues = build_cues(edl.speech_ranges() if edl.audio else speech_cut, heard, edl.caption_fixes,
+                          edl.emphasis, total)
+    hide = [(max(0.0, total - CTA_SECONDS), total + 1.0)]       # the CTA corner card replaces the captions
+    band = caption_band(project.niche)
+    if band == "fashion" and edl.hook and edl.hook.text:
+        hide.append((0.0, HOOK_SECONDS))     # the hook card sits where fashion captions go
+    ass = write_ass(hide_cues(cues, hide), work / "captions.ass", band)
     hook = text_card(edl.hook.text, work / "hook.png") if edl.hook and edl.hook.text else None
     logo = prepare_logo(project.logo_path, work / "logo.png") if project.logo_path else None
-    cta = text_card(edl.cta_text, work / "cta.png", size=72, bg=(0, 0, 0, 200))
+    cta = cta_card(edl.cta_text, work / "cta.png")
     music = project.music_path if (project.music_path and edl.music_use) else None
     if voice:
         speech = [(max(0.0, s - 0.15), s + d + 0.15) for _, s, d, _, _ in voice]
     else:
-        speech = speech_intervals(ranges, prepared.words)
+        speech = speech_intervals(edl.speech_ranges() if edl.audio else speech_cut, heard)
     broll = _broll_inputs(prepared, project, edl, work, preview)
 
     def once() -> Path:
         mixed = compose(base, work / "composite.mp4", duration=total, ass=ass, hook_png=hook, logo_png=logo,
                         cta_png=cta, music=music, speech=speech, duck_db=edl.music_duck_db, preview=preview, broll=broll,
-                        voice=[(p, s) for p, s, _, _, _ in voice],
-                        hook_position=edl.hook.position if edl.hook else "middle")
+                        voice=voice_files,
+                        hook_position=edl.hook.position if edl.hook else "middle", audio_end=audio_end)
         tmp = part_path(out)
         try:
             loudnorm(mixed, tmp, two_pass=not preview)
@@ -115,7 +157,7 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
     once()
     windows = [(a, b) for _, a, b in broll]
     # with voiceover the base is muted and the voice runs across cuts: a pop score on the mix would flag speech
-    cuts = [] if edl.voiceover else cut_times(ranges)
+    cuts = [] if (edl.voiceover or edl.audio) else cut_times(ranges)
     if preview:
         return RenderResult(out, total, None, False, edit_checks(out, windows, cuts))
     qc = run_qc(out, total, broll=windows, cuts=cuts)

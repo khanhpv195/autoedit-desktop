@@ -21,7 +21,7 @@ def on_grid(t):
 def test_snaps_inside_word_and_pads():
     edl, notes = v({"keep": [{"start": 1.2, "end": 1.7}]})  # starts inside "một", ends inside "hai"
     r = edl.keep[0]
-    assert r.start == pytest.approx(1.0 - 0.05, abs=FRAME / 2 + 1e-6) and r.end == pytest.approx(2.0 + 0.08, abs=FRAME / 2 + 1e-6)
+    assert r.start == pytest.approx(1.0 - 0.08, abs=FRAME / 2 + 1e-6) and r.end == pytest.approx(2.0 + 0.20, abs=FRAME / 2 + 1e-6)
     assert on_grid(r.start) and on_grid(r.end)
 
 
@@ -43,9 +43,9 @@ def test_keep_order_is_play_order():
     """B2: ranges play in the given order, no sorting."""
     edl, _ = v({"keep": [{"start": 4.0, "end": 6.0}, {"start": 1.0, "end": 2.0}]})
     got = [x for r in edl.keep for x in (r.start, r.end)]
-    assert got == pytest.approx([3.95, 6.08, 0.95, 2.08], abs=FRAME / 2 + 1e-6)
+    assert got == pytest.approx([3.92, 6.2, 0.92, 2.2], abs=FRAME / 2 + 1e-6)
     assert [r.start for r in edl.ordered()] == [r.start for r in edl.keep]
-    assert edl.output_time(1.0) == pytest.approx(6.08 - 3.95 + 0.05, abs=FRAME)
+    assert edl.output_time(1.0) == pytest.approx(6.2 - 3.92 + 0.08, abs=FRAME)
 
 
 def test_overlapping_ranges_are_rejected():

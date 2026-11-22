@@ -29,7 +29,9 @@ def music_volume_expr(intervals: list[tuple[float, float]], duck_db: float, base
 FPS = 30
 BROLL_ZOOM = 0.06
 VIDEO_EXT = {".mov", ".mp4"}
-CTA_Y = 820     # well above the captions (bottom margin 540 px) so the two never stack
+CTA_X, CTA_Y = 48, 1250     # bottom-left, its ↙ pointing at TikTok's product link (y ~1440-1520, x ~24-420);
+                             # captions are hidden while it shows
+END_FADE = 0.15
 
 
 def broll_chain(idx: int, src: str, start: float, end: float, w: int, h: int) -> list[str]:
@@ -48,10 +50,11 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
             logo_png: Path | None, cta_png: Path | None, music: Path | None,
             speech: list[tuple[float, float]], duck_db: float, preview: bool,
             broll: list[tuple[Path, float, float]] = (), voice: list[tuple[Path, float]] = (),
-            hook_position: str = "middle") -> Path:
+            hook_position: str = "middle", audio_end: float | None = None) -> Path:
     """broll: (image file, output start, output end) full-frame overlays, drawn on the base before everything else.
     voice: (voiceover line file, output start) mixed over the base audio; `speech` should then be the voice
-    intervals so the music ducks under them."""
+    intervals so the music ducks under them. audio_end: output second where all sound stops (a END_FADE fade-out
+    before it, silence after: the picture's tail is silent)."""
     k = 0.5 if preview else 1.0
     cmd = [bins.tool_path("ffmpeg"), "-y", "-v", "error", "-i", str(base)]
     graph: list[str] = []
@@ -81,7 +84,7 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
     if logo_png:
         add_overlay(logo_png, str(int(48 * k)), 120, None)
     if cta_png:
-        add_overlay(cta_png, "(W-w)/2", CTA_Y, f"gte(t,{max(0.0, duration - CTA_SECONDS):.3f})")
+        add_overlay(cta_png, str(int(CTA_X * k)), CTA_Y, f"gte(t,{max(0.0, duration - CTA_SECONDS):.3f})")
     fonts = filter_path(assets_dir() / "fonts")
     graph.append(f"[{cur}]subtitles=filename={filter_path(ass)}:fontsdir={fonts}"
                  f"{':original_size=1080x1920' if preview else ''}[vout]")
@@ -99,8 +102,14 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
         graph.append(f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,adelay={ms}|{ms}[vo{j}]")
         mix.append(f"[vo{j}]")
         idx += 1
+    fade = ""
+    if audio_end is not None:
+        fade = f",afade=t=out:st={max(0.0, audio_end - END_FADE):.3f}:d={END_FADE}"
     if len(mix) > 1:
-        graph.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:normalize=0[aout]")
+        graph.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:normalize=0{fade}[aout]")
+        amap = "[aout]"
+    elif fade:
+        graph.append(f"[0:a]anull{fade}[aout]")
         amap = "[aout]"
     else:
         amap = "0:a"

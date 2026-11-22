@@ -9,7 +9,8 @@ from autoedit.agent.sdk_errors import NO_AUTH_MSG, RATE_MSG, classify_result, cl
 from autoedit.errors import NoAuth, RateLimited
 
 TOOL_LABELS = {"get_transcript": "Đọc lời thoại", "view_frames": "Xem khung hình", "set_edl": "Chọn đoạn cắt",
-               "render_preview": "Dựng bản xem nhanh", "finish": "Chốt bản dựng", "voiceover": "Tạo lồng tiếng", "Skill": "Mở kiến thức dựng"}
+               "render_preview": "Dựng bản xem nhanh",
+               "transcribe_output": "Nghe lại bản xuất", "finish": "Chốt bản dựng", "voiceover": "Tạo lồng tiếng", "Skill": "Mở kiến thức dựng"}
 
 
 @dataclass

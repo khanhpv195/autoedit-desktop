@@ -58,12 +58,15 @@ def test_preview_runs_freeze_and_pop_checks(tmp_path, clip, monkeypatch):
     assert all(abs(a - b) <= 0.25 for a, b in zip(seen["cuts"], want))
 
 
-def test_hook_text_only_and_reversed_order_preview(tmp_path, clip):
+def test_hook_text_only_and_reversed_order_preview(tmp_path, clip, monkeypatch):
+    import autoedit.render.pipeline as pl
+    monkeypatch.setattr(pl, "CTA_SECONDS", 0.2)     # a 3.5 s clip: the CTA window would hide most captions
     proj, prep, _ = setup(tmp_path, clip)
     edl, _ = validate_edl({"keep": [{"start": 3.2, "end": 4.4}, {"start": 0.6, "end": 1.8}],
                            "hook": {"text": "CHỈ 189K"}}, WORDS, 6.0)
     res = render(prep, proj, edl, tmp_path / "preview.mp4", preview=True)
     assert (proj.work_dir / "render_preview" / "hook.png").exists()
-    assert abs(probe(res.path).duration - edl.output_duration()) < 0.5
+    assert abs(probe(res.path).duration - res.duration) < 0.15
+    assert 0.3 <= res.duration - edl.output_duration() <= 0.4 + 0.5    # silent tail + seams moved to the pauses
     ass = (proj.work_dir / "render_preview" / "captions.ass").read_text(encoding="utf-8")
     assert ass.index("GIÁ") < ass.index("CHÀO")       # reversed shots: the price line plays first

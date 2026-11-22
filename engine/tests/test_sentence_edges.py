@@ -78,4 +78,4 @@ def test_short_sentence_head_is_kept():
 def test_stray_first_word_of_next_sentence_is_dropped():
     from autoedit.edl import validate_edl
     edl, notes = validate_edl({"keep": [{"start": 0.95, "end": 4.25}, {"start": 4.85, "end": 5.7}]}, W, 10.0)
-    assert edl.keep[0].end <= 3.4 + 0.09 and any("'Em'" in n for n in notes)
+    assert edl.keep[0].end <= 3.4 + 0.21 and any("'Em'" in n for n in notes)
