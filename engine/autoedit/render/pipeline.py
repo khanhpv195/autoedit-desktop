@@ -94,6 +94,11 @@ def with_tail(ranges: list[Range], spans, duration: float, tail: float = TAIL) -
     return ranges[:-1] + [Range(last.start, round(end, 3), last.reason)]
 
 
+def cta_seconds(total: float) -> float:
+    """CTA_SECONDS, but never more than a quarter of a very short video (its captions hide meanwhile)."""
+    return min(CTA_SECONDS, 0.25 * total)
+
+
 def _muted(ranges: list[Range], spans: list[tuple[float, float]]) -> list[bool]:
     return [any(a - 1e-6 <= r.start < b for a, b in spans) for r in ranges]
 
@@ -126,7 +131,8 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
     else:
         cues = build_cues(edl.speech_ranges() if edl.audio else speech_cut, heard, edl.caption_fixes,
                           edl.emphasis, total)
-    hide = [(max(0.0, total - CTA_SECONDS), total + 1.0)]       # the CTA corner card replaces the captions
+    cta_s = cta_seconds(total)
+    hide = [(max(0.0, total - cta_s), total + 1.0)]       # the CTA corner card replaces the captions
     band = caption_band(project.niche)
     if band == "fashion" and edl.hook and edl.hook.text:
         hide.append((0.0, HOOK_SECONDS))     # the hook card sits where fashion captions go
@@ -145,7 +151,8 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
         mixed = compose(base, work / "composite.mp4", duration=total, ass=ass, hook_png=hook, logo_png=logo,
                         cta_png=cta, music=music, speech=speech, duck_db=edl.music_duck_db, preview=preview, broll=broll,
                         voice=voice_files,
-                        hook_position=edl.hook.position if edl.hook else "middle", audio_end=audio_end)
+                        hook_position=edl.hook.position if edl.hook else "middle", audio_end=audio_end,
+                        cta_seconds=cta_s)
         tmp = part_path(out)
         try:
             loudnorm(mixed, tmp, two_pass=not preview)

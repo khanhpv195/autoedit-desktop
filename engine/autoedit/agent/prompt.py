@@ -9,13 +9,22 @@ from autoedit.project import Project
 from autoedit.transcript import format_phrases, format_words, pack_phrases
 
 
+def clip_speech(words, a: float, b: float) -> str:
+    """'no speech' or 'speech 44.37-111.59s (338 words)' for the clip at timeline [a, b)."""
+    own = [w for w in words if a - 1e-6 <= (w.start + w.end) / 2 < b]
+    if len(own) < 3:
+        return "no speech (its sound is room noise or music)"
+    return f"speech {own[0].start:.2f}-{own[-1].end:.2f}s ({len(own)} words, last word {own[-1].text!r})"
+
+
 def span_lines(prepared: Prepared) -> list[str]:
     """Where each clip sits on the joined timeline, and which b-roll images exist. All times are timeline seconds."""
     lines = []
     if len(prepared.spans) > 1:
         lines.append(f"The customer gave {len(prepared.spans)} clips, joined in this order into one timeline "
                      "(every time below is a timeline second):")
-        lines += [f'Clip {i} "{n}": {a:.2f}-{b:.2f}s' for i, (n, a, b) in enumerate(prepared.spans, 1)]
+        lines += [f'Clip {i} "{n}": {a:.2f}-{b:.2f}s, {clip_speech(prepared.words, a, b)}'
+                  for i, (n, a, b) in enumerate(prepared.spans, 1)]
         lines.append("Shots from any clip can also be laid over the speech as video cutaways "
                      "(`broll` {shot: timeline second, at, dur 1.5-4 s}): picture changes, the speech goes on.")
     if prepared.images:
@@ -85,6 +94,7 @@ def build_edit_prompt(project: Project, prepared: Prepared, user_prompt: str, fe
     ]
     if project.script_card:
         lines.append("Chosen script card: " + json.dumps(project.script_card, ensure_ascii=False))
+        lines.append("Where the customer request and the card disagree, the customer request wins.")
     if feedback:
         lines.append("This is a re-edit. Customer feedback on the previous version: " + feedback.strip())
     if previous:

@@ -6,7 +6,7 @@ from autoedit import bins
 from autoedit.resources import assets_dir
 
 HOOK_SECONDS = 2.5
-CTA_SECONDS = 2.0
+CTA_SECONDS = 3.5     # from the closing line: 2 s was gone before viewers found the cart
 
 
 def filter_path(p: PurePath) -> str:
@@ -50,7 +50,8 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
             logo_png: Path | None, cta_png: Path | None, music: Path | None,
             speech: list[tuple[float, float]], duck_db: float, preview: bool,
             broll: list[tuple[Path, float, float]] = (), voice: list[tuple[Path, float]] = (),
-            hook_position: str = "middle", audio_end: float | None = None) -> Path:
+            hook_position: str = "middle", audio_end: float | None = None,
+            cta_seconds: float = CTA_SECONDS) -> Path:
     """broll: (image file, output start, output end) full-frame overlays, drawn on the base before everything else.
     voice: (voiceover line file, output start) mixed over the base audio; `speech` should then be the voice
     intervals so the music ducks under them. audio_end: output second where all sound stops (a END_FADE fade-out
@@ -84,7 +85,7 @@ def compose(base: Path, out: Path, *, duration: float, ass: Path, hook_png: Path
     if logo_png:
         add_overlay(logo_png, str(int(48 * k)), 120, None)
     if cta_png:
-        add_overlay(cta_png, str(int(CTA_X * k)), CTA_Y, f"gte(t,{max(0.0, duration - CTA_SECONDS):.3f})")
+        add_overlay(cta_png, str(int(CTA_X * k)), CTA_Y, f"gte(t,{max(0.0, duration - cta_seconds):.3f})")
     fonts = filter_path(assets_dir() / "fonts")
     graph.append(f"[{cur}]subtitles=filename={filter_path(ass)}:fontsdir={fonts}"
                  f"{':original_size=1080x1920' if preview else ''}[vout]")

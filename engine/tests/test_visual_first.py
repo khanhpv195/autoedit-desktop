@@ -47,7 +47,7 @@ def test_speech_prompt_with_voiceover_has_short_section(tmp_path):
 
 
 def test_analyze_instructions_follow_editor_rules():
-    for s in ("một video", "thứ tự", "5 từ", "2.5", "1.5–4", "3 s", "2 s cuối", "không bịa"):
+    for s in ("một video", "thứ tự", "5 từ", "2.5", "1.5–4", "3 s", "s cuối", "không bịa"):
         assert s in INSTRUCTIONS + BROLL_IMAGES, s
 
 

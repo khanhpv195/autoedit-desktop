@@ -86,3 +86,18 @@ def test_no_images_means_no_image_broll_in_instructions(tmp_path):
     text = build_analyze_message(prep(tmp_path), "thoi-trang", agent_dir(), exclude=[])["message"]["content"][0]["text"]
     assert "b-roll ảnh sản phẩm" not in text
     assert "Không có ảnh sản phẩm" in text
+
+
+def test_silent_clip_plus_talking_clip_asks_for_a_full_speech_card(tmp_path):
+    p = prep(tmp_path)
+    p.spans = [("a", 0.0, 10.0), ("b", 10.0, 30.0)]
+    p.words = [Word("Mà", 10.2, 10.4), Word("quần", 10.4, 10.8), Word("đẹp", 11.0, 11.3), Word("nhà", 28.0, 28.3)]
+    text = build_analyze_message(p, "thoi-trang", agent_dir(), exclude=[])["message"]["content"][0]["text"]
+    assert "Giữ trọn lời" in text and "lồng tiếng clip 2 đầy đủ đến từ cuối cùng 'nhà'" in text
+    assert "bỏ tiếng clip 1" in text and "3.5 s cuối" in text
+    assert 'Clip 1 "a": 0.00-10.00s, no speech' in text and "last word 'nhà'" in text
+
+
+def test_single_clip_has_no_full_speech_card(tmp_path):
+    text = build_analyze_message(prep(tmp_path), "my-pham", agent_dir(), exclude=[])["message"]["content"][0]["text"]
+    assert "Giữ trọn lời" not in text and "Keep the speaker's order" in text

@@ -92,7 +92,7 @@ Normally: `set_edl` → `render_preview` → `transcribe_output` → `finish`.
   Use it when one clip has the talking and another clip has silent product/try-on shots: cut away to a full-body
   or detail shot every 3–6 s while the speaker talks about that thing, so the picture never sits on one framing
   for more than ~6 s. Pick shots that are clear and steady (check the keyframes / `view_frames`).
-- `cta_text`: shown for the last 2 s. Use the `CTA text` from the request unless the customer asks for another
+- `cta_text`: shown for the last 3.5 s (bottom-left, pointing at the cart link; captions hide meanwhile). Use the `CTA text` from the request unless the customer asks for another
   CTA; omit it to use that default. Keep it short; an emoji is fine.
 - `music.use`: false if the clip already has music or the speech is quiet.
 - `audio_source` / `audio_in` / `audio_out`: one clip's sound plays **unbroken** under the whole picture.
