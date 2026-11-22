@@ -30,6 +30,8 @@ pub struct ProjectSummary {
     pub run_count: usize,
     /// Posts still waiting on bundle.social (status SCHEDULED, date in the future): they post anyway after a delete.
     pub scheduled_posts: usize,
+    /// Poster frame of the last run (`runs/<n>/thumb.jpg`), when it exists.
+    pub thumb: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -281,6 +283,13 @@ fn summary(dir: &Path, m: &Map<String, Value>) -> Result<ProjectSummary, String>
         })
         .unwrap_or(0);
     let runs = m.get("runs").and_then(Value::as_array).cloned().unwrap_or_default();
+    let thumb = runs
+        .last()
+        .and_then(|r| r.get("n"))
+        .and_then(Value::as_u64)
+        .map(|n| dir.join("runs").join(n.to_string()).join("thumb.jpg"))
+        .filter(|p| p.is_file())
+        .map(|p| p.to_string_lossy().into_owned());
     let status = match runs.last() {
         None => "new",
         Some(r) if r.get("needs_review").and_then(Value::as_bool).unwrap_or(false) => "needs_review",
@@ -294,6 +303,7 @@ fn summary(dir: &Path, m: &Map<String, Value>) -> Result<ProjectSummary, String>
         status: status.into(),
         run_count: runs.len(),
         scheduled_posts,
+        thumb,
     })
 }
 
@@ -690,6 +700,22 @@ mod tests {
         // a path that climbs out through ".."
         assert!(delete(&projects, &dir.join("..").join("..").join("other")).is_err());
         assert!(other.is_dir() && dir.is_dir());
+    }
+    #[test]
+    fn summary_thumb_is_last_runs_existing_thumb() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = new_project(root.path(), "", "");
+        assert_eq!(detail(&dir).unwrap().summary.thumb, None);
+        let mut m = read_json(&dir).unwrap();
+        m.insert("runs".into(), json!([{"n": 1}, {"n": 2}]));
+        write_json(&dir, &m).unwrap();
+        for n in ["1", "2"] { std::fs::create_dir_all(dir.join("runs").join(n)).unwrap(); }
+        std::fs::write(dir.join("runs/1/thumb.jpg"), b"x").unwrap();
+        // only run 1 has a thumb, but run 2 is the last one
+        assert_eq!(detail(&dir).unwrap().summary.thumb, None);
+        std::fs::write(dir.join("runs/2/thumb.jpg"), b"x").unwrap();
+        let want = dir.join("runs").join("2").join("thumb.jpg").to_string_lossy().into_owned();
+        assert_eq!(detail(&dir).unwrap().summary.thumb, Some(want));
     }
     #[test]
     fn summary_counts_future_scheduled_posts() {
