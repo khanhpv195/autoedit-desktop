@@ -152,3 +152,28 @@ test("clicking the title renames the project and reloads it", async () => {
   expect(a.renameProject).toHaveBeenCalledWith("/p/1", "Váy hoa xanh");
   expect(await screen.findByRole("button", { name: "Váy hoa xanh" })).toBeInTheDocument();
 });
+
+test("Result: Lưu làm mẫu saves this run as a video mẫu, Bỏ mẫu removes it", async () => {
+  a.getProject.mockResolvedValue(detail([run1]));
+  const ref = { id: "1-run1", name: "Váy hoa", niche: "thoi-trang", project: "/p/1", run: 1, saved_at: 1 };
+  e.saveReference.mockResolvedValue(ref);
+  e.deleteReference.mockResolvedValue([]);
+  mount();
+  await userEvent.click(await screen.findByRole("button", { name: "Lưu làm mẫu" }));
+  expect(e.saveReference).toHaveBeenCalledWith("/p/1", 1);
+  expect(await screen.findByText("Đã lưu làm video mẫu")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Bỏ mẫu" }));
+  expect(e.deleteReference).toHaveBeenCalledWith("1-run1");
+  expect(await screen.findByRole("button", { name: "Lưu làm mẫu" })).toBeInTheDocument();
+});
+
+test("Result: a run already saved shows Bỏ mẫu; a failed save shows the error", async () => {
+  a.getProject.mockResolvedValue(detail([{ ...run1, reference: "1-run1" }, { ...run1, n: 2 }]));
+  e.saveReference.mockRejectedValue({ code: "BAD_INPUT", message: "Lần dựng này không có bản dựng để lưu làm mẫu", retry_at: null });
+  mount();
+  await userEvent.click(await screen.findByRole("button", { name: "Lần 1" }));
+  expect(await screen.findByText("Đã lưu làm video mẫu")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Lần 2" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Lưu làm mẫu" }));
+  expect(await screen.findByText("Lần dựng này không có bản dựng để lưu làm mẫu")).toBeInTheDocument();
+});

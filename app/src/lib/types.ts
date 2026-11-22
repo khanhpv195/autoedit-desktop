@@ -27,6 +27,8 @@ export type Run = {
   summary: string[];
   needsReview: boolean;
   fallback: boolean;
+  /** Id of the video mẫu saved from this run, if any. */
+  reference?: string | null;
 };
 export type ProjectDetail = ProjectSummary & {
   clips: string[];
@@ -74,7 +76,11 @@ export type EngineEvent =
   | { type: "social_post"; post: Post }
   | { type: "social_posts"; posts: Post[] }
   | { type: "routine_sync"; created: Post[]; skipped: string | null }
-  | { type: "mcp_tools"; name: string; tools: McpTool[] };
+  | { type: "mcp_tools"; name: string; tools: McpTool[] }
+  | { type: "reference"; reference: Reference }
+  | { type: "references"; references: Reference[] };
+/** A video mẫu the customer saved: the AI copies its structure in later edits. */
+export type Reference = { id: string; name: string; niche: string; project: string; run: number; saved_at: number };
 export type Quota = { used: number; limit: number; remaining: number };
 export type SocialUsage = { posts: Quota; uploads: Quota };
 export type SocialChannel = { type: string; name: string; avatar: string | null; username: string | null };

@@ -13,7 +13,8 @@ from claude_agent_sdk import query
 
 from autoedit.agent.analyze import (BROLL_IMAGES, BROLL_NONE, EDIT_RULES, NEVER_PROMISE, VISUAL_HINT,
                                     full_speech_rule, run_structured)
-from autoedit.agent.library import NICHE_NAMES, niche_section, skill_body
+from autoedit.agent.library import NICHE_NAMES, niche_section
+from autoedit.agent.references import reference_text
 from autoedit.agent.prompt import image_blocks, span_lines
 from autoedit.errors import AgentFailed, BadInput
 from autoedit.fsutil import atomic_write_text
@@ -163,7 +164,7 @@ def build_chat_message(project: Project, prepared: Prepared, history: list[dict]
         CHAT_INTRO + rules,
         "Niche library:\n" + niche_section(project.niche, agent_dir),
         "Video mẫu (edits the customer approved; copy the structure, not the facts):\n"
-        + skill_body("reference-edits", agent_dir),
+        + reference_text(agent_dir, project.niche, project.dir),
         "\n".join(facts),
         "Transcript (timeline seconds):\n" + transcript,
         "Conversation so far:\n" + (_history_text(history) or "(none)"),

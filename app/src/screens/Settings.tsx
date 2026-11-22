@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import ClaudeLogin from "../components/ClaudeLogin";
 import McpSettings from "../components/McpSettings";
+import ReferenceSettings from "../components/ReferenceSettings";
 import SocialSettings from "../components/SocialSettings";
 import VoiceSettings from "../components/VoiceSettings";
 import * as api from "../lib/api";
@@ -147,6 +148,7 @@ export default function Settings() {
                 <button className="btn ghost" onClick={removeKey}>Xóa API key</button>
               </div>
             </div>
+            <ReferenceSettings />
             <div className="card">
               <h3>Model</h3>
               <select aria-label="Model" value={settings?.model || MODELS[0][0]}

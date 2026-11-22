@@ -3,7 +3,8 @@ from pathlib import Path
 
 from claude_agent_sdk import AssistantMessage, RateLimitEvent, ResultMessage, query
 
-from autoedit.agent.library import NICHE_NAMES, niche_section, skill_body
+from autoedit.agent.library import NICHE_NAMES, niche_section
+from autoedit.agent.references import reference_text
 from autoedit.agent.options import model, plain_options
 from autoedit.agent.prompt import image_blocks, span_lines
 from autoedit.agent.runner import _iso
@@ -119,7 +120,7 @@ def build_analyze_message(prepared: Prepared, niche: str, agent_dir: Path, exclu
     text = (f"{INSTRUCTIONS.format(broll=broll, full_speech=full_speech_rule(prepared), cta=CTA_SECONDS)}\n\nNiche: {niche} ({NICHE_NAMES[niche]})\n"
             f"Niche library:\n{niche_section(niche, agent_dir)}\n\n"
             f"Video mẫu (edits the customer approved; copy the structure, not the facts):\n"
-            f"{skill_body('reference-edits', agent_dir)}\n\n"
+            f"{reference_text(agent_dir, niche, project.dir if project else None)}\n\n"
             f"Total duration: {prepared.info.duration:.1f}s\n")
     extra = project_lines(project, bool(prepared.words))
     if extra:

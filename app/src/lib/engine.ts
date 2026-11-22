@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Card, ChatMessage, EngineError, EngineEvent, McpTool, Post, SocialAccount } from "./types";
+import type { Card, ChatMessage, EngineError, EngineEvent, McpTool, Post, Reference, SocialAccount } from "./types";
 
 export type EngineResult = { code: number | null; last: EngineEvent | null; error: EngineError | null };
 export type EngineJob = { result: Promise<EngineResult>; cancel(): Promise<void> };
@@ -169,4 +169,18 @@ export async function routineSync(team: string): Promise<{ created: Post[]; skip
 
 export async function mcpCheck(name: string): Promise<McpTool[]> {
   return (await social(["mcp-check", "--name", name], "mcp_tools", "Không kết nối được MCP")).tools;
+}
+
+/** "Lưu làm mẫu": save one run as a video mẫu the AI reads in later chats and edits. */
+export async function saveReference(dir: string, run: number): Promise<Reference> {
+  return (await social(["reference", "save", "--project", dir, "--run", String(run)], "reference", "Không lưu được video mẫu")).reference;
+}
+
+export async function listReferences(): Promise<Reference[]> {
+  return (await social(["reference", "list"], "references", "Không đọc được video mẫu")).references;
+}
+
+/** Resolves with the references left. */
+export async function deleteReference(id: string): Promise<Reference[]> {
+  return (await social(["reference", "delete", "--id", id], "references", "Không bỏ được video mẫu")).references;
 }

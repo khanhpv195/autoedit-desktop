@@ -1,10 +1,12 @@
-import { ChevronRight, FolderOpen, RotateCcw } from "lucide-react";
+import { BookmarkCheck, BookmarkPlus, ChevronRight, FolderOpen, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import AgentFeed from "../components/AgentFeed";
 import EditableTitle from "../components/EditableTitle";
 import PostCard from "../components/PostCard";
 import VideoPlayer from "../components/VideoPlayer";
 import * as api from "../lib/api";
+import * as engine from "../lib/engine";
+import { toEngineError } from "../lib/errors";
 import type { FeedItem, ProjectDetail } from "../lib/types";
 
 export default function Result({ detail, onRedo, onPosted, onRenamed }: {
@@ -50,6 +52,7 @@ export default function Result({ detail, onRedo, onPosted, onRenamed }: {
             <h3>Đã làm gì</h3>
             <ul className="sum">{run.summary.map((s, i) => <li key={i}>{s}</li>)}</ul>
           </div>
+          {!run.fallback && <ReferenceCard key={`ref-${run.n}`} dir={detail.dir} run={run.n} saved={run.reference ?? null} onChanged={onPosted} />}
           <PostCard key={run.n} detail={detail} run={run} onPosted={onPosted} />
           <div className="card">
             <div className="label">Muốn sửa gì?</div>
@@ -66,6 +69,42 @@ export default function Result({ detail, onRedo, onPosted, onRenamed }: {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** "Lưu làm mẫu": this run becomes a video mẫu the AI copies in later chats and edits. */
+function ReferenceCard({ dir, run, saved: initial, onChanged }: { dir: string; run: number; saved: string | null; onChanged?: () => void }) {
+  const [saved, setSaved] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function act() {
+    setBusy(true); setErr("");
+    try {
+      if (saved) { await engine.deleteReference(saved); setSaved(null); }
+      else setSaved((await engine.saveReference(dir, run)).id);
+      onChanged?.();
+    } catch (e) {
+      setErr(toEngineError(e).message || "Không lưu được video mẫu");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div>
+          <b>{saved ? "Đã lưu làm video mẫu" : "Video này đúng ý?"}</b>
+          <div className="hint">{saved
+            ? "AI sẽ dựng các video sau theo cách dựng của video này."
+            : "Lưu làm mẫu để AI dựng các video sau theo cách này."}</div>
+        </div>
+        <button className="btn ghost" disabled={busy} onClick={() => void act()}>
+          {busy ? <span className="spin" /> : saved ? <BookmarkCheck size={16} aria-hidden /> : <BookmarkPlus size={16} aria-hidden />}
+          {saved ? "Bỏ mẫu" : "Lưu làm mẫu"}
+        </button>
+      </div>
+      {err && <div className="err" role="alert" style={{ marginTop: 8, padding: 10, fontSize: 13 }}>{err}</div>}
     </div>
   );
 }

@@ -43,6 +43,8 @@ pub struct Run {
     pub summary: Vec<String>,
     pub needs_review: bool,
     pub fallback: bool,
+    /// Id of the video mẫu saved from this run ("Lưu làm mẫu"), if any.
+    pub reference: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -350,6 +352,7 @@ pub fn detail(dir: &Path) -> Result<ProjectDetail, String> {
                             .unwrap_or_default(),
                         needs_review: r.get("needs_review").and_then(Value::as_bool).unwrap_or(false),
                         fallback: r.get("fallback").and_then(Value::as_bool).unwrap_or(false),
+                        reference: r.get("reference").and_then(Value::as_str).map(String::from),
                     }
                 })
                 .collect()
@@ -795,7 +798,7 @@ mod tests {
         let s = create(root.path(), "do-an", std::slice::from_ref(&clip), &[], None, None, "", "", "2026-11-20").unwrap();
         let dir = Path::new(&s.dir);
         let mut j: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("project.json")).unwrap()).unwrap();
-        j["runs"] = json!([{"n":1,"final":"runs/1/final.mp4","prompt":"p","feedback":null,"summary":["s"],"needs_review":true,"fallback":false}]);
+        j["runs"] = json!([{"n":1,"final":"runs/1/final.mp4","prompt":"p","feedback":null,"summary":["s"],"needs_review":true,"fallback":false,"reference":"p-run1"}]);
         std::fs::write(dir.join("project.json"), j.to_string()).unwrap();
         std::fs::create_dir_all(dir.join("runs/1")).unwrap();
         std::fs::write(
@@ -807,6 +810,7 @@ mod tests {
         let d = detail(dir).unwrap();
         assert!(d.runs[0].final_path.ends_with("runs/1/final.mp4"));
         assert!(d.runs[0].needs_review);
+        assert_eq!(d.runs[0].reference.as_deref(), Some("p-run1"));
         let v = serde_json::to_value(&d).unwrap();
         assert_eq!(v["runs"][0]["needsReview"], true);
         assert_eq!(v["runCount"], 1);

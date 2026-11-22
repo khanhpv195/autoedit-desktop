@@ -168,6 +168,22 @@ async def _chat(args, events: Emitter) -> int:
     return 0
 
 
+async def _reference(args, events: Emitter) -> int:
+    from autoedit.agent import references as refs
+    c = args.ref_cmd
+    if c == "save":
+        project = Project.load(Path(args.project))
+        prepared = prepare(project, events)
+        events.step("Đang lưu video mẫu…", 0.9)
+        events.emit_raw({"type": "reference", "reference": refs.save_reference(project, args.run, prepared)})
+    elif c == "delete":
+        refs.delete_reference(args.id)
+        events.emit_raw({"type": "references", "references": refs.list_references()})
+    else:
+        events.emit_raw({"type": "references", "references": refs.list_references()})
+    return 0
+
+
 async def _social(args, events: Emitter) -> int:
     from autoedit.social import commands as sc
     c = args.social_cmd
@@ -224,6 +240,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("setup")
     sub.add_parser("setup-model")
     m = sub.add_parser("mcp-check"); m.add_argument("--name", required=True)
+    rf = sub.add_parser("reference"); rs = rf.add_subparsers(dest="ref_cmd", required=True)
+    x = rs.add_parser("save"); x.add_argument("--project", required=True); x.add_argument("--run", type=int, required=True)
+    x = rs.add_parser("delete"); x.add_argument("--id", required=True)
+    rs.add_parser("list")
     so = sub.add_parser("social"); ss = so.add_subparsers(dest="social_cmd", required=True)
     ss.add_parser("check")
     x = ss.add_parser("portal"); x.add_argument("--team", required=True)
@@ -242,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     events = Emitter()
     handler = {"analyze": _analyze, "chat": _chat, "edit": _edit, "auth-check": _auth, "setup": _setup,
-               "setup-model": _setup_model, "social": _social, "mcp-check": _mcp_check}.get(args.cmd)
+               "setup-model": _setup_model, "social": _social, "mcp-check": _mcp_check, "reference": _reference}.get(args.cmd)
     if handler is None:
         p.print_help(sys.stderr)
         return 1

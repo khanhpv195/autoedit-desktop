@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from autoedit.agent.library import NICHE_NAMES, niche_intro, niche_section, skill_body
+from autoedit.agent.references import reference_text
 from autoedit.prep import Prepared
 from autoedit.prep.keyframes import contact_sheets
 from autoedit.project import Project
@@ -145,7 +146,7 @@ def build_edit_message(project: Project, prepared: Prepared, user_prompt: str, f
         "## Skill: niche-hooks (" + project.niche + ")\n" + niche_intro(agent_dir) + "\n\n"
         + niche_section(project.niche, agent_dir),
         "## Skill: reference-edits (video mẫu the customer approved: copy the structure, not the facts)\n"
-        + skill_body("reference-edits", agent_dir),
+        + reference_text(agent_dir, project.niche, project.dir),
         *visual_first_section(project, prepared, agent_dir),
         f"## Transcript (phrases, source seconds; timeline {prepared.info.duration:.2f}s)\n{phrases}",
         "## Word times (source seconds; use them for caption_fixes/emphasis `at` and for cut edges)\n" + words,

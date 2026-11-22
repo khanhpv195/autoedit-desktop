@@ -41,3 +41,9 @@ def _clean_secrets():
     secrets_env.reset()
     yield
     secrets_env.reset()
+
+
+@pytest.fixture(autouse=True)
+def _refs_dir(tmp_path, monkeypatch):
+    """Saved video mẫu live in the app data dir: never read or write the real one in tests."""
+    monkeypatch.setenv("AUTOEDIT_REFS_DIR", str(tmp_path / "references"))
