@@ -183,3 +183,17 @@ test("'Thư viện' nav shows the total and opens the library; no 'Xem tất c�
   await userEvent.click(nav);
   expect(screen.getByTestId("route").textContent).toContain('"library"');
 });
+
+test("Enter on a recent row's ⋯ button does not open the project", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
+  m.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
+  m.listProjects.mockResolvedValue([
+    { dir: "/a", title: "Váy hoa", niche: "thoi-trang", created: "2026-11-20", status: "done", runCount: 1 },
+  ]);
+  render(<StoreProvider><Sidebar /><Probe /></StoreProvider>);
+  await screen.findByText("Váy hoa");
+  const before = screen.getByTestId("route").textContent;
+  screen.getByRole("button", { name: "Tuỳ chọn Váy hoa" }).focus();
+  await userEvent.keyboard("{Enter}");
+  expect(screen.getByTestId("route").textContent).toBe(before);
+});

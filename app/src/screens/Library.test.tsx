@@ -88,3 +88,17 @@ test("no backfill when every built project has a thumbnail", async () => {
   await screen.findByText("Váy hoa");
   expect(e.backfillThumbs).not.toHaveBeenCalled();
 });
+
+test("⋯ button opens the menu without opening the project, by click and by Enter", async () => {
+  boot([P("/a", "Váy hoa")]);
+  render(<StoreProvider><Library /><Probe /></StoreProvider>);
+  await screen.findByText("Váy hoa");
+  const before = screen.getByTestId("route").textContent;
+  const more = screen.getByRole("button", { name: "Tuỳ chọn Váy hoa" });
+  await userEvent.click(more);
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  expect(screen.getByTestId("route").textContent).toBe(before);
+  more.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(screen.getByTestId("route").textContent).toBe(before);
+});

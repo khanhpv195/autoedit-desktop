@@ -73,7 +73,7 @@ export default function Library() {
             return (
               <div key={p.dir} className="lib-card" role="button" tabIndex={0}
                 onClick={() => { if (actions.renaming !== p.dir) go({ name: "project", dir: p.dir }); }}
-                onKeyDown={(e) => { if (e.key === "Enter" && actions.renaming !== p.dir) go({ name: "project", dir: p.dir }); }}>
+                onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" && actions.renaming !== p.dir) go({ name: "project", dir: p.dir }); }}>
                 <div className="lib-thumb">
                   {building ? <span className="lib-ph">đang dựng…</span>
                     : p.thumb ? <img src={api.fileSrc(p.thumb)} alt={p.title} loading="lazy" />

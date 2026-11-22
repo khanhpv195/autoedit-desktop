@@ -40,7 +40,7 @@ export default function Sidebar() {
         {recent.map((p) => (
           <div key={p.dir} className={"pi" + (cur === p.dir ? " on" : "")} role="button" tabIndex={0}
             onClick={() => { if (renaming !== p.dir) go({ name: "project", dir: p.dir }); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && renaming !== p.dir) go({ name: "project", dir: p.dir }); }}>
+            onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" && renaming !== p.dir) go({ name: "project", dir: p.dir }); }}>
             <span className="av"><Film aria-hidden /></span>
             <div className="tx">
               {renaming === p.dir
