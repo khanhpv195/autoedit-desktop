@@ -171,16 +171,25 @@ def _ts(t: float) -> str:
 
 
 # (font size, alignment, margin left, right, vertical). "bottom": above TikTok's caption block. "fashion": a band
-# at y ~620-790 from the top, off the outfit and clear of the product link / CTA in the lower third.
-STYLES = {"bottom": (78, 2, 90, 150, 540), "fashion": (70, 8, 90, 130, 620)}
+# at y ~620-790 from the top, off the outfit and clear of the product link / CTA in the lower third. "top": under
+# the status bar / TikTok's top tabs. "low": asked-for "bottom" (below the knees on a full-body shot, still above
+# TikTok's description block).
+STYLES = {"bottom": (78, 2, 90, 150, 540), "fashion": (70, 8, 90, 130, 620), "top": (70, 8, 90, 130, 300),
+          "low": (70, 2, 90, 150, 420)}
+BAND_OF_POSITION = {"top": "top", "middle": "fashion", "bottom": "low"}
+SIZE_SCALE = {"small": 0.8, "normal": 1.0, "large": 1.15}
 
 
-def caption_band(niche: str) -> str:
+def caption_band(niche: str, position: str | None = None) -> str:
+    """The EDL's `captions.position` when given, else the niche default (fashion: mid band, others: bottom)."""
+    if position in BAND_OF_POSITION:
+        return BAND_OF_POSITION[position]
     return "fashion" if niche == "thoi-trang" else "bottom"
 
 
-def write_ass(cues: list[Cue], path: Path, band: str = "bottom") -> Path:
+def write_ass(cues: list[Cue], path: Path, band: str = "bottom", size_name: str = "normal") -> Path:
     size, align, ml, mr, mv = STYLES.get(band, STYLES["bottom"])
+    size = round(size * SIZE_SCALE.get(size_name, 1.0))
     head = (
         "[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\n\n"
         "[V4+ Styles]\n"

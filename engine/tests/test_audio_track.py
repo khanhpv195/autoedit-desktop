@@ -78,3 +78,27 @@ def test_fashion_band_is_top_aligned_near_y_620(tmp_path):
     style = next(l for l in ass.read_text(encoding="utf-8").splitlines() if l.startswith("Style: Caption"))
     f = style.split(",")
     assert f[18] == "8" and f[21] == "620"
+
+
+def _style(ass):
+    return next(l for l in ass.read_text(encoding="utf-8").splitlines() if l.startswith("Style: Caption")).split(",")
+
+
+def test_caption_band_follows_the_edl_position_over_the_niche():
+    from autoedit.render.captions import caption_band
+    assert caption_band("thoi-trang") == "fashion" and caption_band("khac") == "bottom"
+    assert caption_band("thoi-trang", "bottom") == "low"
+    assert caption_band("khac", "middle") == "fashion"
+    assert caption_band("khac", "top") == "top"
+
+
+def test_small_captions_use_a_smaller_font(tmp_path):
+    cue = [Cue(0.2, 1.0, [TimedWord("chào", 0.2, 1.0, 0.2, 0)])]
+    normal = int(_style(write_ass(cue, tmp_path / "n.ass", "bottom"))[2])
+    small = int(_style(write_ass(cue, tmp_path / "s.ass", "bottom", "small"))[2])
+    large = int(_style(write_ass(cue, tmp_path / "l.ass", "bottom", "large"))[2])
+    assert small < normal < large
+    top = _style(write_ass(cue, tmp_path / "t.ass", "top"))
+    assert top[18] == "8"
+    low = _style(write_ass(cue, tmp_path / "w.ass", "low"))
+    assert low[18] == "2" and int(low[21]) < 540

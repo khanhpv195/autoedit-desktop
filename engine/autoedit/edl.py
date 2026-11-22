@@ -126,6 +126,8 @@ class Edl:
     audio: AudioTrack | None = None
     mute: list[int] = field(default_factory=list)       # 1-based clips whose own sound is silenced
     muted_spans: list[tuple[float, float]] = field(default_factory=list)   # those clips on the timeline
+    caption_position: str | None = None     # top / middle / bottom; None = the niche's default band
+    caption_size: str = "normal"            # small / normal / large
 
     def to_dict(self) -> dict:
         d = self._base_dict()
@@ -133,6 +135,8 @@ class Edl:
             d.update(audio_source=self.audio.source, audio_in=self.audio.a_in, audio_out=self.audio.a_out)
         if self.mute:
             d["mute"] = list(self.mute)
+        if self.caption_position or self.caption_size != "normal":
+            d["captions"] = {k: v for k, v in (("position", self.caption_position), ("size", self.caption_size)) if v}
         return d
 
     def speech_ranges(self) -> list["Range"]:
@@ -492,6 +496,8 @@ def keep_short_heads(kept: list[Range], words: list[Word], dur: float) -> tuple[
 
 
 HOOK_POSITIONS = ("top", "middle", "lower")
+CAPTION_POSITIONS = ("top", "middle", "bottom")
+CAPTION_SIZES = ("small", "normal", "large")
 
 
 STATIC_MAX = 11.0       # seconds of one framing before a note asks for a cutaway (video mẫu: one every ~8-10 s)
@@ -725,6 +731,14 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
 
     broll = _validate_broll(raw.get("broll") or [], kept, hook, list(image_names), notes, list(spans), clip_duration)
 
+    cap = raw.get("captions") or {}
+    cap_pos = str(cap.get("position") or "").strip().lower() or None
+    cap_size = str(cap.get("size") or "normal").strip().lower()
+    if cap_pos is not None and cap_pos not in CAPTION_POSITIONS:
+        raise EdlError(f"captions position must be one of {', '.join(CAPTION_POSITIONS)}")
+    if cap_size not in CAPTION_SIZES:
+        raise EdlError(f"captions size must be one of {', '.join(CAPTION_SIZES)}")
+
     music = raw.get("music") or {}
     duck = float(music.get("duck_db", -14.0))
     edl = Edl(
@@ -739,6 +753,8 @@ def validate_edl(raw: dict, words: list[Word], clip_duration: float,
         audio=audio,
         mute=mute,
         muted_spans=muted_spans,
+        caption_position=cap_pos,
+        caption_size=cap_size,
     )
     if len(spans) > 1 or image_names:      # something to cut away to
         notes += static_notes(edl)

@@ -94,6 +94,11 @@ Normally: `set_edl` → `render_preview` → `transcribe_output` → `finish`.
   base picture and cut away to a full-body, back-view or detail shot for 2.5–3.5 s about every 8–10 s, while the
   speaker talks about the fit, legs, colour or size (as in the video mẫu "Mẫu 1"). Pick shots that are clear and
   steady (check the keyframes / `view_frames`).
+- `captions`: optional `{"position": "top" | "middle" | "bottom", "size": "small" | "normal" | "large"}`.
+  Omit it for the default (fashion niche: mid-frame band at ~32–41% of the height; other niches: bottom).
+  **Captions must not cover the face or the outfit the customer wants seen.** When the customer asks to move them
+  ("xuống dưới", "lên trên") or resize them ("nhỏ lại", "to hơn"), always set this — never keep the previous
+  edit unchanged. "bottom" = lower part of the frame, above TikTok's description block.
 - `cta_text`: shown for the last 3.5 s (bottom-left, pointing at the cart link; captions hide meanwhile). Use the `CTA text` from the request unless the customer asks for another
   CTA; omit it to use that default. Keep it short; an emoji is fine.
 - `music.use`: false if the clip already has music or the speech is quiet.

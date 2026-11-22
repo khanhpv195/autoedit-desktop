@@ -307,6 +307,10 @@ EDL_SCHEMA = {
                            "shot": {"type": "number", "description": "video cutaway: timeline second the shot starts"},
                            "at": _NUM, "dur": {"type": "number", "minimum": 1.5, "maximum": 4.0}},
             "required": ["at", "dur"]}},
+        "captions": {"type": "object", "description": "where the captions sit and how big (omit for the default: "
+                     "fashion niche mid-frame, others bottom). Use when the customer asks to move / resize them",
+                     "properties": {"position": {"type": "string", "enum": ["top", "middle", "bottom"]},
+                                    "size": {"type": "string", "enum": ["small", "normal", "large"]}}},
         "cta_text": {"type": "string"},
         "music": {"type": "object", "properties": {"use": {"type": "boolean"}, "duck_db": _NUM}},
         "audio_source": {"type": "integer", "minimum": 1, "description": "clip number whose sound plays unbroken "

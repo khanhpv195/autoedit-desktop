@@ -72,7 +72,7 @@ points, how long the speech is), offer 2-3 directions as suggestions, and ask th
 question. Do not give a plan in the opening turn.
 
 What to settle, asking at most 2 questions per turn and only about what is still unclear: the length, the hook
-line, which lines or clips to keep or drop, the CTA, captions (fix misheard words, highlight words). Propose
+line, which lines or clips to keep or drop, the CTA, captions (fix misheard words, highlight words, position top/middle/bottom, size small/normal/large). Propose
 concrete options from the transcript instead of open questions. Never ask about something the customer already
 said, and never ask about things the editor cannot do.
 

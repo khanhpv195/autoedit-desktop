@@ -222,3 +222,17 @@ def test_hook_position_is_kept_and_checked():
     assert edl.hook.position == "lower" and edl.to_dict()["hook"]["position"] == "lower"
     with pytest.raises(EdlError):
         v({"keep": [{"start": 1.0, "end": 6.0}], "hook": {"text": "XEM NGAY", "position": "left"}})
+
+
+def test_captions_position_and_size_are_kept_and_checked():
+    edl, _ = v({"keep": [{"start": 1.0, "end": 6.0}], "captions": {"position": "bottom", "size": "small"}})
+    assert (edl.caption_position, edl.caption_size) == ("bottom", "small")
+    assert edl.to_dict()["captions"] == {"position": "bottom", "size": "small"}
+    again, _ = v(edl.to_dict())
+    assert again.to_dict() == edl.to_dict()
+    plain, _ = v({"keep": [{"start": 1.0, "end": 6.0}]})
+    assert (plain.caption_position, plain.caption_size) == (None, "normal") and "captions" not in plain.to_dict()
+    with pytest.raises(EdlError):
+        v({"keep": [{"start": 1.0, "end": 6.0}], "captions": {"position": "left"}})
+    with pytest.raises(EdlError):
+        v({"keep": [{"start": 1.0, "end": 6.0}], "captions": {"size": "huge"}})

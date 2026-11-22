@@ -133,10 +133,10 @@ def render(prepared: Prepared, project: Project, edl: Edl, out: Path, preview: b
                           edl.emphasis, total)
     cta_s = cta_seconds(total)
     hide = [(max(0.0, total - cta_s), total + 1.0)]       # the CTA corner card replaces the captions
-    band = caption_band(project.niche)
-    if band == "fashion" and edl.hook and edl.hook.text:
-        hide.append((0.0, HOOK_SECONDS))     # the hook card sits where fashion captions go
-    ass = write_ass(hide_cues(cues, hide), work / "captions.ass", band)
+    band = caption_band(project.niche, edl.caption_position)
+    if edl.hook and edl.hook.text and (band == "fashion" or (band == "top" and edl.hook.position == "top")):
+        hide.append((0.0, HOOK_SECONDS))     # the hook card sits where these captions go
+    ass = write_ass(hide_cues(cues, hide), work / "captions.ass", band, edl.caption_size)
     hook = text_card(edl.hook.text, work / "hook.png") if edl.hook and edl.hook.text else None
     logo = prepare_logo(project.logo_path, work / "logo.png") if project.logo_path else None
     cta = cta_card(edl.cta_text, work / "cta.png")
