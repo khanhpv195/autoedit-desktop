@@ -146,3 +146,10 @@ test("a failed delete keeps the project in the list", async () => {
   await waitFor(() => expect(m.deleteProject).toHaveBeenCalled());
   expect(screen.getByText("Váy hoa")).toBeInTheDocument();
 });
+
+test("shows the app icon logo and the copyright footer", async () => {
+  boot([]);
+  const { container } = render(<StoreProvider><Sidebar /></StoreProvider>);
+  expect(await screen.findByText("Copyright © Build With Ai KhanhDev")).toBeInTheDocument();
+  expect(container.querySelector(".brand img.logo")).toHaveAttribute("src", "/app-icon.png");
+});

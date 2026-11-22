@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Clapperboard, Film, MoreHorizontal, Play, Plus, Settings } from "lucide-react";
+import { CalendarDays, Clapperboard, Film, MoreHorizontal, Plus, Settings } from "lucide-react";
 import { useStore } from "../state/store";
 import * as api from "../lib/api";
 import { toEngineError } from "../lib/errors";
@@ -51,7 +51,7 @@ export default function Sidebar() {
   const n = state.projects.length;
   return (
     <aside className="side" id="side">
-      <div className="brand"><div className="logo"><Play aria-hidden /></div><b>AutoEdit</b></div>
+      <div className="brand"><img className="logo" src="/app-icon.png" alt="" aria-hidden /><b>AutoEdit</b></div>
       <div className="snav">
         <div className={"sn" + (state.route.name === "schedule" ? "" : " on")} role="button" tabIndex={0}
           onClick={() => { if (state.route.name === "schedule") go({ name: "niche" }); }}><Clapperboard className="i" aria-hidden />Video</div>
@@ -94,6 +94,7 @@ export default function Sidebar() {
         <div className="pi" role="button" tabIndex={0} onClick={() => go({ name: "settings" })}>
           <Settings className="i" aria-hidden /><div className="tx"><b>Cài đặt</b></div>
         </div>
+        <div className="copyright">Copyright © Build With Ai KhanhDev</div>
       </div>
       {deleting && (
         <ConfirmDelete project={deleting} busy={busy} building={!!state.builds[deleting.dir]}

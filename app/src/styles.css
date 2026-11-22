@@ -36,9 +36,7 @@ code{font-family:var(--mono);font-size:12px;background:var(--sunken);border:1px 
 /* ---------- sidebar ---------- */
 .side{width:248px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0}
 .brand{display:flex;align-items:center;gap:10px;padding:18px 16px 14px}
-.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--cyan) -10%,var(--accent) 70%);color:#fff;
-  display:grid;place-items:center;box-shadow:0 2px 8px rgba(254,44,85,.3)}
-.logo svg{width:14px;height:14px;fill:#fff;stroke:none}
+.logo{width:30px;height:30px;border-radius:9px;object-fit:contain;display:block}
 .brand b{font-size:15px;font-weight:700;letter-spacing:-.01em}
 .brand .ver{margin-left:auto;font-size:10.5px;font-weight:600;color:var(--faint)}
 .snav{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin:0 12px 12px;background:var(--sunken);border:1px solid var(--line);border-radius:var(--r);padding:3px}
@@ -71,6 +69,7 @@ code{font-family:var(--mono);font-size:12px;background:var(--sunken);border:1px 
 .sidefoot{border-top:1px solid var(--line);padding:8px}
 .sidefoot .pi{font-size:13px;color:var(--ink2)}
 .sidefoot .pi svg{color:var(--muted)}
+.copyright{margin:6px 10px 2px;font-size:11px;color:var(--faint);text-align:center;white-space:nowrap}
 .ministat{margin:4px 10px 6px;display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
 .pi.on-off{opacity:1}
 .badge{font-size:10px;font-weight:700;background:var(--accent);color:#fff;border-radius:99px;padding:1px 6px}
