@@ -153,3 +153,33 @@ test("shows the app icon logo and the copyright footer", async () => {
   expect(await screen.findByText("Copyright © Build With Ai KhanhDev")).toBeInTheDocument();
   expect(container.querySelector(".brand img.logo")).toHaveAttribute("src", "/app-icon.png");
 });
+
+const many = Array.from({ length: 8 }, (_, i) => ({
+  dir: `/p${i}`, title: `Video ${i}`, niche: "thoi-trang", created: "2026-11-20", status: "done" as const, runCount: 1,
+}));
+
+test("shows at most 6 recent projects and a 'Xem tất cả' link to the library", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
+  m.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
+  m.listProjects.mockResolvedValue(many);
+  render(<StoreProvider><Sidebar /><Probe /></StoreProvider>);
+  expect(await screen.findByText("Video 0")).toBeInTheDocument();
+  expect(screen.getByText("Video 5")).toBeInTheDocument();
+  expect(screen.queryByText("Video 6")).toBeNull();
+  expect(screen.getByText("Gần đây")).toBeInTheDocument();
+  await userEvent.click(screen.getByText(/Xem tất cả/));
+  expect(screen.getByTestId("route").textContent).toContain('"library"');
+});
+
+test("'Thư viện' nav shows the total and opens the library; no 'Xem tất cả' when all fit", async () => {
+  m.licenseStatus.mockResolvedValue({ licensed: true, name: "Test" });
+  m.getSettings.mockResolvedValue({ model: "m", projectsRoot: "/p", lastNiche: null, onboarded: true });
+  m.listProjects.mockResolvedValue(many.slice(0, 3));
+  render(<StoreProvider><Sidebar /><Probe /></StoreProvider>);
+  await screen.findByText("Video 0");
+  expect(screen.queryByText(/Xem tất cả/)).toBeNull();
+  const nav = screen.getByText("Thư viện").closest(".sn")!;
+  expect(nav).toHaveTextContent("3");
+  await userEvent.click(nav);
+  expect(screen.getByTestId("route").textContent).toContain('"library"');
+});
