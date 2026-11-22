@@ -229,7 +229,15 @@ async def _auth(args, events: Emitter) -> int:
     return 0
 
 
+def _utf8_stdio() -> None:
+    """Windows pipes default to cp1252, which cannot hold Vietnamese; the app reads UTF-8 JSON lines."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_stdio()
     p = argparse.ArgumentParser(prog="autoedit")
     p.add_argument("--version", action="store_true")
     sub = p.add_subparsers(dest="cmd")

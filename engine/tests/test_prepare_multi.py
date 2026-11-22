@@ -45,7 +45,8 @@ def test_multi_clip_prepare_spans_cache_and_images(clip, landscape_clip, tmp_pat
     assert (p1.info.width, p1.info.height) == (1080, 1920)
     assert len(p1.keyframes) == 6 and len(p1.images) == 1
     img = p1.images[0]
-    assert img.name == "p.png" and img.path == d / "input" / "p.png" and max(Image.open(img.small).size) <= 768
+    with Image.open(img.small) as small:
+        assert img.name == "p.png" and img.path == d / "input" / "p.png" and max(small.size) <= 768
     prepare(Project.load(d), Emitter(buf))
     assert len(norm_calls) == 2 and len(concat_calls) == 1       # everything cached on the second run
     # each clip is transcribed on its own (never the joined timeline), and its words land in that clip's span

@@ -108,3 +108,17 @@ def test_cli_list_and_delete(tmp_path, capsys):
     assert ev["type"] == "references" and [r["id"] for r in ev["references"]] == ["2026-11-22_abc-run1"]
     assert main(["reference", "delete", "--id", "2026-11-22_abc-run1"]) == 0
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == {"type": "references", "references": []}
+
+
+def test_cli_prints_vietnamese_on_a_cp1252_stdout(tmp_path, monkeypatch):
+    """Windows pipes default to cp1252; the engine must still emit UTF-8 JSON lines (the app decodes UTF-8)."""
+    import io
+    import sys
+    from autoedit.cli import main
+    refs.save_reference(make_project(tmp_path), 1, prep(tmp_path))
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252", write_through=True))
+    assert main(["reference", "list"]) == 0
+    sys.stdout.flush()
+    ev = json.loads(raw.getvalue().decode("utf-8").strip().splitlines()[-1])
+    assert ev["references"][0]["name"] == "Quần legging"

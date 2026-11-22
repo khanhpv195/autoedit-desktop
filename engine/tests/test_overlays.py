@@ -37,4 +37,4 @@ def test_cta_card_fits_the_bottom_left_corner_and_draws_its_own_arrow(tmp_path):
     with Image.open(p) as im:
         assert im.width <= ov.CTA_MAX_W and 90 <= im.height <= 160
         right = im.crop((im.width - 110, 20, im.width - 20, im.height - 20)).convert("L")
-        assert max(right.getdata()) > 200        # the white ↙ sits at the right end of the card
+        assert right.getextrema()[1] > 200       # the white ↙ sits at the right end of the card

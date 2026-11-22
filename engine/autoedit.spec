@@ -8,5 +8,6 @@ a = Analysis(
 a.datas = [d for d in a.datas if "_bundled" not in d[0]]
 a.binaries = [b for b in a.binaries if "_bundled" not in b[0]]
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="autoedit", console=True)
+# UTF-8 mode: on Windows open(), pipes and subprocess text default to cp1252 otherwise.
+exe = EXE(pyz, a.scripts, [("X utf8", None, "OPTION")], exclude_binaries=True, name="autoedit", console=True)
 coll = COLLECT(exe, a.binaries, a.datas, name="autoedit")

@@ -222,6 +222,8 @@ where
     if let Some(b) = &cmd.bin_dir {
         c.env("AUTOEDIT_BIN_DIR", b);
     }
+    // Python on Windows defaults to cp1252 for pipes and files; Vietnamese text needs UTF-8.
+    c.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
     c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]
     {
