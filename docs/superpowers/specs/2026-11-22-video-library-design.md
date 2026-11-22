@@ -53,7 +53,7 @@ Empty state (0 projects): no "GẦN ĐÂY" section.
   - ⋯ menu: Đổi tên / Xoá… (shared component). Click/Enter on the card opens `project`.
 - Empty states: no projects → "Chưa có video nào" + "Video mới" button; filters match nothing →
   "Không có video khớp bộ lọc" + "Xoá bộ lọc" button.
-- On mount: if any project has `runCount > 0 && !thumb`, call `api.backfillThumbs()` once per app session
+- On mount: if any project has `runCount > 0 && !thumb`, call `backfillThumbs()` once per app session
   (module-level flag); see section 2.
 
 Startup route stays `niche`. No change to other screens.
@@ -74,13 +74,13 @@ Startup route stays `niche`. No change to other screens.
 ### Rust (`app/src-tauri/src/projects.rs`, `commands.rs`)
 - `ProjectSummary` gains `thumb: Option<String>` (serialized `thumb`): absolute path of the **last run's**
   `runs/<n>/thumb.jpg`, `Some` only if the file exists. Computed in `summary()`.
-- New command `backfill_thumbs` that spawns the engine `thumbs --root <projects_root>` job in the background
-  (same sidecar path as other engine jobs) and emits the existing engine events; the frontend calls
-  `refreshProjects()` when a project finishes and when the job ends. Errors are logged, not shown to the user.
+- No new Rust command: the frontend runs `autoedit thumbs --root <projects root>` through the existing generic
+  `engine_run` (`runEngine`), refreshing the project list on each `thumb` event and when the job ends.
+  Errors are ignored (logged by the engine), never shown to the user.
 
 ### Frontend types/api
 - `ProjectSummary.thumb?: string | null` in `app/src/lib/types.ts`.
-- `api.backfillThumbs()` wrapper.
+- `backfillThumbs(root, onThumb)` in `lib/engine.ts`.
 - Route type gains `{ name: "library" }`; `App.tsx` renders `<Library />`.
 
 ## 3. Testing

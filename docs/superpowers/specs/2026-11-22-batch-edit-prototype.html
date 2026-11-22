@@ -1,0 +1,412 @@
+<title>AutoEdit Edit hàng loạt</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: the AutoEdit app shell (sidebar + main), single light theme matching app/src/styles.css tokens */
+:root{
+  color-scheme:light;
+  --bg:#f5f5f7; --side:#fbfbfc; --card:#fff; --sunken:#f4f4f6;
+  --ink:#141418; --ink2:#3f3f46; --muted:#6e6e78; --faint:#a1a1aa;
+  --line:#e6e6ea; --line2:#d8d8de;
+  --accent:#fe2c55; --accent-h:#e81c47; --accent-soft:#fff0f3; --accent-ring:rgba(254,44,85,.22);
+  --cyan:#25f4ee;
+  --ok:#16a34a; --ok-soft:#ecfdf3; --warn:#d97706; --warn-soft:#fffbeb; --err:#dc2626; --err-soft:#fef2f2;
+  --nv-line:#f1d6d4; --nv-soft:#fff0ef; --nv-red:#d93843;
+  --r-sm:8px; --r:10px; --r-lg:14px;
+  --sh-xs:0 1px 2px rgba(20,20,24,.05);
+  --sh-sm:0 1px 2px rgba(20,20,24,.04),0 2px 6px rgba(20,20,24,.04);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box}
+body{font-family:var(--font);font-size:14px;line-height:1.5;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+svg.i{width:16px;height:16px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.proto{padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted);border-bottom:1px dashed var(--line2);background:var(--card)}
+.proto b{color:var(--ink2)}
+.proto button{border:1px solid var(--line2);background:var(--sunken);border-radius:99px;padding:3px 12px;font-size:12.5px}
+.proto button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+.app{display:flex;min-height:calc(100vh - 46px)}
+.side{width:248px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px;padding:18px 16px 14px}
+.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--cyan) -10%,var(--accent) 70%);display:grid;place-items:center}
+.logo svg{width:13px;height:13px;fill:#fff;stroke:none}
+.brand b{font-size:15px}
+.newbtn{margin:0 12px 8px;border:0;background:var(--accent);color:#fff;border-radius:var(--r);height:40px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px}
+.newbtn.alt{background:#fff;color:var(--ink);border:1px solid var(--line2);height:36px}
+.newbtn.alt.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.sec{font-size:11px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;padding:14px 16px 6px}
+.plist{padding:0 8px}
+.pi{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:var(--r);cursor:pointer}
+.pi:hover{background:#efeff2}
+.pi.on{background:#fff;box-shadow:var(--sh-sm),0 0 0 1px var(--line)}
+.av{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--sunken);color:var(--ink2);flex-shrink:0}
+.pi.on .av{background:var(--accent-soft);color:var(--accent)}
+.tx{flex:1;min-width:0;font-size:13px}
+.tx b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx span{font-size:11.5px;color:var(--muted)}
+.tag{font-size:10px;font-weight:600;background:var(--sunken);border:1px solid var(--line);border-radius:5px;padding:0 5px;color:var(--muted);margin-left:4px}
+
+main{flex:1;min-width:0;padding:28px 36px 40px;padding-left:max(16px,36px);display:flex;flex-direction:column;gap:20px}
+.head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.head h1{font-size:22px;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.head .sub{color:var(--muted);font-size:13px}
+.spacer{flex:1}
+.btn{border:1px solid var(--line2);background:#fff;border-radius:var(--r);height:36px;padding:0 14px;font-weight:600;display:inline-flex;align-items:center;gap:6px;font-size:13.5px}
+.btn:hover{background:var(--sunken)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{background:var(--accent-h)}
+.btn.pri:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.danger{color:var(--err)}
+
+.panel{background:var(--card);border:1px solid var(--nv-line);border-radius:18px;padding:20px 22px}
+.ptitle{font-size:13px;font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.ptitle .hint{font-weight:400;color:var(--muted);font-size:12.5px}
+
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:12px;font-weight:600;color:var(--ink2)}
+.field input,.field select{height:36px;border:1px solid var(--nv-line);border-radius:var(--r-sm);padding:0 10px;background:#fff;min-width:0}
+.chip{display:flex;align-items:center;gap:8px;height:36px;border:1px solid var(--nv-line);border-radius:var(--r-sm);padding:0 10px;font-size:13px;background:#fff;min-width:0}
+.chip .ic{width:22px;height:22px;border-radius:6px;background:var(--nv-soft);color:var(--nv-red);display:grid;place-items:center;flex-shrink:0}
+.chip .ic svg{width:13px;height:13px}
+.chip span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.toggle{display:flex;align-items:center;gap:8px;height:36px;font-size:13px}
+.sw{width:34px;height:20px;border-radius:99px;background:var(--line2);position:relative;border:0;flex-shrink:0}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.sw.on{background:var(--accent)}
+.sw.on::after{left:16px}
+
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:separate;border-spacing:0;min-width:640px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:600;text-align:left;padding:0 10px 8px}
+td{vertical-align:top;padding:10px;border-top:1px solid var(--line)}
+td.n{width:34px;color:var(--faint);font-variant-numeric:tabular-nums;padding-top:18px}
+td.clip{width:200px}
+td.name{width:190px}
+td.del{width:40px}
+.drop{border:1.5px dashed var(--nv-red);background:var(--nv-soft);border-radius:var(--r);padding:10px;font-size:12.5px;color:var(--nv-red);text-align:center;min-height:74px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+.drop.has{border-style:solid;border-color:var(--nv-line);background:#fff;color:var(--ink);align-items:flex-start;text-align:left}
+.drop.has b{font-size:13px}
+.drop.has small{color:var(--muted)}
+.drop.bad{border-color:var(--err);background:var(--err-soft);color:var(--err)}
+textarea{width:100%;min-height:74px;resize:vertical;border:1px solid var(--nv-line);border-radius:var(--r);padding:8px 10px;line-height:1.45}
+textarea.bad{border-color:var(--err);background:var(--err-soft)}
+td.name input{width:100%;height:36px;border:1px solid var(--nv-line);border-radius:var(--r-sm);padding:0 10px}
+.iconbtn{border:0;background:transparent;color:var(--faint);width:32px;height:32px;border-radius:8px;display:grid;place-items:center;margin-top:4px}
+.iconbtn:hover{background:var(--err-soft);color:var(--err)}
+.addrow{margin-top:10px}
+
+.footer{position:sticky;bottom:0;background:var(--card);border:1px solid var(--nv-line);border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 -6px 20px rgba(20,20,24,.06)}
+.footer .sum{font-size:13.5px}
+.footer .sum b{font-variant-numeric:tabular-nums}
+.footer .err{color:var(--err);font-size:12.5px}
+
+.modal-bg{position:fixed;inset:0;background:rgba(20,20,24,.35);display:grid;place-items:center;padding:16px;z-index:20}
+.modal{background:#fff;border-radius:16px;max-width:420px;width:100%;padding:22px;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 40px rgba(20,20,24,.18)}
+.modal h3{margin:0;font-size:16px}
+.modal p{margin:0;color:var(--ink2);font-size:13.5px}
+.modal .row{display:flex;gap:8px;justify-content:flex-end}
+
+/* run view */
+.overall{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.counts{display:flex;gap:8px;flex-wrap:wrap}
+.pill{font-size:12px;font-weight:600;border-radius:99px;padding:3px 10px;border:1px solid var(--line);background:#fff;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:5px}
+.pill.ok{background:var(--ok-soft);border-color:#bbf7d0;color:var(--ok)}
+.pill.warn{background:var(--warn-soft);border-color:#fde68a;color:var(--warn)}
+.pill.err{background:var(--err-soft);border-color:#fecaca;color:var(--err)}
+.pill.run{background:var(--accent-soft);border-color:#ffd0da;color:var(--accent)}
+.bar{flex:1;min-width:160px;height:8px;background:var(--sunken);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .4s}
+.banner{display:flex;gap:10px;align-items:flex-start;background:var(--warn-soft);border:1px solid #fde68a;color:#92400e;border-radius:12px;padding:12px 14px;font-size:13.5px}
+.banner b{display:block}
+
+.jobs{display:flex;flex-direction:column}
+.job{display:flex;gap:14px;align-items:center;padding:12px 4px;border-top:1px solid var(--line)}
+.job:first-child{border-top:0}
+.thumb{width:40px;height:64px;border-radius:7px;background:var(--sunken);border:1px solid var(--line);flex-shrink:0;display:grid;place-items:center;color:var(--faint);font-size:11px;font-variant-numeric:tabular-nums}
+.thumb.done{background:linear-gradient(160deg,#2a2a33,#5b5b68 60%,#fe2c55 160%);color:#fff;border:0}
+.jtx{flex:1;min-width:0}
+.jtx b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jtx .sc{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jtx .why{font-size:12.5px;margin-top:2px}
+.jtx .why.err{color:var(--err)}
+.jtx .why.warn{color:var(--warn)}
+.mini{height:5px;background:var(--sunken);border-radius:99px;overflow:hidden;margin-top:6px;max-width:320px}
+.mini i{display:block;height:100%;background:var(--accent);transition:width .3s}
+.jact{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.st{width:8px;height:8px;border-radius:50%;display:inline-block}
+.st.run{background:var(--accent);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+@media (max-width:760px){
+  .side{display:none}
+  main{padding:20px max(16px,env(safe-area-inset-right,0px)) 32px max(16px,env(safe-area-inset-left,0px))}
+  .job{flex-wrap:wrap}
+  .jact{width:100%;justify-content:flex-end}
+}
+</style>
+
+<div class="proto">
+  <b>Prototype</b> · bấm thử: nhập lô, bấm "Bắt đầu lô", xem lô chạy (đã tua nhanh).
+  <span class="spacer"></span>
+  <button id="v-new" class="on">Màn Lô mới</button>
+  <button id="v-run">Màn Lô đang chạy</button>
+  <button id="sim-limit">Giả lập hết lượt Claude</button>
+</div>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo"><svg viewBox="0 0 10 10"><path d="M2 1l7 4-7 4z"/></svg></div><b>AutoEdit</b></div>
+    <button class="newbtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Video mới</button>
+    <button class="newbtn alt on" id="side-batch"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>Edit hàng loạt</button>
+    <div class="sec">Lô</div>
+    <div class="plist" id="side-batches"></div>
+    <div class="sec">Project</div>
+    <div class="plist" id="side-projects"></div>
+  </aside>
+
+  <main id="main"></main>
+</div>
+
+<div id="modal"></div>
+
+<script>
+const IC = {
+  film:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4"/></svg>',
+  stack:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>',
+  trash:'<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+  plus:'<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  play:'<svg class="i" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>',
+  pause:'<svg class="i" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>',
+  stop:'<svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>',
+  retry:'<svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>',
+  open:'<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg>',
+  img:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>',
+  music:'<svg class="i" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+  warn:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v4M12 18h.01"/></svg>',
+};
+
+let rows = [
+  {clips:3, dur:"2:41", name:"Váy hoa – giá sốc", script:"Cắt còn 30s. Hook vào giá 199k ngay giây đầu. Giữ đoạn xoay người cho thấy tà váy. CTA: bấm giỏ hàng."},
+  {clips:2, dur:"1:58", name:"", script:"Khoảng 45s, kể chuyện chất vải mát, mặc đi biển. Không cần nhạc."},
+  {clips:1, dur:"0:52", name:"Áo khoác – unbox", script:"Unbox nhanh, 20s, hook \"mở hộp thử áo 300k\"."},
+  {clips:4, dur:"3:10", name:"", script:"Livestream cắt highlight 3 lần chốt đơn, 60s."},
+  {clips:0, dur:"", name:"", script:""},
+];
+let batchName = "Lô váy tháng 11";
+let voice = false;
+let view = "new";
+let jobs = [];
+let state = "idle"; // idle | running | paused | limit | done | cancelled
+let timer = null;
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const label = (r, i) => r.name.trim() || `${batchName} – #${i+1}`;
+
+function sidebar(){
+  const run = jobs.length && view === "run";
+  $("#side-batches").innerHTML = jobs.length ? `
+    <div class="pi ${run?"on":""}" id="sb-open"><span class="av">${IC.stack}</span><div class="tx"><b>${esc(batchName)}</b>
+    <span>${doneCount()}/${jobs.length} video · ${stateText()}</span></div>${state==="running"?'<span class="st run"></span>':""}</div>`
+    : `<div class="pi" style="cursor:default"><div class="tx"><span>Chưa có lô nào</span></div></div>`;
+  const ps = jobs.filter(j => j.status==="done"||j.status==="review").map(j =>
+    `<div class="pi"><span class="av">${IC.film}</span><div class="tx"><b>${esc(j.name)}</b><span>Thời trang<span class="tag">${esc(batchName)}</span></span></div></div>`).join("");
+  $("#side-projects").innerHTML = ps + `<div class="pi"><span class="av">${IC.film}</span><div class="tx"><b>Son lì review</b><span>Mỹ phẩm · 20/11</span></div></div>`;
+  const o = $("#sb-open"); if (o) o.onclick = () => setView("run");
+}
+
+function stateText(){
+  return {idle:"chưa chạy",running:"đang chạy",paused:"tạm dừng",limit:"chờ lượt Claude",done:"xong",cancelled:"đã hủy"}[state];
+}
+function doneCount(){ return jobs.filter(j => ["done","review","fail"].includes(j.status)).length; }
+
+function renderNew(){
+  const filled = rows.filter(r => r.clips || r.script.trim());
+  const bad = rows.map(r => (r.clips||r.script.trim()) && (!r.clips || !r.script.trim()));
+  const nBad = bad.filter(Boolean).length;
+  const n = filled.length;
+  $("#main").innerHTML = `
+    <div class="head"><div><h1>Edit hàng loạt</h1><div class="sub">Mỗi dòng là một video. AI dựng lần lượt, không hỏi lại. Dòng nào kịch bản thiếu ý thì AI tự quyết và ghi lý do.</div></div></div>
+
+    <section class="panel">
+      <div class="ptitle">Cài đặt chung cho lô <span class="hint">áp dụng cho mọi video; muốn khác ở dòng nào thì ghi vào kịch bản dòng đó</span></div>
+      <div class="settings">
+        <div class="field"><label for="bname">Tên lô</label><input id="bname" value="${esc(batchName)}"></div>
+        <div class="field"><label for="niche">Ngành hàng</label><select id="niche"><option>Thời trang</option><option>Mỹ phẩm</option><option>Đồ gia dụng</option></select></div>
+        <div class="field"><label for="tpl">Video mẫu</label><select id="tpl"><option>Clip-chuan</option><option>Mẫu: Váy hoa 18/11</option><option>Không dùng mẫu</option></select></div>
+        <div class="field"><label>Logo</label><div class="chip"><span class="ic">${IC.img}</span><span>logo-shop.png</span></div></div>
+        <div class="field"><label>Nhạc nền</label><div class="chip"><span class="ic">${IC.music}</span><span>Tự chọn theo ngành</span></div></div>
+        <div class="field"><label>Lồng tiếng</label><div class="toggle"><button class="sw ${voice?"on":""}" id="voice" aria-label="Bật lồng tiếng" aria-pressed="${voice}"></button>${voice?"Giọng: Mai (nữ, Bắc)":"Tắt"}</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ptitle">Kịch bản <span class="hint">${rows.length} dòng</span></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th></th><th>Clip</th><th>Kịch bản</th><th>Tên video (tuỳ chọn)</th><th></th></tr></thead>
+        <tbody>${rows.map((r,i) => `
+          <tr>
+            <td class="n">${i+1}</td>
+            <td class="clip"><div class="drop ${r.clips?"has":""} ${bad[i]&&!r.clips?"bad":""}" data-pick="${i}">
+              ${r.clips ? `<b>${r.clips} clip</b><small>${r.dur} · bấm để đổi</small>` : `<b>+ Thả clip vào đây</b><small>hoặc bấm để chọn</small>`}
+            </div></td>
+            <td><textarea id="sc${i}" data-sc="${i}" class="${bad[i]&&!r.script.trim()?"bad":""}" placeholder="Ví dụ: cắt còn 30s, hook vào giá, giữ đoạn xoay người, CTA bấm giỏ hàng">${esc(r.script)}</textarea></td>
+            <td class="name"><input id="nm${i}" data-nm="${i}" value="${esc(r.name)}" placeholder="${esc(batchName)} – #${i+1}"></td>
+            <td class="del"><button class="iconbtn" data-del="${i}" aria-label="Xoá dòng ${i+1}">${IC.trash}</button></td>
+          </tr>`).join("")}
+        </tbody></table></div>
+      <button class="btn addrow" id="add">${IC.plus}Thêm dòng</button>
+    </section>
+
+    <div class="footer">
+      <div class="sum"><b>${n}</b> video · ước tính khoảng <b>${n*4}</b> phút</div>
+      ${nBad ? `<div class="err">${nBad} dòng thiếu clip hoặc kịch bản</div>` : ""}
+      <span class="spacer"></span>
+      <button class="btn pri" id="start" ${(!n||nBad)?"disabled":""}>${IC.play}Bắt đầu lô</button>
+    </div>`;
+
+  $("#bname").oninput = e => { batchName = e.target.value; sidebar(); };
+  $("#voice").onclick = () => { voice = !voice; renderNew(); };
+  $("#add").onclick = () => { rows.push({clips:0,dur:"",name:"",script:""}); renderNew(); $("#sc"+(rows.length-1)).focus(); };
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { rows.splice(+b.dataset.del,1); renderNew(); });
+  document.querySelectorAll("[data-pick]").forEach(d => d.onclick = () => {
+    const r = rows[+d.dataset.pick];
+    if (!r.clips){ r.clips = 2; r.dur = "1:34"; } else { r.clips = r.clips % 4 + 1; }
+    renderNew();
+  });
+  document.querySelectorAll("[data-sc]").forEach(t => t.onchange = () => { rows[+t.dataset.sc].script = t.value; renderNew(); });
+  document.querySelectorAll("[data-nm]").forEach(t => t.oninput = () => { rows[+t.dataset.nm].name = t.value; });
+  $("#start").onclick = () => voice ? confirmVoice(n) : startBatch();
+}
+
+function confirmVoice(n){
+  $("#modal").innerHTML = `<div class="modal-bg"><div class="modal" role="dialog" aria-modal="true">
+    <h3>Lồng tiếng sẽ tốn credit ElevenLabs</h3>
+    <p>Lô này có <b>${n} video</b> bật lồng tiếng. Mỗi video gọi ElevenLabs một lần, ước tính dùng khoảng <b>${n*900}</b> ký tự credit. Credit còn lại: 24.500 ký tự.</p>
+    <div class="row"><button class="btn" id="m-no">Quay lại</button><button class="btn pri" id="m-yes">Vẫn chạy ${n} video</button></div>
+  </div></div>`;
+  $("#m-no").onclick = () => $("#modal").innerHTML = "";
+  $("#m-yes").onclick = () => { $("#modal").innerHTML = ""; startBatch(); };
+}
+
+const STEPS = [["Đang chuẩn bị clip…",.15],["Đang tạo phụ đề (whisper)…",.3],["AI đang dựng…",.65],["Đang xuất video…",.9]];
+const OUTCOME = ["done","done","fail","review","done"];
+
+function startBatch(){
+  jobs = rows.filter(r => r.clips && r.script.trim()).map((r,i) => ({
+    name: label(r,i), script: r.script, status:"wait", step:0, prog:0, outcome: OUTCOME[i % OUTCOME.length]
+  }));
+  state = "running";
+  setView("run");
+  tick();
+}
+
+function current(){ return jobs.find(j => j.status==="run") || jobs.find(j => j.status==="wait"); }
+
+function tick(){
+  clearTimeout(timer);
+  if (state !== "running") return;
+  const j = current();
+  if (!j){ state = "done"; render(); return; }
+  j.status = "run";
+  if (j.step < STEPS.length){
+    j.prog = STEPS[j.step][1]; j.label = STEPS[j.step][0]; j.step++;
+    if (j.outcome==="fail" && j.step===2){
+      j.status = "fail"; j.why = "Không đọc được clip IMG_2231.MOV (file hỏng hoặc định dạng lạ). Thay clip rồi bấm Chạy lại.";
+    }
+  } else {
+    j.status = j.outcome; j.prog = 1;
+    if (j.status==="review") j.why = "AI không dựng được theo kịch bản nên app dùng chế độ cắt khoảng lặng. Mở video để xem lại hoặc dựng lại theo góp ý.";
+  }
+  render();
+  timer = setTimeout(tick, 700);
+}
+
+function renderRun(){
+  if (!jobs.length){
+    $("#main").innerHTML = `<div class="head"><div><h1>Chưa có lô nào chạy</h1><div class="sub">Tạo lô ở màn "Lô mới" rồi bấm Bắt đầu lô.</div></div></div>`;
+    return;
+  }
+  const c = s => jobs.filter(j => j.status===s).length;
+  const pct = Math.round(jobs.reduce((a,j)=>a+(["done","review","fail"].includes(j.status)?1:j.prog),0)/jobs.length*100);
+  const running = state==="running", paused = state==="paused"||state==="limit";
+  $("#main").innerHTML = `
+    <div class="head">
+      <div><h1>${esc(batchName)}</h1><div class="sub">${jobs.length} video · Thời trang · mẫu Clip-chuan · ${stateText()}</div></div>
+      <span class="spacer"></span>
+      ${running ? `<button class="btn" id="pause">${IC.pause}Tạm dừng</button>` : ""}
+      ${paused ? `<button class="btn pri" id="resume">${IC.play}Tiếp tục</button>` : ""}
+      ${(running||paused) ? `<button class="btn danger" id="cancel">${IC.stop}Huỷ lô</button>` : ""}
+      ${(!running && c("fail")) ? `<button class="btn pri" id="retry">${IC.retry}Chạy lại ${c("fail")} video lỗi</button>` : ""}
+    </div>
+    ${state==="limit" ? `<div class="banner">${IC.warn}<div><b>Hết lượt Claude, lô đã tạm dừng.</b>Gói Claude của bạn đã dùng hết lượt trong khung giờ này. Video đang dựng dở sẽ được dựng lại từ đầu. Bấm Tiếp tục khi có lượt lại.</div></div>` : ""}
+    <section class="panel">
+      <div class="overall">
+        <div class="counts">
+          <span class="pill ok">✓ ${c("done")} xong</span>
+          <span class="pill warn">${c("review")} cần xem lại</span>
+          <span class="pill err">${c("fail")} lỗi</span>
+          <span class="pill">${c("wait")+c("run")} còn lại</span>
+        </div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <b style="font-variant-numeric:tabular-nums">${pct}%</b>
+      </div>
+    </section>
+    <section class="panel"><div class="jobs">${jobs.map((j,i)=>jobRow(j,i)).join("")}</div></section>`;
+
+  const on = (id,f) => { const e = $(id); if (e) e.onclick = f; };
+  on("#pause", () => { state="paused"; render(); });
+  on("#resume", () => { state="running"; tick(); });
+  on("#cancel", () => { jobs.forEach(j => { if (j.status==="run"||j.status==="wait"){ j.status="cancelled"; } }); state="cancelled"; render(); });
+  on("#retry", () => { jobs.forEach(j => { if (j.status==="fail"){ Object.assign(j,{status:"wait",step:0,prog:0,why:"",outcome:"done"}); } }); state="running"; tick(); });
+}
+
+function jobRow(j,i){
+  const pill = {
+    wait:'<span class="pill">Chờ</span>',
+    run:'<span class="pill run"><span class="st run"></span>Đang dựng</span>',
+    done:'<span class="pill ok">✓ Xong</span>',
+    review:'<span class="pill warn">Cần xem lại</span>',
+    fail:'<span class="pill err">Lỗi</span>',
+    cancelled:'<span class="pill">Đã huỷ</span>',
+  }[j.status];
+  const finished = j.status==="done"||j.status==="review";
+  return `<div class="job">
+    <div class="thumb ${finished?"done":""}">${finished?"▶":"#"+(i+1)}</div>
+    <div class="jtx">
+      <b>${esc(j.name)}</b>
+      <div class="sc">${esc(j.script)}</div>
+      ${j.status==="run" ? `<div class="sc" style="color:var(--ink2)">${j.label}</div><div class="mini"><i style="width:${j.prog*100}%"></i></div>` : ""}
+      ${j.why ? `<div class="why ${j.status==="fail"?"err":"warn"}">${j.why}</div>` : ""}
+    </div>
+    <div class="jact">${pill}${finished?`<button class="btn">${IC.open}Mở video</button>`:""}${j.status==="fail"?`<button class="btn">Sửa dòng</button>`:""}</div>
+  </div>`;
+}
+
+function render(){
+  view==="new" ? renderNew() : renderRun();
+  sidebar();
+  $("#v-new").classList.toggle("on", view==="new");
+  $("#v-run").classList.toggle("on", view==="run");
+  $("#side-batch").classList.toggle("on", view==="new");
+}
+function setView(v){ view = v; render(); }
+
+$("#v-new").onclick = () => setView("new");
+$("#v-run").onclick = () => setView("run");
+$("#side-batch").onclick = () => setView("new");
+$("#sim-limit").onclick = () => {
+  if (!jobs.length) startBatch();
+  const j = jobs.find(x => x.status==="run");
+  if (j) Object.assign(j,{status:"wait",step:0,prog:0});
+  state = "limit"; clearTimeout(timer); setView("run");
+};
+render();
+</script>
