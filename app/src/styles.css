@@ -583,3 +583,26 @@ details.proc .feed,.proc .feed{border:0;padding:0;margin-top:8px;max-height:260p
 .nv .chatin textarea{background:#fff8f7}
 .nv .chatin textarea:disabled{background:var(--nv-soft)}
 .nv .chatin .btn.primary:disabled{background:#f8dcdb;color:#8e706e}
+
+/* ---------- library ---------- */
+.lib{padding:24px 28px;overflow-y:auto;height:100%}
+.lib h2{margin:0 0 14px;font-size:20px;font-weight:700}
+.lib h2 .muted{color:var(--faint);font-weight:600;font-size:14px}
+.lib-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.lib-bar input{flex:1;min-width:180px}
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.lib-card{cursor:pointer;border-radius:var(--r);padding:6px;transition:background .12s;position:relative}
+.lib-card:hover{background:#efeff2}
+.lib-thumb{position:relative;aspect-ratio:9/16;border-radius:10px;overflow:hidden;background:var(--sunken);display:grid;place-items:center;color:var(--muted)}
+.lib-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.lib-thumb .st{position:absolute;top:8px;right:8px;box-shadow:0 0 0 2px #fff}
+.lib-ph{font-size:12px;font-weight:600}
+svg.lib-ph{width:28px;height:28px}
+.lib-meta{position:relative;padding:8px 26px 2px 2px;font-size:12px;color:var(--muted)}
+.lib-meta b{display:block;color:var(--ink);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-meta .more{position:absolute;top:6px;right:0}
+.lib-empty{display:flex;flex-direction:column;align-items:center;gap:12px;padding:60px 0;color:var(--muted)}
+.lib-meta .more{border:0;background:none;color:var(--muted);width:24px;height:24px;border-radius:6px;display:grid;place-items:center;cursor:pointer}
+.lib-meta .more:hover{background:var(--line)}
+.lib-meta .pmenu{top:30px}
+.lib-meta input{width:100%;height:28px;font-size:13px}

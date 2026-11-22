@@ -6,6 +6,7 @@ import NewVideo from "./screens/NewVideo";
 import ProjectView from "./screens/ProjectView";
 import Schedule from "./screens/Schedule";
 import Settings from "./screens/Settings";
+import Library from "./screens/Library";
 import Activate from "./screens/Activate";
 import UpdateBanner from "./components/UpdateBanner";
 
@@ -19,7 +20,7 @@ function Screen() {
     case "project": return <ProjectView key={r.dir} dir={r.dir} />;
     case "settings": return <Settings key={r.tab ?? "gen"} />;
     case "schedule": return <Schedule />;
-    case "library": return null; // Task 5 replaces this
+    case "library": return <Library />;
     case "activate": return null;
   }
 }
