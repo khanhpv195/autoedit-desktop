@@ -115,10 +115,13 @@ fn write_json(dir: &Path, m: &Map<String, Value>) -> Result<(), String> {
 
 /// Run `f` holding the same exclusive lock the engine takes (`project.json.lock`, flock / LockFileEx on the
 /// whole file), so Rust and engine read-modify-write cycles of project.json never interleave.
+/// Opened read+write, not append-only: on Windows LockFileEx needs GENERIC_READ or GENERIC_WRITE, and an
+/// append-only handle (FILE_APPEND_DATA) fails with "Access is denied. (os error 5)".
 fn with_lock<T>(dir: &Path, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     let file = std::fs::OpenOptions::new()
         .create(true)
-        .append(true)
+        .read(true)
+        .write(true)
         .open(dir.join("project.json.lock"))
         .map_err(|e| format!("Không khóa được project: {e}"))?;
     file.lock().map_err(|e| format!("Không khóa được project: {e}"))?;
